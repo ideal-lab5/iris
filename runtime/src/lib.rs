@@ -858,3 +858,151 @@ impl_runtime_apis! {
 		}
 	}
 }
+
+/**
+ * 
+ * CHAIN EXTENSION
+ * 
+ * Here we expose functionality that can be used by smart contracts to hook into the iris runtime
+ * 
+ * in general, this exposes iris functionality that doesn't rely on the underlying IPFS network
+ * 
+ * We expose functionality to:
+ * - transfer owned assets
+ * - mint assets from an owned asset class
+ * 
+ */
+use frame_support::log::{
+    error,
+    trace,
+};
+use pallet_contracts::chain_extension::{
+    ChainExtension,
+    Environment,
+    Ext,
+    InitState,
+    RetVal,
+    SysConfig,
+    UncheckedFrom,
+};
+use sp_runtime::DispatchError;
+use frame_system::{
+	self as system,
+};
+
+pub struct IrisExtension;
+
+impl ChainExtension<Runtime> for IrisExtension {
+	
+    fn call<E: Ext>(
+        func_id: u32,
+        env: Environment<E, InitState>,
+    ) -> Result<RetVal, DispatchError>
+    where
+        <E::T as SysConfig>::AccountId:
+            UncheckedFrom<<E::T as SysConfig>::Hash> + AsRef<[u8]>,
+    {
+		trace!(
+			target: "runtime",
+			"[ChainExtension]|call|func_id:{:}",
+			func_id
+		);
+        match func_id {	
+			// IrisAssets::transfer_asset
+            0 => {
+                let mut env = env.buf_in_buf_out();
+				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u64) = env.read_as()?;
+				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
+
+                crate::IrisAssets::transfer_asset(
+					origin, sp_runtime::MultiAddress::Id(target), asset_id, amount,
+				)?;
+				Ok(RetVal::Converging(func_id))
+            },
+			// IrisAssets::mint
+			1 => {
+				let mut env = env.buf_in_buf_out();
+				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u64) = env.read_as()?;
+				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
+
+                crate::IrisAssets::mint(
+					origin, sp_runtime::MultiAddress::Id(target), asset_id, amount,
+				)?;
+				Ok(RetVal::Converging(func_id))
+			},
+			// IrisAssets::burn
+			2 => {
+				let mut env = env.buf_in_buf_out();
+				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u64) = env.read_as()?;
+				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
+
+                crate::IrisAssets::burn(
+					origin, sp_runtime::MultiAddress::Id(target), asset_id, amount,
+				)?;
+				Ok(RetVal::Converging(func_id))
+			},
+			// IrisLedger::lock_currrency
+			3 => {
+				let mut env = env.buf_in_buf_out();
+				let (caller_account, amount): (AccountId, u64) = env.read_as()?;
+				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
+
+				crate::IrisLedger::lock_currency(
+					origin, amount.into(),
+				)?;
+				Ok(RetVal::Converging(func_id))
+			},
+			// IrisLedger::unlock_currency_and_transfer
+			4 => {
+				let mut env = env.buf_in_buf_out();
+				let (caller_account, target): (AccountId, AccountId) = env.read_as()?;
+				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
+
+				crate::IrisLedger::unlock_currency_and_transfer(
+					origin, target,
+				)?;
+				Ok(RetVal::Converging(func_id))
+			},
+			// Check if an address owns an asset by asset id
+			5 => {
+                let mut env = env.buf_in_buf_out();
+                let (query_address, asset_id): (AccountId, u32) = env.read_as()?;
+                let owner = crate::Assets::asset(&asset_id).unwrap().owner;
+				let is_owner = query_address == owner;
+                let owner_slice = is_owner.encode();
+                env.write(&owner_slice, false, None).map_err(|_| {
+                    DispatchError::Other("ChainExtension failed to query asset owner")
+                })?;
+				Ok(RetVal::Converging(func_id))
+            },
+			// IrisEjection: submit execution results from composable access rules
+			6 => {
+				let mut env = env.buf_in_buf_out();
+				let (caller_account, asset_id, target, result): (AccountId, u32, AccountId, bool) = env.read_as()?;
+				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
+
+				crate::IrisEjection::submit_execution_results(
+					origin, asset_id, target, result,
+				)?;
+				Ok(RetVal::Converging(func_id))
+			},
+			// IrisEjection: RequestBytes
+			7 => {
+				let mut env = env.buf_in_buf_out();
+				let (caller_account, asset_id): (AccountId, u32) = env.read_as()?;
+				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
+
+				crate::IrisEjection::request_bytes(origin, asset_id)?;
+				Ok(RetVal::Converging(func_id))
+			},
+            _ => {
+                error!("Called an unregistered `func_id`: {:}", func_id);
+                return Err(DispatchError::Other("Unimplemented func_id"))
+            }
+        }
+    }
+
+    fn enabled() -> bool {
+        true
+    }
+}

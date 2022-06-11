@@ -67,6 +67,7 @@ use frame_system::{
 use sp_io::offchain::timestamp;
 use sp_runtime::{
 	// offchain::ipfs,
+	offchain::http,
 	traits::StaticLookup,
 };
 use pallet_iris_assets::DataCommand;
@@ -889,112 +890,92 @@ impl<T: Config> Pallet<T> {
 	/// process any requests in the DataQueue
 	/// TODO: This needs some *major* refactoring
     fn handle_data_requests() -> Result<(), Error<T>> {
-		// let data_queue = <pallet_iris_assets::Pallet<T>>::data_queue();
-		// let len = data_queue.len();
-		// if len != 0 {
-		// 	log::info!("IPFS: {} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });
-		// }
-		// let deadline = Some(timestamp().add(Duration::from_millis(5_000)));
-		// for cmd in data_queue.into_iter() {
-		// 	match cmd {
-		// 		DataCommand::AddBytes(addr, cid, admin, id, balance, dataspace_id) => {
-		// 			if sp_io::offchain::is_validator() {
-		// 				Self::ipfs_request(IpfsRequest::Connect(addr.clone()), deadline)?;
-		// 				log::info!(
-		// 					"IPFS: connected to {}",
-		// 					str::from_utf8(&addr.0).expect("our own calls can be trusted to be UTF-8; qed")
-		// 				);
-		// 				match Self::ipfs_request(IpfsRequest::CatBytes(cid.clone()), deadline) {
-		// 					Ok(IpfsResponse::CatBytes(data)) => {
-		// 						log::info!("IPFS: fetched data");
-		// 						Self::ipfs_request(IpfsRequest::Disconnect(addr.clone()), deadline)?;
-		// 						log::info!(
-		// 							"IPFS: disconnected from {}",
-		// 							str::from_utf8(&addr.0).expect("our own calls can be trusted to be UTF-8; qed")
-		// 						);
-		// 						match Self::ipfs_request(IpfsRequest::AddBytes(data.clone()), deadline) {
-		// 							Ok(IpfsResponse::AddBytes(new_cid)) => {
-		// 								log::info!(
-		// 									"IPFS: added data with Cid {}",
-		// 									str::from_utf8(&new_cid).expect("our own IPFS node can be trusted here; qed")
-		// 								);
-		// 								let signer = Signer::<T, T::AuthorityId>::all_accounts();
-		// 								if !signer.can_sign() {
-		// 									log::error!(
-		// 										"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-		// 									);
-		// 								}
-		// 								let results = signer.send_signed_transaction(|_account| { 
-		// 									Call::submit_ipfs_add_results{
-		// 										admin: admin.clone(),
-		// 										cid: new_cid.clone(),
-		// 										// TODO: Time to make dinner, see you tomorrow
-		// 										dataspace_id: dataspace_id.clone(),
-		// 										id: id.clone(),
-		// 										balance: balance.clone(),
-		// 									}
-		// 								});
-								
-		// 								for (_, res) in &results {
-		// 									match res {
-		// 										Ok(()) => log::info!("Submitted ipfs results"),
-		// 										Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-		// 									}
-		// 								}
-		// 							},
-		// 							Ok(_) => unreachable!("only AddBytes can be a response for that request type."),
-		// 							Err(e) => log::error!("IPFS: add error: {:?}", e),
-		// 						}
-		// 					},
-		// 					Ok(_) => unreachable!("only CatBytes can be a response for that request type."),
-		// 					Err(e) => log::error!("IPFS: cat error: {:?}", e),
-		// 				}
-		// 			}
-		// 		},
-		// 		DataCommand::PinCID(acct, asset_id, cid) => {
-		// 			if sp_io::offchain::is_validator() {
-		// 				let public_key = 
-		// 					if let IpfsResponse::Identity(public_key, _) = 
-		// 						Self::ipfs_request(IpfsRequest::Identity, deadline)? {
-		// 					public_key
-		// 				} else {
-		// 					unreachable!("only `Identity` is a valid response type.");
-		// 				};
-		// 				let expected_pub_key = <SubstrateIpfsBridge::<T>>::get(acct.clone());
-		// 				ensure!(public_key == expected_pub_key, Error::<T>::BadOrigin);
-		// 				match Self::ipfs_request(IpfsRequest::InsertPin(cid.clone(), false), deadline) {
-		// 					Ok(IpfsResponse::Success) => {
-		// 						log::info!("IPFS: Pinned CID {:?}", cid.clone());
-		// 						let signer = Signer::<T, T::AuthorityId>::all_accounts();
-		// 						if !signer.can_sign() {
-		// 							log::error!(
-		// 								"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-		// 							);
-		// 						}
-		// 						let results = signer.send_signed_transaction(|_account| { 
-		// 							Call::submit_ipfs_pin_result{
-		// 								asset_id: asset_id,
-		// 								pinner: acct.clone(),
-		// 							}
-		// 						});
+		let data_queue = <pallet_iris_assets::Pallet<T>>::data_queue();
+		let len = data_queue.len();
+		if len != 0 {
+			log::info!("IPFS: {} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });
+		}
+		let deadline = Some(timestamp().add(Duration::from_millis(5_000)));
+		for cmd in data_queue.into_iter() {
+			match cmd {
+				DataCommand::AddBytes(addr, cid, admin, id, balance, dataspace_id) => {
+					if sp_io::offchain::is_validator() {
+						// just code-storming
+						Self::ipfs_connect(&addr)?;
+						Self::ipfs_get(&cid, &addr)?;
+						// TODO: remove this pin eventually
+						Self::ipfs_insert_pin(&cid)?;
+						Self::ipfs_disconnect(&addr)?;
+
+						let signer = Signer::<T, T::AuthorityId>::all_accounts();
+						if !signer.can_sign() {
+							log::error!(
+								"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+							);
+						}
+						let results = signer.send_signed_transaction(|_account| { 
+							Call::submit_ipfs_add_results{
+								admin: admin.clone(),
+								cid: cid.clone(),
+								// TODO: Time to make dinner, see you tomorrow
+								dataspace_id: dataspace_id.clone(),
+								id: id.clone(),
+								balance: balance.clone(),
+							}
+						});
+				
+						for (_, res) in &results {
+							match res {
+								Ok(()) => log::info!("Submitted ipfs results"),
+								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+							}
+						}
+					}
+				},
+				// DataCommand::PinCID(acct, asset_id, cid) => {
+				// 	if sp_io::offchain::is_validator() {
+				// 		let public_key = 
+				// 			if let IpfsResponse::Identity(public_key, _) = 
+				// 				Self::ipfs_request(IpfsRequest::Identity, deadline)? {
+				// 			public_key
+				// 		} else {
+				// 			unreachable!("only `Identity` is a valid response type.");
+				// 		};
+				// 		let expected_pub_key = <SubstrateIpfsBridge::<T>>::get(acct.clone());
+				// 		ensure!(public_key == expected_pub_key, Error::<T>::BadOrigin);
+				// 		match Self::ipfs_request(IpfsRequest::InsertPin(cid.clone(), false), deadline) {
+				// 			Ok(IpfsResponse::Success) => {
+				// 				log::info!("IPFS: Pinned CID {:?}", cid.clone());
+				// 				let signer = Signer::<T, T::AuthorityId>::all_accounts();
+				// 				if !signer.can_sign() {
+				// 					log::error!(
+				// 						"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+				// 					);
+				// 				}
+				// 				let results = signer.send_signed_transaction(|_account| { 
+				// 					Call::submit_ipfs_pin_result{
+				// 						asset_id: asset_id,
+				// 						pinner: acct.clone(),
+				// 					}
+				// 				});
 						
-		// 						for (_, res) in &results {
-		// 							match res {
-		// 								Ok(()) => log::info!("Submitted ipfs results"),
-		// 								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-		// 							}
-		// 						}
-		// 					},
-		// 					Ok(_) => unreachable!("only Success can be a response for that request type"),
-		// 					Err(e) => log::error!("IPFS: insert pin error: {:?}", e),
-		// 				}
-		// 			}
-		// 		},
-		// 		_ => {
-		// 			// do nothing
-		// 		}
-		// 	}
-		// }
+				// 				for (_, res) in &results {
+				// 					match res {
+				// 						Ok(()) => log::info!("Submitted ipfs results"),
+				// 						Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+				// 					}
+				// 				}
+				// 			},
+				// 			Ok(_) => unreachable!("only Success can be a response for that request type"),
+				// 			Err(e) => log::error!("IPFS: insert pin error: {:?}", e),
+				// 		}
+				// 	}
+				// },
+				_ => {
+					// do nothing
+				}
+			}
+		}
 
         Ok(())
     }
@@ -1016,7 +997,36 @@ impl<T: Config> Pallet<T> {
         // );
         Ok(())
     }
-}
+
+	/*
+	IPFS commands: This should ultimately be moved to it's own file
+	*/
+
+	/// ipfs swarm connect
+	fn ipfs_connect(multiaddress: &OpaqueMultiaddr) -> Result<(), Error<T>> {
+		Ok(())	
+	}
+
+	/// ipfs swarm disconnect
+	fn ipfs_disconnect(multiaddress: &OpaqueMultiaddr) -> Result<(), Error<T>> {
+		Ok(())	
+	}
+
+	/// ipfs get <CID>
+	fn ipfs_get(cid: &Vec<u8>, multiaddress: &OpaqueMultiaddr) -> Result<(), Error<T>> {
+		Ok(())	
+	}
+
+	/// ipfs cat <CID>
+	fn ipfs_cat(cid: &Vec<u8>) -> Result<(), Error<T>> {
+		Ok(())	
+	}
+
+	/// ipfs pin <CID>
+	fn ipfs_insert_pin(cid: &Vec<u8>) -> Result<(), Error<T>> {
+		Ok(())	
+	}
+}	
 
 // Provides the new set of validators to the session module when session is
 // being rotated.
