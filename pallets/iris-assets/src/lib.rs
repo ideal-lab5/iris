@@ -28,7 +28,7 @@ use frame_system::{
 };
 
 use sp_core::{
-    offchain::{OpaqueMultiaddr, StorageKind},
+    offchain::{StorageKind},
     Bytes,
     crypto::{UncheckedFrom, Wraps},
 };
@@ -49,7 +49,7 @@ use sp_core::sr25519;
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 pub enum DataCommand<LookupSource, AssetId, Balance, AccountId> {
     /// (ipfs_address, cid, requesting node address, asset id, balance, dataspace_id)
-    AddBytes(OpaqueMultiaddr, Vec<u8>, LookupSource, AssetId, Balance, AssetId),
+    AddBytes(Vec<u8>, Vec<u8>, LookupSource, AssetId, Balance, AssetId),
     /// (requestor, owner, assetid)
     CatBytes(AccountId, AccountId, AssetId),
     /// (node, assetid, CID)
@@ -84,7 +84,6 @@ pub mod pallet {
 	use frame_system::{
         pallet_prelude::*,
     };
-	use sp_core::offchain::OpaqueMultiaddr;
 	use sp_std::{
         str,
         prelude::*,
@@ -263,14 +262,13 @@ pub mod pallet {
         pub fn create(
             origin: OriginFor<T>,
             admin: <T::Lookup as StaticLookup>::Source,
-            addr: Vec<u8>,
+            multiaddr: Vec<u8>,
             cid: Vec<u8>,
             #[pallet::compact] dataspace_id: T::AssetId,
             #[pallet::compact] id: T::AssetId,
             #[pallet::compact] balance: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let multiaddr = OpaqueMultiaddr(addr);
             let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
             let balance_primitive = TryInto::<u64>::try_into(balance).ok();
             ensure!(balance_primitive != Some(0), Error::<T>::DataSpaceNotAccessible);
@@ -374,30 +372,7 @@ pub mod pallet {
 
             Ok(())
         }
-        
-        // /// request to fetch bytes from ipfs and add to offchain storage
-        // /// 
-        // /// * `owner`: The owner of the content to be fetched 
-        // /// * `asset_id`: The asset id identifying the content
-        // /// 
-		// #[pallet::weight(100)]
-		// pub fn request_bytebns(
-		// 	origin: OriginFor<T>,
-		// 	#[pallet::compact] asset_id: T::AssetId,
-		// ) -> DispatchResult {
-		// 	let who = ensure_signed(origin)?;
-        //     let owner = <pallet_assets::Pallet<T>>::asset(
-        //         asset_id.clone()
-        //     ).unwrap().owner;
-        //     <DataQueue<T>>::mutate(
-        //         |queue| queue.push(DataCommand::CatBytes(
-        //             who.clone(),
-        //             owner.clone(),
-        //             asset_id.clone(),
-        //         )));
-		// 	Ok(())
-		// }
-
+    
         /// Create a new asset class on behalf of an admin node
         /// and submit a request to associate it with the specified dataspace
         /// 
@@ -451,37 +426,37 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Add a request to pin a cid to the DataQueue for your embedded IPFS node
-        /// 
-        /// * `asset_owner`: The owner of the asset class
-        /// * `asset_id`: The asset id of some asset class
-        ///
-        #[pallet::weight(100)]
-        pub fn insert_pin_request(
-            origin: OriginFor<T>,
-            asset_owner: T::AccountId,
-            #[pallet::compact] asset_id: T::AssetId,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+        // /// Add a request to pin a cid to the DataQueue for your embedded IPFS node
+        // /// 
+        // /// * `asset_owner`: The owner of the asset class
+        // /// * `asset_id`: The asset id of some asset class
+        // ///
+        // #[pallet::weight(100)]
+        // pub fn insert_pin_request(
+        //     origin: OriginFor<T>,
+        //     asset_owner: T::AccountId,
+        //     #[pallet::compact] asset_id: T::AssetId,
+        // ) -> DispatchResult {
+        //     let who = ensure_signed(origin)?;
 
-            let asset_id_owner = <pallet_assets::Pallet<T>>::asset(asset_id.clone()).unwrap().owner;
-            ensure!(
-                asset_id_owner == asset_owner.clone(),
-                Error::<T>::NoSuchOwnedContent
-            );
+        //     let asset_id_owner = <pallet_assets::Pallet<T>>::asset(asset_id.clone()).unwrap().owner;
+        //     ensure!(
+        //         asset_id_owner == asset_owner.clone(),
+        //         Error::<T>::NoSuchOwnedContent
+        //     );
 
-            let cid: Vec<u8> = <Metadata<T>>::get(asset_id.clone()).unwrap().cid;
-            <DataQueue<T>>::mutate(
-                |queue| queue.push(DataCommand::PinCID( 
-                    who.clone(),
-                    asset_id.clone(),
-                    cid.clone(),
-                )));
+        //     let cid: Vec<u8> = <Metadata<T>>::get(asset_id.clone()).unwrap().cid;
+        //     <DataQueue<T>>::mutate(
+        //         |queue| queue.push(DataCommand::PinCID( 
+        //             who.clone(),
+        //             asset_id.clone(),
+        //             cid.clone(),
+        //         )));
 
-            Self::deposit_event(Event::QueuedDataToPin);
+        //     Self::deposit_event(Event::QueuedDataToPin);
             
-            Ok(())
-        }
+        //     Ok(())
+        // }
 	}
 }
 
