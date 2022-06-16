@@ -1,6 +1,6 @@
 [package]
 authors = ["Ideal Labs <https://github.com/ideal_lab5>"]
-edition = '2018'
+edition = '2021'
 name = 'pallet-data-spaces'
 version = "1.0.0"
 license = "Unlicense"

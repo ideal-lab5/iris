@@ -353,16 +353,16 @@ pub mod pallet {
 			// every 5 blocks
 			if block_number % 5u32.into() == 0u32.into() {
 				if let Err(e) = Self::connection_housekeeping() {
-					log::error!("IPFS: Encountered an error while processing data requests: {:?}", e);
+					log::error!("Encountered an error while processing data requests: {:?}", e);
 				}
 			}
 			// handle data requests each block
 			if let Err(e) = Self::handle_data_requests() {
-				log::error!("IPFS: Encountered an error while processing data requests: {:?}", e);
+				log::error!("Encountered an error while processing data requests: {:?}", e);
 			}
 
 			if let Err(e) = Self::handle_data_retrieval_requests() {
-				log::error!("IPFS: Encountered an error while processing data requests: {:?}", e);
+				log::error!("Encountered an error while processing data requests: {:?}", e);
 			}
 		}
 	}
@@ -393,8 +393,7 @@ pub mod pallet {
 		/// New validator's session keys should be set in Session pallet before
 		/// calling this.
 		///
-		/// The origin can be configured using the `AddRemoveOri
-		/// in` type in the
+		/// The origin can be configured using the `AddRemoveOrigin` type in the
 		/// host runtime. Can also be set to sudo/root.
 		///
 		#[pallet::weight(100)]
@@ -750,57 +749,6 @@ impl<T: Config> Pallet<T> {
     /// 
     /// Returns an error if communication with the embedded IPFS fails
     fn connection_housekeeping() -> Result<(), Error<T>> {
-        // let deadline = Some(timestamp().add(Duration::from_millis(5_000)));
-        
-        // let (public_key, addrs) = 
-		// 	if let IpfsResponse::Identity(public_key, addrs) = 
-		// 		Self::ipfs_request(IpfsRequest::Identity, deadline)? {
-        //     (public_key, addrs)
-        // } else {
-        //     unreachable!("only `Identity` is a valid response type.");
-        // };
-
-        // if !BootstrapNodes::<T>::contains_key(public_key.clone()) {
-        //     if let Some(bootstrap_node) = &BootstrapNodes::<T>::iter().nth(0) {
-        //         if let Some(bootnode_maddr) = bootstrap_node.1.clone().pop() {
-        //             if let IpfsResponse::Success = Self::ipfs_request(IpfsRequest::Connect(bootnode_maddr.clone()), deadline)? {
-        //                 log::info!("Succesfully connected to a bootstrap node: {:?}", &bootnode_maddr.0);
-        //             } else {
-        //                 log::info!("Failed to connect to the bootstrap node with multiaddress: {:?}", &bootnode_maddr.0);
-        //                 // TODO: this should probably be some recursive function? but we should never exceed a depth of 2 so maybe not
-        //                 if let Some(next_bootnode_maddr) = bootstrap_node.1.clone().pop() {
-        //                     if let IpfsResponse::Success 
-		// 						= Self::ipfs_request(IpfsRequest::Connect(next_bootnode_maddr.clone()), deadline)? {
-        //                         log::info!("Succesfully connected to a bootstrap node: {:?}", &next_bootnode_maddr.0);
-        //                     } else {
-        //                         log::info!("Failed to connect to the bootstrap node with multiaddress: {:?}", &next_bootnode_maddr.0);
-        //                     }       
-        //                 }
-        //             }
-        //         }
-        //     }
-			
-        //     let signer = Signer::<T, T::AuthorityId>::all_accounts();
-        //     if !signer.can_sign() {
-        //         log::error!(
-        //             "No local accounts available. Consider adding one via `author_insertKey` RPC.",
-        //         );
-        //     }
-             
-        //     let results = signer.send_signed_transaction(|_account| { 
-        //         Call::submit_ipfs_identity {
-        //             public_key: public_key.clone(),
-        //             multiaddresses: addrs.clone(),
-        //         }
-        //     });
-    
-        //     for (_, res) in &results {
-        //         match res {
-        //             Ok(()) => log::info!("Submitted ipfs identity results"),
-        //             Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-        //         }
-        //     }
-        // }
         Ok(())
     }
 
@@ -817,22 +765,35 @@ impl<T: Config> Pallet<T> {
 					match <pallet_iris_assets::Pallet<T>>::metadata(asset_id.clone()) {
 						Some(metadata) => {
 							let cid = metadata.cid;
-							let res = Self::ipfs_cat(&cid)?;
-							let data = res.body().collect::<Vec<u8>>();
-							log::info!("IPFS: Fetched data from IPFS.");
+							// let res = Self::ipfs_cat(&cid)?;
+							// let data = res.body().collect::<Vec<u8>>();
+							// log::info!("IPFS: Fetched data from IPFS.");
 							// add to offchain index
 							sp_io::offchain::local_storage_set(
 								StorageKind::PERSISTENT,
 								&cid,
-								&data,
+								&cid,
 							);
 
-							let call = Call::submit_rpc_ready {
-								asset_id: asset_id.clone(),
-							};
-							SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
-								.map_err(|()| Error::<T>::CantCreateRequest)?;
-							return Ok(());
+							let signer = Signer::<T, T::AuthorityId>::all_accounts();
+							if !signer.can_sign() {
+								log::error!(
+									"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+								);
+							}
+
+							let results = signer.send_signed_transaction(|_account| { 
+								Call::submit_rpc_ready {
+									asset_id: asset_id.clone(),
+								}
+							});
+					
+							for (_, res) in &results {
+								match res {
+									Ok(()) => log::info!("Submitted ipfs results"),
+									Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+								}
+							}
 						},
 						None => {
 							return Ok(());
@@ -854,16 +815,16 @@ impl<T: Config> Pallet<T> {
 		let data_queue = <pallet_iris_assets::Pallet<T>>::data_queue();
 		let len = data_queue.len();
 		if len != 0 {
-			log::info!("IPFS: {} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });
+			log::info!("{} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });
 		}
 		let deadline = Some(timestamp().add(Duration::from_millis(5_000)));
 		for cmd in data_queue.into_iter() {
 			match cmd {
 				DataCommand::AddBytes(addr, cid, admin, id, balance, dataspace_id) => {
 					if sp_io::offchain::is_validator() {
-						Self::ipfs_connect(&addr);
-						Self::ipfs_get(&cid);
-						Self::ipfs_disconnect(&addr);
+						// Self::ipfs_connect(&addr);
+						// Self::ipfs_get(&cid);
+						// Self::ipfs_disconnect(&addr);
 
 						let signer = Signer::<T, T::AuthorityId>::all_accounts();
 						if !signer.can_sign() {
@@ -883,7 +844,7 @@ impl<T: Config> Pallet<T> {
 				
 						for (_, res) in &results {
 							match res {
-								Ok(()) => log::info!("Submitted ipfs results"),
+								Ok(()) => log::info!("Submitted results"),
 								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
 							}
 						}
@@ -901,11 +862,6 @@ impl<T: Config> Pallet<T> {
 	/*
 	IPFS commands: This should ultimately be moved to it's own file
 	*/
-
-	// pub struct IpfsConnectRequest {
-	// 	arg: String,
-	// }
-
 	/// ipfs swarm connect
 	fn ipfs_connect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
 		match str::from_utf8(multiaddress) {

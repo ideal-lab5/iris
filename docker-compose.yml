@@ -2,16 +2,16 @@ version: "3.2"
 
 services:
   dev:
-    container_name: node-template
-    image: paritytech/ci-linux:974ba3ac-20201006
-    working_dir: /var/www/node-template
+    container_name: iris-node
+    image: paritytech/ci-linux:latest
+    working_dir: /var/www/iris-node
     ports:
       - "9944:9944"
     environment:
-      - CARGO_HOME=/var/www/node-template/.cargo
+      - CARGO_HOME=/var/www/iris-node/.cargo
     volumes:
-      - .:/var/www/node-template
+      - .:/var/www/iris-node
       - type: bind
         source: ./.local
         target: /root/.local
-    command: bash -c "cargo build --release && ./target/release/node-template --dev --ws-external"
+    command: bash -c "cargo build --release && ./target/release/iris-node --dev --ws-external"

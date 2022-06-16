@@ -974,8 +974,19 @@ impl ChainExtension<Runtime> for IrisExtension {
                 })?;
 				Ok(RetVal::Converging(func_id))
             },
-			// IrisEjection: submit execution results from composable access rules
+			// get a node's balance of some given asset id
 			6 => {
+                let mut env = env.buf_in_buf_out();
+                let (query_address, asset_id): (AccountId, u32) = env.read_as()?;
+                let balance = crate::Assets::account(&asset_id, &query_address).unwrap().balance;
+                let balance_slice = balance.encode();
+                env.write(&balance_slice, false, None).map_err(|_| {
+                    DispatchError::Other("ChainExtension failed to query asset balance")
+                })?;
+				Ok(RetVal::Converging(func_id))
+            },
+			// IrisEjection: submit execution results from composable access rules
+			7 => {
 				let mut env = env.buf_in_buf_out();
 				let (caller_account, asset_id, target, result): (AccountId, u32, AccountId, bool) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
@@ -983,15 +994,6 @@ impl ChainExtension<Runtime> for IrisExtension {
 				crate::IrisEjection::submit_execution_results(
 					origin, asset_id, target, result,
 				)?;
-				Ok(RetVal::Converging(func_id))
-			},
-			// IrisEjection: RequestBytes
-			7 => {
-				let mut env = env.buf_in_buf_out();
-				let (caller_account, asset_id): (AccountId, u32) = env.read_as()?;
-				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
-
-				crate::IrisEjection::request_bytes(origin, asset_id)?;
 				Ok(RetVal::Converging(func_id))
 			},
             _ => {

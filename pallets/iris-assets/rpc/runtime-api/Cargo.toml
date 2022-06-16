@@ -2,7 +2,7 @@
 name = "pallet-iris-rpc-runtime-api"
 version = "1.0.0"
 authors = ["Ideal Labs <https://github.com/ideal_lab5>"]
-edition = "2018"
+edition = "2021"
 license = "Apache-2.0"
 homepage = "https://substrate.dev"
 repository = "https://github.com/ideal-lab5/iris/"

@@ -188,46 +188,34 @@ pub mod pallet {
             execution_result: bool,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // verify the caller is a contract in the asset class's CAR list
+            // verify the caller is the register rule exectuor contract
             match <Registry::<T>>::get(id.clone()) {
                 Some(addr) => {
                     if addr != who.clone() { return Ok(()) }
                     // update the 'lock' for the asset id/caller combo
                     <Lock::<T>>::insert(&who, &data_consumer_address, execution_result);
+                    if execution_result {
+                        // submit request to data retrieval queue
+                        match <pallet_assets::Pallet<T>>::asset(id.clone()) {
+                            Some(addr) => {
+                                <DataRetrievalQueue<T>>::mutate(
+                                    |queue| queue.push(DataCommand::CatBytes(
+                                        who.clone(),
+                                        addr.owner.clone(),
+                                        id.clone(),
+                                    )));
+                            },
+                            None => {
+                                return Ok(());
+                            }
+                        }
+                    }
                 },
                 None => { return Ok(()) }
             }
 
 			Ok(())
         }
-
-        /// request to fetch bytes from ipfs and add to offchain storage
-        /// 
-        /// * `owner`: The owner of the content to be fetched 
-        /// * `asset_id`: The asset id identifying the content
-        /// 
-		#[pallet::weight(100)]
-		pub fn request_bytes(
-			origin: OriginFor<T>,
-			#[pallet::compact] asset_id: T::AssetId,
-		) -> DispatchResult {
-			let who = ensure_signed(origin)?;
-            match <pallet_assets::Pallet<T>>::asset(asset_id.clone()) {
-                Some(addr) => {
-                    <DataRetrievalQueue<T>>::mutate(
-                        |queue| queue.push(DataCommand::CatBytes(
-                            who.clone(),
-                            addr.owner.clone(),
-                            asset_id.clone(),
-                        )));
-                },
-                None => {
-                    // TODO: Emit an event
-                    return Ok(());
-                }
-            }
-			Ok(())
-		}
     }
 }
 
