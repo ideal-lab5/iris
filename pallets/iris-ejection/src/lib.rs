@@ -99,13 +99,15 @@ pub mod pallet {
     /// any benefit to switching rule_exec_addr and consumer?
     #[pallet::storage]
     #[pallet::getter(fn lock)]
-    pub(super) type Lock<T: Config> = StorageDoubleMap<
+    pub(super) type Lock<T: Config> = StorageNMap<
         _,
-        Twox64Concat,
-        T::AccountId,
-        Twox64Concat,
-        T::AccountId,
+        (
+            NMapKey<Blake2_128Concat, T::AccountId>,
+            NMapKey<Blake2_128Concat, T::AccountId>,
+            NMapKey<Blake2_128Concat, T::AssetId>,
+        ),
         bool,
+        ValueQuery,
     >;
 
     #[pallet::storage]
@@ -193,7 +195,9 @@ pub mod pallet {
                 Some(addr) => {
                     if addr != who.clone() { return Ok(()) }
                     // update the 'lock' for the asset id/caller combo
-                    <Lock::<T>>::insert(&who, &data_consumer_address, execution_result);
+                    <Lock::<T>>::insert(
+                        (&who, &data_consumer_address, &id), execution_result
+                    );
                     if execution_result {
                         // submit request to data retrieval queue
                         match <pallet_assets::Pallet<T>>::asset(id.clone()) {
