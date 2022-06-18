@@ -134,6 +134,7 @@ pub mod pallet {
 	pub enum Error<T> {
         NoSuchOwnedAssetClass,
         NoSuchAssetClass,
+        InsufficientBalance,
 	}
 
     #[pallet::hooks]
@@ -190,7 +191,16 @@ pub mod pallet {
             execution_result: bool,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // verify the caller is the register rule exectuor contract
+            // verify that the data_consumer holds an asset from the asset class
+            let balance = <pallet_assets::Pallet<T>>::balance(id.clone(), data_consumer_address.clone());
+            let balance_primitive = TryInto::<u64>::try_into(balance).ok();            
+            match balance_primitive {
+                Some(b) => ensure!(b >= 1, Error::<T>::InsufficientBalance),
+                None => {
+                    return Ok(());
+                }
+            }
+            // verify the caller is the registered rule exectuor contract
             match <Registry::<T>>::get(id.clone()) {
                 Some(addr) => {
                     if addr != who.clone() { return Ok(()) }

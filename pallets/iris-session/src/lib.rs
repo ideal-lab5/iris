@@ -438,35 +438,35 @@ pub mod pallet {
 			Ok(())
 		}
 
-		#[pallet::weight(100)]
-		pub fn join_storage_pool(
-			origin: OriginFor<T>,
-			pool_owner: <T::Lookup as StaticLookup>::Source,
-			pool_id: T::AssetId,
-		) -> DispatchResult {
-			// submit a request to join a storage pool in the next session
-			let who = ensure_signed(origin)?;
-			// let new_origin = system::RawOrigin::Signed(who.clone()).into();
-			// if the node is already a candidate, do not proceed;
-			ensure!(
-				!<QueuedStorageProviders::<T>>::get(pool_id.clone()).contains(&who),
-				Error::<T>::AlreadyACandidate,
-			);
-			// if the node is already a storage provider, do not proceed
-			ensure!(
-				!<StorageProviders::<T>>::get(pool_id.clone()).contains(&who),
-				Error::<T>::AlreadyPinned,
-			);
+		// #[pallet::weight(100)]
+		// pub fn join_storage_pool(
+		// 	origin: OriginFor<T>,
+		// 	pool_owner: <T::Lookup as StaticLookup>::Source,
+		// 	pool_id: T::AssetId,
+		// ) -> DispatchResult {
+		// 	// submit a request to join a storage pool in the next session
+		// 	let who = ensure_signed(origin)?;
+		// 	// let new_origin = system::RawOrigin::Signed(who.clone()).into();
+		// 	// if the node is already a candidate, do not proceed;
+		// 	ensure!(
+		// 		!<QueuedStorageProviders::<T>>::get(pool_id.clone()).contains(&who),
+		// 		Error::<T>::AlreadyACandidate,
+		// 	);
+		// 	// if the node is already a storage provider, do not proceed
+		// 	ensure!(
+		// 		!<StorageProviders::<T>>::get(pool_id.clone()).contains(&who),
+		// 		Error::<T>::AlreadyPinned,
+		// 	);
 
-			let owner = T::Lookup::lookup(pool_owner)?;
-			// <pallet_iris_assets::Pallet<T>>::insert_pin_request(new_origin, owner, pool_id).map_err(|_| Error::<T>::CantCreateRequest)?;
+		// 	let owner = T::Lookup::lookup(pool_owner)?;
+		// 	// <pallet_iris_assets::Pallet<T>>::insert_pin_request(new_origin, owner, pool_id).map_err(|_| Error::<T>::CantCreateRequest)?;
 
-			<QueuedStorageProviders<T>>::mutate(pool_id.clone(), |sp| {
-				sp.push(who.clone());
-			});
-			Self::deposit_event(Event::RequestJoinStoragePoolSuccess(who.clone(), pool_id.clone()));
-			Ok(())
-		}
+		// 	<QueuedStorageProviders<T>>::mutate(pool_id.clone(), |sp| {
+		// 		sp.push(who.clone());
+		// 	});
+		// 	Self::deposit_event(Event::RequestJoinStoragePoolSuccess(who.clone(), pool_id.clone()));
+		// 	Ok(())
+		// }
 
 		/// TODO: I really need to address the fact that this is callable by anyone
 		/// Someone could randomly make an asset class on your behalf, making you the admin

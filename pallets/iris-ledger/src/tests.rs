@@ -5,7 +5,6 @@ use sp_core::Pair;
 use sp_core::{
 	offchain::{testing, OffchainWorkerExt, TransactionPoolExt, OffchainDbExt}
 };
-use sp_keystore::{testing::KeyStore, KeystoreExt, SyncCryptoStore};
 use std::sync::Arc;
 
 #[test]

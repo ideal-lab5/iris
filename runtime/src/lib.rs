@@ -893,13 +893,9 @@ pub struct IrisExtension;
 
 impl ChainExtension<Runtime> for IrisExtension {
 	
-    fn call<E: Ext>(
-        func_id: u32,
-        env: Environment<E, InitState>,
-    ) -> Result<RetVal, DispatchError>
+    fn call<E: Ext>(func_id: u32, env: Environment<E, InitState>) -> Result<RetVal, DispatchError>
     where
-        <E::T as SysConfig>::AccountId:
-            UncheckedFrom<<E::T as SysConfig>::Hash> + AsRef<[u8]>,
+        <E::T as SysConfig>::AccountId: UncheckedFrom<<E::T as SysConfig>::Hash> + AsRef<[u8]>,
     {
 		trace!(
 			target: "runtime",
@@ -962,31 +958,8 @@ impl ChainExtension<Runtime> for IrisExtension {
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},
-			// Check if an address owns an asset by asset id
-			5 => {
-                let mut env = env.buf_in_buf_out();
-                let (query_address, asset_id): (AccountId, u32) = env.read_as()?;
-                let owner = crate::Assets::asset(&asset_id).unwrap().owner;
-				let is_owner = query_address == owner;
-                let owner_slice = is_owner.encode();
-                env.write(&owner_slice, false, None).map_err(|_| {
-                    DispatchError::Other("ChainExtension failed to query asset owner")
-                })?;
-				Ok(RetVal::Converging(func_id))
-            },
-			// get a node's balance of some given asset id
-			6 => {
-                let mut env = env.buf_in_buf_out();
-                let (query_address, asset_id): (AccountId, u32) = env.read_as()?;
-                let balance = crate::Assets::account(&asset_id, &query_address).unwrap().balance;
-                let balance_slice = balance.encode();
-                env.write(&balance_slice, false, None).map_err(|_| {
-                    DispatchError::Other("ChainExtension failed to query asset balance")
-                })?;
-				Ok(RetVal::Converging(func_id))
-            },
 			// IrisEjection: submit execution results from composable access rules
-			7 => {
+			5 => {
 				let mut env = env.buf_in_buf_out();
 				let (caller_account, asset_id, target, result): (AccountId, u32, AccountId, bool) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();

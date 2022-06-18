@@ -21,7 +21,6 @@ sp-io = { version = "6.0.0", default-features = false, git = "https://github.com
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
-# sp-keystore = { version = "0.12.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 sp-staking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 
 
@@ -41,6 +40,7 @@ pallet-data-spaces = { version = "1.0.0", default-features = false, path = "../d
 
 [dev-dependencies]
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
+sp-keystore = { version = "0.12.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 
 [features]
 default = ['std']

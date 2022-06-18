@@ -79,6 +79,7 @@ frame_support::construct_runtime!(
 		Session: pallet_session::{Pallet, Call, Storage, Event, Config<T>},
 		Assets: pallet_assets::{Pallet, Storage, Event<T>},
 		IrisAssets: pallet_iris_assets::{Pallet, Call, Storage, Event<T>},
+		IrisEjection: pallet_iris_ejection,
 		IrisSession: pallet_iris_session::{Pallet, Call, Storage, Event<T>, Config<T>},
 	}
 );
@@ -222,6 +223,11 @@ impl pallet_assets::Config for Test {
 
 /// configure the iris assets pallet
 impl pallet_iris_assets::Config for Test {
+	type Event = Event;
+	type Call = Call;
+}
+
+impl pallet_iris_ejection::Config for Test {
 	type Event = Event;
 	type Call = Call;
 }
