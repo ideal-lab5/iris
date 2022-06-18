@@ -4,7 +4,6 @@ The official Iris implementation.
 
 ![sponsored by web3 foundation](./docs/web3%20foundation%20grants_black.jpg)
 
-
 ## Getting Started
 
 Follow the steps below to get started with the Iris node.
@@ -81,24 +80,7 @@ As the UI undergoes development, the most *stable* way to interact with your nod
 
 The Iris UI provides a mechanism to add and retrieve data from Iris, to create an asset class, mint assets, privision data access, and manage both asset classes and assets.
 
-If you intend to add data to Iris, you must also run an IPFS node locally. This holds for running from sources as well as the docker image. Run IPFS with `ipfs daemon`.
-
-### Running from Sources
-
-``` bash
-git clone https://github.com/ideal-lab5/ui.git
-cd ui
-npm i
-REACT_APP_IPV4=<your ipv4> npm start
-```
-
-### Running from Docker
-
-``` bash
-docker pull ideallabs/iris-ui
-# replace w.x.y.z with your ip
-docker run -it --rm -p 3000:3000 -e "REACT_APP_IPV4=w.x.y.z" ideallabs/iris-ui
-```
+See here for more info: https://github.com/ideal-lab5/ui
 
 ## Testing
 
@@ -106,4 +88,11 @@ Run the unit tests with `cargo +nightly test iris`.
 
 ### Coverage
 
-We aim for a minimum of 80% coverage on new code.
+We aim for a minimum of 80% coverage on new code. Test coverage is generated using [tarpaulin](https://github.com/xd009642/tarpaulin).
+
+To generage coverage, execute:
+
+``` bash
+cargo install cargo-tarpaulin
+cargo tarpaulin -v
+```
