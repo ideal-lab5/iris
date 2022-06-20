@@ -35,10 +35,7 @@
 
 use scale_info::TypeInfo;
 use codec::{Encode, Decode};
-use frame_support::{
-    ensure,
-    traits::ReservableCurrency,
-};
+use frame_support::ensure;
 use frame_system::{
     self as system, ensure_signed,
 };
@@ -46,21 +43,18 @@ use frame_system::{
 use sp_core::{
     offchain::{StorageKind},
     Bytes,
-    crypto::{UncheckedFrom, Wraps},
 };
 
 use sp_runtime::{
     RuntimeDebug,
-    traits::{StaticLookup, Verify, IdentifyAccount},
+    traits::StaticLookup,
 };
 use sp_std::{
     // vec::Vec,
     prelude::*,
 };
-use scale_info::prelude::string::String;
 
 use core::convert::TryInto;
-use sp_core::sr25519;
 
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 pub enum DataCommand<LookupSource, AssetId, Balance, AccountId> {
@@ -102,7 +96,6 @@ pub mod pallet {
     };
 	use sp_std::{
         str,
-        prelude::*,
     };
 
 	#[pallet::config]
@@ -282,7 +275,7 @@ pub mod pallet {
             cid: Vec<u8>,
             #[pallet::compact] dataspace_id: T::AssetId,
             #[pallet::compact] id: T::AssetId,
-            #[pallet::compact] balance: T::Balance,
+            #[pallet::compact] asset_balance: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
@@ -294,7 +287,7 @@ pub mod pallet {
                     cid,
                     admin.clone(),
                     id.clone(),
-                    balance.clone(),
+                    asset_balance.clone(),
                     dataspace_id.clone(),
                 )));
             Self::deposit_event(Event::QueuedDataToAdd(who.clone()));
@@ -413,7 +406,7 @@ pub mod pallet {
             #[pallet::compact] id: T::AssetId,
             #[pallet::compact] balance: T::Balance,
         ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+            ensure_signed(origin)?;
             let which_admin = T::Lookup::lookup(admin.clone())?;
             let new_origin = system::RawOrigin::Signed(which_admin.clone()).into();
 

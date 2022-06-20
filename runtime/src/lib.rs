@@ -42,7 +42,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use pallet_contracts::{migration, weights::WeightInfo, DefaultContractAccessWeight};
+use pallet_contracts::{weights::WeightInfo, DefaultContractAccessWeight};
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
@@ -417,11 +417,6 @@ impl pallet_sudo::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 }
-
-// Unit = the base number of indivisible units for balances
-const UNIT: Balance = 1_000_000_000_000;
-const MILLIUNIT: Balance = 1_000_000_000;
-const EXISTENTIAL_DEPOSIT: Balance = MILLIUNIT;
 
 pub const MILLICENTS: Balance = 1_000_000_000;
 pub const CENTS: Balance = 1_000 * MILLICENTS; // assume this is worth about a cent.

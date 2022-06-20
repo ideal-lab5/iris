@@ -66,10 +66,9 @@ use sp_std::{
 };
 use sp_core::{
     offchain::{
-        Duration, OpaqueMultiaddr, Timestamp, StorageKind,
+        OpaqueMultiaddr, StorageKind,
     },
 	crypto::KeyTypeId,
-    Bytes,
 };
 use frame_system::{
 	self as system, 
@@ -77,20 +76,14 @@ use frame_system::{
 	offchain::{
 		SendSignedTransaction,
 		Signer,
-		SubmitTransaction,
-		SendUnsignedTransaction,
 	}
 };
-use sp_io::offchain::timestamp;
 use sp_runtime::{
 	// offchain::ipfs,
 	offchain::http,
 	traits::StaticLookup,
 };
 use pallet_iris_assets::DataCommand;
-
-use sp_std::convert::TryFrom;
-use sp_std::convert::TryInto;
 
 pub const LOG_TARGET: &'static str = "runtime::iris-session";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
@@ -102,7 +95,6 @@ pub mod crypto {
 	use sp_core::sr25519::Signature as Sr25519Signature;
 	use sp_runtime::app_crypto::{app_crypto, sr25519};
 	use sp_runtime::{traits::Verify, MultiSignature, MultiSigner};
-	use sp_std::convert::TryInto;
 	use sp_std::convert::TryFrom;
 
 	pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
@@ -163,7 +155,6 @@ pub mod pallet {
 			CreateSignedTransaction,
 		}
 	};
-	use frame_support::pallet_prelude::*;
 
 	/// Configure the pallet by specifying the parameters and types on which it
 	/// depends.
@@ -517,7 +508,7 @@ pub mod pallet {
 				balance,
 			)?;
 			// award point to all validators
-			if let Some(active_era) = ActiveEra::<T>::get() {
+			if let Some(_active_era) = ActiveEra::<T>::get() {
 				// WIP: TODO
 				// <ErasRewardPoints<T>>::mutate(active_era.clone(), id, |era_rewards| {
 				// 	// reward all validators
@@ -600,7 +591,7 @@ pub mod pallet {
         #[pallet::weight(100)]
         pub fn submit_rpc_ready(
             _origin: OriginFor<T>,
-			asset_id: T::AssetId,
+			_asset_id: T::AssetId,
         ) -> DispatchResult {
             // ensure_signed(origin)?;
 			// WIP: TODO
@@ -775,10 +766,9 @@ impl<T: Config> Pallet<T> {
 		if len != 0 {
 			log::info!("{} entr{} in the data retrieval queue", len, if len == 1 { "y" } else { "ies" });
 		}
-		let deadline = Some(timestamp().add(Duration::from_millis(5_000)));
 		for cmd in data_retrieval_queue.into_iter() {
 			match cmd {
-				DataCommand::CatBytes(requestor, owner, asset_id) => {
+				DataCommand::CatBytes(_requestor, _owner, asset_id) => {
 					match <pallet_iris_assets::Pallet<T>>::metadata(asset_id.clone()) {
 						Some(metadata) => {
 							let cid = metadata.cid;
@@ -834,10 +824,9 @@ impl<T: Config> Pallet<T> {
 		if len != 0 {
 			log::info!("{} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });
 		}
-		let deadline = Some(timestamp().add(Duration::from_millis(5_000)));
 		for cmd in data_queue.into_iter() {
 			match cmd {
-				DataCommand::AddBytes(addr, cid, admin, id, balance, dataspace_id) => {
+				DataCommand::AddBytes(_addr, cid, admin, id, balance, dataspace_id) => {
 					if sp_io::offchain::is_validator() {
 						// Self::ipfs_connect(&addr);
 						// Self::ipfs_get(&cid);
@@ -885,10 +874,10 @@ impl<T: Config> Pallet<T> {
 			Ok(maddr) => {
 				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/connect?arg=".to_owned();
 				endpoint.push_str(maddr);
-				Self::ipfs_post_request(&endpoint).map_err(|e| Error::<T>::IpfsError).unwrap();
+				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
 				return Ok(());
 			},
-			Err(e) => {
+			Err(_e) => {
 				return Err(Error::<T>::InvalidMultiaddress);
 			}
 		}
@@ -900,10 +889,10 @@ impl<T: Config> Pallet<T> {
 			Ok(maddr) => {
 				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?arg=".to_owned();
 				endpoint.push_str(maddr);
-				Self::ipfs_post_request(&endpoint).map_err(|e| Error::<T>::IpfsError).unwrap();
+				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
 				return Ok(());
 			},
-			Err(e) => {
+			Err(_e) => {
 				return Err(Error::<T>::InvalidMultiaddress);
 			}
 		}
@@ -915,10 +904,10 @@ impl<T: Config> Pallet<T> {
 			Ok(cid_string) => {
 				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?arg=".to_owned();
 				endpoint.push_str(cid_string);
-				Self::ipfs_post_request(&endpoint).map_err(|e| Error::<T>::IpfsError).unwrap();
+				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
 				return Ok(());
 			},
-			Err(e) => {
+			Err(_e) => {
 				return Err(Error::<T>::InvalidCID);
 			}
 		}
@@ -930,10 +919,10 @@ impl<T: Config> Pallet<T> {
 			Ok(cid_string) => {
 				let mut endpoint = "http://127.0.0.1:5001/api/v0/cat?arg=".to_owned();
 				endpoint.push_str(cid_string);
-				let res = Self::ipfs_post_request(&endpoint).map_err(|e| Error::<T>::IpfsError).ok();
+				let res = Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).ok();
 				return Ok(res.unwrap());
 			},
-			Err(e) => {
+			Err(_e) => {
 				return Err(Error::<T>::InvalidCID);
 			}
 		}
@@ -949,7 +938,7 @@ impl<T: Config> Pallet<T> {
 					.body(vec![b""])
 					.send()
 					.unwrap();
-		let mut response = pending.wait().unwrap();
+		let response = pending.wait().unwrap();
 		if response.code != 200 {
 			log::warn!("Unexpected status code: {}", response.code);
 			return Err(http::Error::Unknown)

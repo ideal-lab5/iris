@@ -31,28 +31,14 @@
 //!
 //!
 
-use scale_info::TypeInfo;
-use codec::{Encode, Decode};
 use frame_support::{
-    dispatch::DispatchResult,
     traits::{Currency, LockIdentifier, LockableCurrency, WithdrawReasons},
 };
-use frame_system::{
-    self as system, ensure_signed,
-};
+use frame_system::ensure_signed;
 
-use sp_core::offchain::OpaqueMultiaddr;
-
-use sp_runtime::{
-    RuntimeDebug,
-    traits::{
-		AtLeast32BitUnsigned, Bounded, CheckedAdd, CheckedSub, Saturating, StaticLookup, Zero,
-	},
-};
 use sp_std::{
     prelude::*,
 };
-use codec::HasCompact;
 
 pub use pallet::*;
 
@@ -76,8 +62,7 @@ pub mod pallet {
 	use frame_system::{
         pallet_prelude::*,
     };
-	use sp_core::offchain::OpaqueMultiaddr;
-	use sp_std::{str, vec::Vec};
+	use sp_std::str;
 
     const IRIS_LOCK_ID: LockIdentifier = *b"irislock";
 

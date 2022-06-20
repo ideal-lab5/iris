@@ -37,31 +37,19 @@
 use scale_info::TypeInfo;
 use codec::{Encode, Decode};
 use frame_support::{
-    ensure,
     traits::ReservableCurrency,
 };
 
 use log;
 
-use sp_core::{
-    offchain::{Duration, OpaqueMultiaddr, StorageKind},
-    Bytes,
-};
-
 use sp_runtime::{
     RuntimeDebug,
-    traits::{StaticLookup, Verify, IdentifyAccount},
+    traits::StaticLookup,
     transaction_validity::{ ValidTransaction, TransactionValidity },
 };
 use sp_std::{
     prelude::*,
 };
-use scale_info::prelude::string::String;
-
-use core::convert::TryInto;
-use sp_core::sr25519;
-
-use sp_io::offchain::timestamp;
 
 use pallet_iris_assets::{
 	DataCommand,
@@ -72,11 +60,7 @@ use frame_system::{
 	ensure_signed,
 	offchain::{
 		SendSignedTransaction,
-        SendUnsignedTransaction,
 		Signer,
-		SubmitTransaction,
-        SignedPayload,
-        SigningTypes,
 	}
 };
 
@@ -106,7 +90,6 @@ pub mod crypto {
 	use sp_core::sr25519::Signature as Sr25519Signature;
 	use sp_runtime::app_crypto::{app_crypto, sr25519};
 	use sp_runtime::{traits::Verify, MultiSignature, MultiSigner};
-	use sp_std::convert::TryInto;
 	use sp_std::convert::TryFrom;
 
 	pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
@@ -142,10 +125,8 @@ pub mod pallet {
             CreateSignedTransaction,
         },
     };
-	use sp_core::offchain::OpaqueMultiaddr;
 	use sp_std::{
         str,
-        prelude::*,
     };
 
 	#[pallet::config]
@@ -283,7 +264,7 @@ pub mod pallet {
             asset_class_id: T::AssetId,
             // dataspace_assoc_req: DataSpaceAssociationRequest<T::AssetId>,
         ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+            ensure_signed(origin)?;
             // this is obviously insecure right now
             // will address this when we build the proxy routing service in milestone 2
             // TODO: verify asset class exists
@@ -304,18 +285,10 @@ pub mod pallet {
 
 impl<T: Config> Pallet<T> {
 
-    /// validate tx params
-    fn validate_transaction_parameters() -> TransactionValidity {
-		ValidTransaction::with_tag_prefix("dataspace")
-			.longevity(5)
-			.propagate(true)
-			.build()
-	}
-
     /// A helper function to (futuristically) perform moderation tasks,
     ///  sign payload and send an unsigned transaction
 	fn submit_unsigned_tx_associate_data_space_asset_class(
-		block_number: T::BlockNumber,
+		_block_number: T::BlockNumber,
 	) -> Result<(), &'static str> {
         // in the future, this is where moderation capabilities will hook in
         let data_queue = <pallet_iris_assets::Pallet<T>>::data_space_request_queue();
@@ -323,7 +296,6 @@ impl<T: Config> Pallet<T> {
         if len != 0 {
             log::info!("DataSpaces: {} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });
         }
-        let deadline = Some(timestamp().add(Duration::from_millis(5_000)));
         for cmd in data_queue.into_iter() {
             match cmd {
                 // doing this in an offchain context to prepare for next stage

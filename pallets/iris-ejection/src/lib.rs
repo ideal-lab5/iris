@@ -27,39 +27,14 @@
 //! 
 //!
 
-use scale_info::TypeInfo;
-use codec::{Encode, Decode};
-use frame_support::{
-    ensure,
-    traits::ReservableCurrency,
-};
-
-use log;
-
-use sp_core::{
-    offchain::{Duration, OpaqueMultiaddr, StorageKind},
-    Bytes,
-};
-
-use sp_runtime::{
-    RuntimeDebug,
-    traits::{StaticLookup, Verify, IdentifyAccount},
-    transaction_validity::{ ValidTransaction, TransactionValidity },
-};
+use sp_runtime::traits::StaticLookup;
 use sp_std::{
     prelude::*,
 };
-use scale_info::prelude::string::String;
 
 use core::convert::TryInto;
-use sp_core::sr25519;
 
-use sp_io::offchain::timestamp;
-
-use frame_system::{
-	self as system, 
-	ensure_signed,
-};
+use frame_system::ensure_signed;
 use pallet_iris_assets::DataCommand;
 
 pub use pallet::*;
@@ -79,15 +54,9 @@ pub mod pallet {
 	use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
 	use frame_system::{
         pallet_prelude::*,
-        offchain::{
-            AppCrypto,
-            CreateSignedTransaction,
-        },
     };
-	use sp_core::offchain::OpaqueMultiaddr;
 	use sp_std::{
         str,
-        prelude::*,
     };
 
 	#[pallet::config]
