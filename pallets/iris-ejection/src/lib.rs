@@ -1,3 +1,20 @@
+// This file is part of Iris.
+//
+// Copyright (C) 2022 Ideal Labs.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 #![cfg_attr(not(feature = "std"), no_std)]
 
 //! # Data Ejection Pallet
@@ -6,6 +23,7 @@
 //! 
 //! The goal of this pallet is to handle verification of access rules
 //! associated with data asset classes.
+//! 
 //! 
 //!
 
@@ -95,17 +113,15 @@ pub mod pallet {
         T::AccountId,
     >;
 
-    /// map the rule_executor_address => consumer => status
-    /// any benefit to switching rule_exec_addr and consumer?
+    /// map the address -> asset_id -> status
     #[pallet::storage]
     #[pallet::getter(fn lock)]
-    pub(super) type Lock<T: Config> = StorageNMap<
+    pub(super) type Lock<T: Config> = StorageDoubleMap<
         _,
-        (
-            NMapKey<Blake2_128Concat, T::AccountId>,
-            NMapKey<Blake2_128Concat, T::AccountId>,
-            NMapKey<Blake2_128Concat, T::AssetId>,
-        ),
+        Blake2_128Concat, 
+        T::AccountId,
+        Blake2_128Concat, 
+        T::AssetId,
         bool,
         ValueQuery,
     >;
@@ -206,7 +222,7 @@ pub mod pallet {
                     if addr != who.clone() { return Ok(()) }
                     // update the 'lock' for the asset id/caller combo
                     <Lock::<T>>::insert(
-                        (&who, &data_consumer_address, &id), execution_result
+                        &data_consumer_address, &id, execution_result
                     );
                     if execution_result {
                         // submit request to data retrieval queue

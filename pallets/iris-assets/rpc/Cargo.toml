@@ -1,9 +1,9 @@
 [package]
 name = "pallet-iris-rpc"
 version = "1.0.0"
-authors = ["Ideal Labs <https://github.com/ideal_lab5>"]
+authors = ["Ideal Labs Developers <https://github.com/ideal-lab5>"]
 edition = "2021"
-license = "Unlicense"
+license = "GPL-3.0-or-later"
 publish = false
 repository = "https://github.com/ideal-lab5/iris/"
 description = "RPC interface for the iris storage pallet."

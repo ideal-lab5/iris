@@ -1,13 +1,13 @@
 [package]
 name = "iris-node"
 version = "1.0.0"
-description = "A fresh FRAME-based Substrate node, ready for hacking."
-authors = ["Substrate DevHub <https://github.com/substrate-developer-hub>"]
-homepage = "https://substrate.io/"
+description = "The iris node"
+authors = ["Ideal Labs Developers <https://github.com/ideal-lab5>"]
+homepage = "https://idealabs.networks/"
 edition = "2021"
-license = "Unlicense"
+license = "GPL-3.0-or-later"
 publish = false
-repository = "https://github.com/substrate-developer-hub/substrate-node-template/"
+repository = "https://github.com/ideal-lab5/iris"
 build = "build.rs"
 
 [package.metadata.docs.rs]

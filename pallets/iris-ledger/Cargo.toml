@@ -1,11 +1,11 @@
 [package]
-authors = ["Ideal Labs <https://github.com/ideal_lab5>"]
+authors = ["Ideal Labs Developers <https://github.com/ideal-lab5>"]
 edition = '2021'
 name = 'pallet-iris-ledger'
 version = "1.0.0"
-license = "Unlicense"
-homepage = "https://substrate.dev"
-repository = "https://github.com/ideal-lab5/iris/"
+license = "GPL-3.0-or-later"
+homepage = "https://idealabs.networks/"
+repository = "https://github.com/ideal-lab5/iris"
 description = "FRAME pallet template for Iris Asset management."
 readme = "README.md"
 publish = false
