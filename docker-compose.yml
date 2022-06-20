@@ -1,0 +1,17 @@
+version: "3.2"
+
+services:
+  dev:
+    container_name: iris-node
+    image: paritytech/ci-linux:latest
+    working_dir: /var/www/iris-node
+    ports:
+      - "9944:9944"
+    environment:
+      - CARGO_HOME=/var/www/iris-node/.cargo
+    volumes:
+      - .:/var/www/iris-node
+      - type: bind
+        source: ./.local
+        target: /root/.local
+    command: bash -c "cargo build --release && ./target/release/iris-node --dev --ws-external"
