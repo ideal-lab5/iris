@@ -1,4 +1,4 @@
-# Iris Ejection
+# Authorization
 
 This pallet allows a rule executor to be associated with an asset class and allows for that rule executor to submit results on chain in order to grant or deny data authorization to specific addresses.
 
