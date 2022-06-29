@@ -83,7 +83,7 @@ use sp_runtime::{
 	offchain::http,
 	traits::StaticLookup,
 };
-use pallet_iris_assets::DataCommand;
+use pallet_data_assets::DataCommand;
 
 pub const LOG_TARGET: &'static str = "runtime::iris-session";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
@@ -165,8 +165,8 @@ pub mod pallet {
 					  frame_system::Config +
 					  pallet_session::Config +
 					  pallet_assets::Config + 
-					  pallet_iris_assets::Config +
-					  pallet_iris_ejection::Config
+					  pallet_data_assets::Config +
+					  pallet_authorization::Config
 	{
 		/// The Event type.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -467,7 +467,7 @@ pub mod pallet {
 		// 	);
 
 		// 	let owner = T::Lookup::lookup(pool_owner)?;
-		// 	// <pallet_iris_assets::Pallet<T>>::insert_pin_request(new_origin, owner, pool_id).map_err(|_| Error::<T>::CantCreateRequest)?;
+		// 	// <pallet_data_assets::Pallet<T>>::insert_pin_request(new_origin, owner, pool_id).map_err(|_| Error::<T>::CantCreateRequest)?;
 
 		// 	<QueuedStorageProviders<T>>::mutate(pool_id.clone(), |sp| {
 		// 		sp.push(who.clone());
@@ -499,7 +499,7 @@ pub mod pallet {
 			let who = ensure_signed(origin)?;
 			let new_origin = system::RawOrigin::Signed(who.clone()).into();
 			// creates the asset class
-            <pallet_iris_assets::Pallet<T>>::submit_ipfs_add_results(
+            <pallet_data_assets::Pallet<T>>::submit_ipfs_add_results(
 				new_origin,
 				admin,
 				cid,
@@ -702,7 +702,7 @@ impl<T: Config> Pallet<T> {
 	/// TODO: this undoubtedly will not scale very well 
 	fn select_candidate_storage_providers() {
 		// if there are candidate storage providers => for each candidate that pinned the file, move them to storage providers
-		for asset_id in <pallet_iris_assets::Pallet<T>>::asset_ids().into_iter() {
+		for asset_id in <pallet_data_assets::Pallet<T>>::asset_ids().into_iter() {
 			// if there are candidates for the asset id
 			if <QueuedStorageProviders<T>>::contains_key(asset_id.clone()) {
 				let candidates = <QueuedStorageProviders<T>>::get(asset_id.clone());
@@ -761,7 +761,7 @@ impl<T: Config> Pallet<T> {
     }
 
 	fn handle_data_retrieval_requests() -> Result<(), Error<T>> {
-		let data_retrieval_queue = <pallet_iris_ejection::Pallet<T>>::data_retrieval_queue();
+		let data_retrieval_queue = <pallet_authorization::Pallet<T>>::data_retrieval_queue();
 		let len = data_retrieval_queue.len();
 		if len != 0 {
 			log::info!("{} entr{} in the data retrieval queue", len, if len == 1 { "y" } else { "ies" });
@@ -769,7 +769,7 @@ impl<T: Config> Pallet<T> {
 		for cmd in data_retrieval_queue.into_iter() {
 			match cmd {
 				DataCommand::CatBytes(_requestor, _owner, asset_id) => {
-					match <pallet_iris_assets::Pallet<T>>::metadata(asset_id.clone()) {
+					match <pallet_data_assets::Pallet<T>>::metadata(asset_id.clone()) {
 						Some(metadata) => {
 							let cid = metadata.cid;
 							// let res = Self::ipfs_cat(&cid)?;
@@ -819,7 +819,7 @@ impl<T: Config> Pallet<T> {
 	/// process any requests in the DataQueue
 	/// TODO: This needs some *major* refactoring
     fn handle_data_requests() -> Result<(), Error<T>> {
-		let data_queue = <pallet_iris_assets::Pallet<T>>::data_queue();
+		let data_queue = <pallet_data_assets::Pallet<T>>::data_queue();
 		let len = data_queue.len();
 		if len != 0 {
 			log::info!("{} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });

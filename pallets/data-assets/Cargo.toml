@@ -1,7 +1,7 @@
 [package]
 authors = ["Ideal Labs Developers <https://github.com/ideal-lab5>"]
 edition = '2021'
-name = 'pallet-iris-ledger'
+name = 'pallet-data-assets'
 version = "1.0.0"
 license = "GPL-3.0-or-later"
 homepage = "https://idealabs.networks/"
@@ -21,7 +21,6 @@ sp-io = { version = "6.0.0", default-features = false, git = "https://github.com
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
-# sp-keystore = { version = "0.12.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
@@ -30,9 +29,10 @@ frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "h
 log = { version = "0.4.14", default-features = false }
 
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
+pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = false }
 
 [features]
-default = ["std"]
+default = ['std']
 std = [
 	'codec/std',
 	'scale-info/std',
@@ -44,8 +44,9 @@ std = [
 	# 'sp-keystore/std',
 	'sp-runtime/std',
 	'log/std',
+	'pallet-assets/std',
 	'pallet-balances/std',
 ]
 
-runtime-benchmarks = ["frame-benchmarking/runtime-benchmarks"]
+runtime-benchmarks = ["frame-benchmarking"]
 try-runtime = ["frame-support/try-runtime"]

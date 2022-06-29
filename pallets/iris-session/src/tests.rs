@@ -20,7 +20,7 @@
 use super::*;
 use crate::mock::{
 	authorities, new_test_ext, new_test_ext_funded, 
-	Origin, Session, Test, IrisSession, IrisAssets, Assets,
+	Origin, Session, Test, IrisSession, DataAssets, Assets,
 };
 use frame_support::{assert_noop, assert_ok, pallet_prelude::*};
 use sp_runtime::testing::UintAuthorityId;
@@ -216,7 +216,7 @@ fn iris_session_duplicate_check() {
 // 		));
 
 // 		// WHEN: I invoke the create_storage_assets extrinsic
-// 		assert_ok!(IrisAssets::create(
+// 		assert_ok!(DataAssets::create(
 // 			Origin::signed(p.clone().public()),
 // 			p.clone().public(),
 // 			multiaddr_vec.clone(),
@@ -236,7 +236,7 @@ fn iris_session_duplicate_check() {
 // 			dataspace_id.clone(),
 // 		));
 // 		// AND: the data queue is cleared after the command is processed
-// 		// let data_queue = IrisAssets::data_queue();
+// 		// let data_queue = DataAssets::data_queue();
 // 		// let len = data_queue.len();
 // 		// assert_eq!(len, 0);
 // 		// AND: the request is removed from the data queue
@@ -300,7 +300,7 @@ fn iris_session_validators_receive_reward_when_add_bytes_to_ipfs() {
 			balance.clone(),
 		));
 		// WHEN: I invoke the create_storage_assets extrinsic
-		assert_ok!(IrisAssets::create(
+		assert_ok!(DataAssets::create(
 			Origin::signed(p.clone().public()),
 			p.clone().public(),
 			multiaddr_vec.clone(),
@@ -377,7 +377,7 @@ fn iris_session_can_process_data_retrieval_request_queue() {
 		));
 		// WHEN: I invoke the create extrinsic
 		// each validator awarded 1 point
-		assert_ok!(IrisAssets::create(
+		assert_ok!(DataAssets::create(
 			Origin::signed(p.clone().public()),
 			p.clone().public(),
 			multiaddr_vec.clone(),
@@ -396,7 +396,7 @@ fn iris_session_can_process_data_retrieval_request_queue() {
 			dataspace_id.clone(),
 		));
 		// AND: I invoke the mint_tickets extrinsic
-		assert_ok!(IrisAssets::mint(
+		assert_ok!(DataAssets::mint(
 			Origin::signed(p.clone().public()),
 			p.clone().public(),
 			id.clone(),
@@ -411,7 +411,7 @@ fn iris_session_can_process_data_retrieval_request_queue() {
 		// ));
 		// AND: I request the owned content from iris
 		// p is rewarded 1 point
-		// assert_ok!(IrisAssets::request_bytes(
+		// assert_ok!(DataAssets::request_bytes(
 		// 	Origin::signed(p.clone().public()),
 		// 	id.clone(),
 		// ));

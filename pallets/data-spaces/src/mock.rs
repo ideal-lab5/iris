@@ -17,7 +17,7 @@
 
 #![cfg(test)]
 use crate::{self as pallet_data_spaces, Config};
-use pallet_iris_assets;
+use pallet_data_assets;
 use frame_support::{
 	parameter_types,
 	construct_runtime,
@@ -89,7 +89,7 @@ construct_runtime!(
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		Assets: pallet_assets::{Pallet, Storage, Event<T>},
-		IrisAssets: pallet_iris_assets::{Pallet, Call, Storage, Event<T>},
+		DataAssets: pallet_data_assets::{Pallet, Call, Storage, Event<T>},
 		DataSpaces: pallet_data_spaces::{Pallet, Call, Storage, Event<T>},
 	}
 );
@@ -170,7 +170,7 @@ impl pallet_assets::Config for Test {
 }
 
 /// configure the iris assets pallet
-impl pallet_iris_assets::Config for Test {
+impl pallet_data_assets::Config for Test {
 	type Event = Event;
 	type Call = Call;
 }

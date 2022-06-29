@@ -31,7 +31,7 @@ log = { version = "0.4.14", default-features = false }
 
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
 pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = false }
-pallet-iris-assets = { version = "1.0.0", default-features = false, path = "../iris-assets" }
+pallet-data-assets = { version = "1.0.0", default-features = false, path = "../data-assets" }
 
 [features]
 default = ['std']
@@ -48,7 +48,7 @@ std = [
 	'log/std',
 	'pallet-assets/std',
 	'pallet-balances/std',
-	'pallet-iris-assets/std',
+	'pallet-data-assets/std',
 ]
 
 runtime-benchmarks = ["frame-benchmarking"]

@@ -15,11 +15,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 #![cfg(test)]
-use crate::{self as pallet_iris_assets, Config};
+use crate::{self as pallet_ledger, Config};
 use frame_support::{
 	construct_runtime, 
 	parameter_types,
-	traits::ConstU32
+	traits::ConstU32,
 };
 use sp_core::{
 	Pair,
@@ -43,8 +43,7 @@ construct_runtime!(
 	{
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
-		Assets: pallet_assets::{Pallet, Storage, Event<T>},
-		Iris: pallet_iris_assets::{Pallet, Call, Storage, Event<T>},
+		Ledger: pallet_ledger::{Pallet, Call, Storage, Event<T>},
 	}
 );
 
@@ -57,7 +56,6 @@ impl frame_system::Config for Test {
 	type BaseCallFilter = frame_support::traits::Everything;
 	type BlockWeights = ();
 	type BlockLength = ();
-	type DbWeight = ();
 	type Origin = Origin;
 	type Call = Call;
 	type Index = u64;
@@ -69,6 +67,7 @@ impl frame_system::Config for Test {
 	type Header = Header;
 	type Event = Event;
 	type BlockHashCount = BlockHashCount;
+	type DbWeight = ();
 	type Version = ();
 	type PalletInfo = PalletInfo;
 	type AccountData = pallet_balances::AccountData<u64>;
@@ -79,6 +78,7 @@ impl frame_system::Config for Test {
 	type OnSetCode = ();
 	type MaxConsumers = ConstU32<2>;
 }
+
 
 // SS58Prefix
 parameter_types! {
@@ -97,36 +97,10 @@ impl pallet_balances::Config for Test {
 	type WeightInfo = ();
 }
 
-parameter_types! {
-	pub const AssetDeposit: u64 = 1;
-	pub const AssetAccountDeposit: u64 = 1;
-	pub const ApprovalDeposit: u64 = 1;
-	pub const StringLimit: u32 = 50;
-	pub const MetadataDepositBase: u64 = 1;
-	pub const MetadataDepositPerByte: u64 = 1;
-}
-
-impl pallet_assets::Config for Test {
-	type Event = Event;
-	type Balance = u32;
-	type AssetId = u32;
-	type Currency = Balances;
-	type ForceOrigin = frame_system::EnsureRoot<sp_core::sr25519::Public>;
-	type AssetDeposit = AssetDeposit;
-	type AssetAccountDeposit = AssetAccountDeposit;
-	type MetadataDepositBase = MetadataDepositBase;
-	type MetadataDepositPerByte = MetadataDepositPerByte;
-	type ApprovalDeposit = ApprovalDeposit;
-	type StringLimit = StringLimit;
-	type Freezer = ();
-	type WeightInfo = ();
-	type Extra = ();
-}
-
 impl Config for Test {
-	// type Currency = Balances;
 	type Call = Call;
 	type Event = Event;
+	type IrisCurrency = Balances;
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {

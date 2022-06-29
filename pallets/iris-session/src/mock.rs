@@ -19,7 +19,7 @@
 
 use super::*;
 use crate::{self as pallet_iris_session, Config};
-use pallet_iris_assets;
+use pallet_data_assets;
 use frame_support::{
 	parameter_types, 
 	traits::{GenesisBuild, ConstU32},
@@ -93,8 +93,8 @@ frame_support::construct_runtime!(
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		Session: pallet_session::{Pallet, Call, Storage, Event, Config<T>},
 		Assets: pallet_assets::{Pallet, Storage, Event<T>},
-		IrisAssets: pallet_iris_assets::{Pallet, Call, Storage, Event<T>},
-		IrisEjection: pallet_iris_ejection,
+		DataAssets: pallet_data_assets::{Pallet, Call, Storage, Event<T>},
+		IrisEjection: pallet_authorization,
 		IrisSession: pallet_iris_session::{Pallet, Call, Storage, Event<T>, Config<T>},
 	}
 );
@@ -237,12 +237,12 @@ impl pallet_assets::Config for Test {
 
 
 /// configure the iris assets pallet
-impl pallet_iris_assets::Config for Test {
+impl pallet_data_assets::Config for Test {
 	type Event = Event;
 	type Call = Call;
 }
 
-impl pallet_iris_ejection::Config for Test {
+impl pallet_authorization::Config for Test {
 	type Event = Event;
 	type Call = Call;
 }

@@ -51,7 +51,7 @@ use sp_std::{
     prelude::*,
 };
 
-use pallet_iris_assets::{
+use pallet_data_assets::{
 	DataCommand,
 };
 
@@ -134,7 +134,7 @@ pub mod pallet {
 	pub trait Config: CreateSignedTransaction<Call<Self>> + 
                     frame_system::Config + 
                     pallet_assets::Config + 
-                    pallet_iris_assets::Config {
+                    pallet_data_assets::Config {
         /// The overarching event type
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
         /// the overarching call type
@@ -291,7 +291,7 @@ impl<T: Config> Pallet<T> {
 		_block_number: T::BlockNumber,
 	) -> Result<(), &'static str> {
         // in the future, this is where moderation capabilities will hook in
-        let data_queue = <pallet_iris_assets::Pallet<T>>::data_space_request_queue();
+        let data_queue = <pallet_data_assets::Pallet<T>>::data_space_request_queue();
         let len = data_queue.len();
         if len != 0 {
             log::info!("DataSpaces: {} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });

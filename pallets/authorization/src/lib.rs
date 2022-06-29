@@ -35,7 +35,7 @@ use sp_std::{
 use core::convert::TryInto;
 
 use frame_system::ensure_signed;
-use pallet_iris_assets::DataCommand;
+use pallet_data_assets::DataCommand;
 
 pub use pallet::*;
 

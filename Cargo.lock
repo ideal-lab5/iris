@@ -2429,17 +2429,17 @@ dependencies = [
  "log",
  "pallet-assets",
  "pallet-aura",
+ "pallet-authorization",
  "pallet-balances",
  "pallet-contracts",
  "pallet-contracts-primitives",
  "pallet-contracts-rpc-runtime-api",
+ "pallet-data-assets",
  "pallet-data-spaces",
  "pallet-grandpa",
  "pallet-im-online",
- "pallet-iris-assets",
- "pallet-iris-ejection",
- "pallet-iris-ledger",
  "pallet-iris-session",
+ "pallet-ledger",
  "pallet-randomness-collective-flip",
  "pallet-session",
  "pallet-sudo",
@@ -3962,6 +3962,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-authorization"
+version = "1.0.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-assets",
+ "pallet-balances",
+ "pallet-data-assets",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-authorship"
 version = "4.0.0-dev"
 source = "git+https://github.com/paritytech/substrate.git?branch=polkadot-v0.9.23#76522d7937ba94ff1becef4e4e3ca78e3e1de341"
@@ -4073,6 +4092,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-data-assets"
+version = "1.0.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-assets",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-data-spaces"
 version = "1.0.0"
 dependencies = [
@@ -4082,7 +4119,7 @@ dependencies = [
  "log",
  "pallet-assets",
  "pallet-balances",
- "pallet-iris-assets",
+ "pallet-data-assets",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -4134,60 +4171,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-iris-assets"
-version = "1.0.0"
-dependencies = [
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "log",
- "pallet-assets",
- "pallet-balances",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-io",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-iris-ejection"
-version = "1.0.0"
-dependencies = [
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "log",
- "pallet-assets",
- "pallet-balances",
- "pallet-iris-assets",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-io",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-iris-ledger"
-version = "1.0.0"
-dependencies = [
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "log",
- "pallet-balances",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-io",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
 name = "pallet-iris-session"
 version = "1.0.0"
 dependencies = [
@@ -4196,11 +4179,11 @@ dependencies = [
  "frame-system",
  "log",
  "pallet-assets",
+ "pallet-authorization",
  "pallet-balances",
+ "pallet-data-assets",
  "pallet-data-spaces",
  "pallet-im-online",
- "pallet-iris-assets",
- "pallet-iris-ejection",
  "pallet-session",
  "parity-scale-codec",
  "scale-info",
@@ -4209,6 +4192,23 @@ dependencies = [
  "sp-keystore",
  "sp-runtime",
  "sp-staking",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-ledger"
+version = "1.0.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
  "sp-std",
 ]
 

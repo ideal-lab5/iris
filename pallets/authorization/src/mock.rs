@@ -16,7 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg(test)]
-use crate::{self as pallet_iris_ejection, Config};
+use crate::{self as pallet_authorization, Config};
 use frame_support::{
 	parameter_types,
 	construct_runtime,
@@ -88,7 +88,7 @@ construct_runtime!(
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		Assets: pallet_assets::{Pallet, Storage, Event<T>},
-		IrisEjection: pallet_iris_ejection::{Pallet, Call, Storage, Event<T>},
+		IrisEjection: pallet_authorization::{Pallet, Call, Storage, Event<T>},
 	}
 );
 
@@ -166,12 +166,6 @@ impl pallet_assets::Config for Test {
 	type WeightInfo = ();
 	type Extra = ();
 }
-
-/// configure the iris assets pallet
-// impl pallet_iris_assets::Config for Test {
-// 	type Event = Event;
-// 	type Call = Call;
-// }
 
 type Extrinsic = TestXt<Call, ()>;
 type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
