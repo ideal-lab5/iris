@@ -14,23 +14,23 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
-//! Benchmarking setup for pallet-template
+//! Benchmarking setup for pallet-authorities
 
-use super::*;
+// use super::*;
 
-#[allow(unused)]
-use crate::Pallet as Template;
-use frame_benchmarking::{benchmarks, whitelisted_caller};
-use frame_system::RawOrigin;
+// #[allow(unused)]
+// use crate::Pallet as Template;
+// use frame_benchmarking::{benchmarks, whitelisted_caller};
+// use frame_system::RawOrigin;
 
-benchmarks! {
-	do_something {
-		let s in 0 .. 100;
-		let caller: T::AccountId = whitelisted_caller();
-	}: _(RawOrigin::Signed(caller), s)
-	verify {
-		assert_eq!(Something::<T>::get(), Some(s));
-	}
+// benchmarks! {
+// 	do_something {
+// 		let s in 0 .. 100;
+// 		let caller: T::AccountId = whitelisted_caller();
+// 	}: _(RawOrigin::Signed(caller), s)
+// 	verify {
+// 		assert_eq!(Something::<T>::get(), Some(s));
+// 	}
 
-	impl_benchmark_test_suite!(Template, crate::mock::new_test_ext(), crate::mock::Test);
-}
+// 	impl_benchmark_test_suite!(Template, crate::mock::new_test_ext(), crate::mock::Test);
+// }
