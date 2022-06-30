@@ -51,7 +51,7 @@ pallet-contracts-rpc-runtime-api = { version = "4.0.0-dev", default-features = f
 # Iris pallets
 pallet-assets = { version = "4.0.0-dev", path = "../pallets/assets", default-features = false }
 pallet-data-assets = { version = "1.0.0", default-features = false, path = "../pallets/data-assets" }
-pallet-iris-session = { version = "1.0.0", default-features = false, path = "../pallets/iris-session" }
+pallet-authorities = { version = "1.0.0", default-features = false, path = "../pallets/authorities" }
 pallet-ledger = { version = "1.0.0", default-features = false, path = "../pallets/ledger" }
 pallet-data-spaces = { version = "1.0.0", default-features = false, path = "../pallets/data-spaces" }
 pallet-authorization = { version = "1.0.0", default-features = false, path = "../pallets/authorization" }
@@ -90,6 +90,7 @@ std = [
 	"pallet-randomness-collective-flip/std",
 	"pallet-sudo/std",
 	"pallet-data-assets/std",
+	"pallet-authorities/std",
 	"pallet-ledger/std",
 	"pallet-timestamp/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",

@@ -18,7 +18,7 @@
 #![cfg(test)]
 
 use super::*;
-use crate::{self as pallet_iris_session, Config};
+use crate::{self as pallet_authorities, Config};
 use pallet_data_assets;
 use frame_support::{
 	parameter_types, 
@@ -95,7 +95,7 @@ frame_support::construct_runtime!(
 		Assets: pallet_assets::{Pallet, Storage, Event<T>},
 		DataAssets: pallet_data_assets::{Pallet, Call, Storage, Event<T>},
 		IrisEjection: pallet_authorization,
-		IrisSession: pallet_iris_session::{Pallet, Call, Storage, Event<T>, Config<T>},
+		Authorities: pallet_authorities::{Pallet, Call, Storage, Event<T>, Config<T>},
 	}
 );
 
@@ -256,7 +256,7 @@ impl Config for Test {
 	// type AddRemoveOrigin = ();
 	type AddRemoveOrigin = EnsureRoot<sp_core::sr25519::Public>;
 	type Call = Call;
-	type AuthorityId = pallet_iris_session::crypto::TestAuthId;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type Event = Event;
 	type MinAuthorities = MinAuthorities;
 	type MaxDeadSession = MaxDeadSession;
@@ -268,10 +268,10 @@ parameter_types! {
 
 impl pallet_session::Config for Test {
 	type ValidatorId = <Self as frame_system::Config>::AccountId;
-	type ValidatorIdOf = pallet_iris_session::ValidatorOf<Self>;
+	type ValidatorIdOf = pallet_authorities::ValidatorOf<Self>;
 	type ShouldEndSession = TestShouldEndSession;
 	type NextSessionRotation = ();
-	type SessionManager = IrisSession;
+	type SessionManager = Authorities;
 	type SessionHandler = TestSessionHandler;
 	type Keys = MockSessionKeys;
 	type WeightInfo = ();
@@ -318,7 +318,7 @@ pub fn new_test_ext(validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>
 		}
 	});
 
-	pallet_iris_session::GenesisConfig::<Test> {
+	pallet_authorities::GenesisConfig::<Test> {
 		initial_validators: keys.iter().map(|x| x.0).collect::<Vec<_>>(),
 	}
 	.assimilate_storage(&mut t)
@@ -353,7 +353,7 @@ pub fn new_test_ext_funded(pair1_funded: sp_core::sr25519::Pair) -> sp_io::TestE
 		// frame_system::Pallet::<Test>::inc_providers(&69);
 	});
 
-	pallet_iris_session::GenesisConfig::<Test> {
+	pallet_authorities::GenesisConfig::<Test> {
 		initial_validators: keys.iter().map(|x| x.0).collect::<Vec<_>>(),
 	}
 	.assimilate_storage(&mut t)

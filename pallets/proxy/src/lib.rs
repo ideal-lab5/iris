@@ -15,22 +15,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! # Iris Session Pallet
+//! # Proxy Pallet
 //!
 //! @author driemworks
 //! 
 //! ## Description 
-//! 
-//! validators and storage providers
-//! are treated as seprate roles, where you must first be a validator after which you can 
-//! request to join a storage pool for some asset id (become a storage provider). If the ipfs
-//! node has sufficient storage capacity to successfully pin the underlying CID of the asset class,
-//! then that node is considered a storage provider as long as it is online.
-//! 
-//! The Iris Session Pallet allows addition and removal of
-//! storage providers via extrinsics (transaction calls), in
-//! Substrate-based PoA networks. It also integrates with the im-online pallet
-//! to automatically remove offline storage providers.
 //!
 //! The pallet uses the Session pallet and implements related traits for session
 //! management. Currently it uses periodic session rotation provided by the
@@ -85,7 +74,7 @@ use sp_runtime::{
 };
 use pallet_data_assets::DataCommand;
 
-pub const LOG_TARGET: &'static str = "runtime::iris-session";
+pub const LOG_TARGET: &'static str = "runtime::proxy";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
 
@@ -202,26 +191,26 @@ pub mod pallet {
 		_, Blake2_128Concat, T::AccountId, Vec<u8>, ValueQuery,
 	>;
 
-	/// Maps an asset id to a collection of nodes that want to provider storage
-	#[pallet::storage]
-	#[pallet::getter(fn candidate_storage_providers)]
-	pub(super) type QueuedStorageProviders<T: Config> = StorageMap<
-		_, Blake2_128Concat, T::AssetId, Vec<T::AccountId>, ValueQuery,
-	>;
+	// /// Maps an asset id to a collection of nodes that want to provider storage
+	// #[pallet::storage]
+	// #[pallet::getter(fn candidate_storage_providers)]
+	// pub(super) type QueuedStorageProviders<T: Config> = StorageMap<
+	// 	_, Blake2_128Concat, T::AssetId, Vec<T::AccountId>, ValueQuery,
+	// >;
 
-	/// maps an asset id to a collection of nodes that are providing storage
-	#[pallet::storage]
-	#[pallet::getter(fn storage_providers)]
-	pub(super) type StorageProviders<T: Config> = StorageMap<
-		_, Blake2_128Concat, T::AssetId, Vec<T::AccountId>, ValueQuery,
-	>;
+	// /// maps an asset id to a collection of nodes that are providing storage
+	// #[pallet::storage]
+	// #[pallet::getter(fn storage_providers)]
+	// pub(super) type StorageProviders<T: Config> = StorageMap<
+	// 	_, Blake2_128Concat, T::AssetId, Vec<T::AccountId>, ValueQuery,
+	// >;
 
-	/// maps an asset id to a collection of nodes that have inserted the pin for the underlying cid
-	#[pallet::storage]
-	#[pallet::getter(fn pinners)]
-	pub(super) type Pinners<T: Config> = StorageMap<
-		_, Blake2_128Concat, T::AssetId, Vec<T::AccountId>, ValueQuery,
-	>;
+	// /// maps an asset id to a collection of nodes that have inserted the pin for the underlying cid
+	// #[pallet::storage]
+	// #[pallet::getter(fn pinners)]
+	// pub(super) type Pinners<T: Config> = StorageMap<
+	// 	_, Blake2_128Concat, T::AssetId, Vec<T::AccountId>, ValueQuery,
+	// >;
 
 	/// The current era index.
 	///
@@ -244,49 +233,43 @@ pub mod pallet {
 		_, EraIndex
 	>;
 	
-	/// Rewards for the last `HISTORY_DEPTH` eras.
-	/// If reward hasn't been set or has been removed then 0 reward is returned.
-	#[pallet::storage]
-	#[pallet::getter(fn eras_reward_points)]
-	pub type ErasRewardPoints<T: Config> = StorageDoubleMap<
-		_, Twox64Concat, EraIndex, Twox64Concat, T::AssetId, EraRewardPoints<T::AccountId>,
-	>;
+	// /// Rewards for the last `HISTORY_DEPTH` eras.
+	// /// If reward hasn't been set or has been removed then 0 reward is returned.
+	// #[pallet::storage]
+	// #[pallet::getter(fn eras_reward_points)]
+	// pub type ErasRewardPoints<T: Config> = StorageDoubleMap<
+	// 	_, Twox64Concat, EraIndex, Twox64Concat, T::AssetId, EraRewardPoints<T::AccountId>,
+	// >;
 
-	///
-	/// 
 	#[pallet::storage]
-	#[pallet::getter(fn validators)]
-	pub type Validators<T: Config> = StorageValue<
+	#[pallet::getter(fn proxies)]
+	pub type Proxies<T: Config> = StorageValue<
+		_, Vec<T::AccountId>, ValueQuery>;
+ 
+	#[pallet::storage]
+	#[pallet::getter(fn approved_proxies)]
+	pub type ApprovedProxies<T: Config> = StorageValue<
 		_, Vec<T::AccountId>, ValueQuery>;
 
-	///
-	/// 
-	#[pallet::storage]
-	#[pallet::getter(fn approved_validators)]
-	pub type ApprovedValidators<T: Config> = StorageValue<
-		_, Vec<T::AccountId>, ValueQuery>;
+	// ///
+	// /// 
+	// #[pallet::storage]
+	// #[pallet::getter(fn offline_proxies)]
+	// pub type OfflineProxies<T: Config> = StorageValue<
+	// 	_, Vec<T::AccountId>, ValueQuery>;
 
-	///
-	/// 
-	#[pallet::storage]
-	#[pallet::getter(fn validators_to_remove)]
-	pub type OfflineValidators<T: Config> = StorageValue<
-		_, Vec<T::AccountId>, ValueQuery>;
+	// #[pallet::storage]
+	// #[pallet::getter(fn total_session_rewards)]
+	// pub type SessionParticipation<T: Config> = StorageMap<
+	// 	_, Blake2_128Concat, EraIndex, Vec<T::AccountId>, ValueQuery,
+	// >;
 
-	#[pallet::storage]
-	#[pallet::getter(fn total_session_rewards)]
-	pub type SessionParticipation<T: Config> = StorageMap<
-		_, Blake2_128Concat, EraIndex, Vec<T::AccountId>, ValueQuery,
-	>;
+	// #[pallet::storage]
+	// #[pallet::getter(fn unproductive_sessions)]
+	// pub type UnproductiveSessions<T: Config> = StorageMap<
+	// 	_, Blake2_128Concat, T::AccountId, u32, ValueQuery,
+	// >;
 
-	#[pallet::storage]
-	#[pallet::getter(fn unproductive_sessions)]
-	pub type UnproductiveSessions<T: Config> = StorageMap<
-		_, Blake2_128Concat, T::AccountId, u32, ValueQuery,
-	>;
-
-	///
-	/// 
 	// #[pallet::storage]
 	// #[pallet::getter(fn dead_validator)]
 	// pub type DeadValidators<T: Config> = StorageMap<
@@ -377,102 +360,83 @@ pub mod pallet {
 
 	#[pallet::genesis_config]
 	pub struct GenesisConfig<T: Config> {
-		pub initial_validators: Vec<T::AccountId>,
+		pub initial_proxies: Vec<T::AccountId>,
 	}
 
 	#[cfg(feature = "std")]
 	impl<T: Config> Default for GenesisConfig<T> {
 		fn default() -> Self {
-			Self { initial_validators: Default::default() }
+			Self { initial_proxies: Default::default() }
 		}
 	}
 
 	#[pallet::genesis_build]
 	impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
 		fn build(&self) {
-			Pallet::<T>::initialize_validators(&self.initial_validators);
+			Pallet::<T>::initialize_proxies(&self.initial_proxies);
 		}
 	}
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
-		/// Add a new validator.
-		///
-		/// New validator's session keys should be set in Session pallet before
-		/// calling this.
-		///
-		/// The origin can be configured using the `AddRemoveOrigin` type in the
-		/// host runtime. Can also be set to sudo/root.
-		///
-		#[pallet::weight(100)]
-		pub fn add_validator(origin: OriginFor<T>, validator_id: T::AccountId) -> DispatchResult {
-			T::AddRemoveOrigin::ensure_origin(origin)?;
-			Self::do_add_validator(validator_id.clone())?;
-			Self::approve_validator(validator_id)?;
-			Ok(())
-		}
 
-		/// Remove a validator.
-		///
-		/// The origin can be configured using the `AddRemoveOrigin` type in the
-		/// host runtime. Can also be set to sudo/root.
 		#[pallet::weight(100)]
-		pub fn remove_validator(
+		pub fn stake(
 			origin: OriginFor<T>,
-			validator_id: T::AccountId,
+			amount: T::Balance
 		) -> DispatchResult {
-			T::AddRemoveOrigin::ensure_origin(origin)?;
-			Self::do_remove_validator(validator_id.clone())?;
-			Self::unapprove_validator(validator_id)?;
-			Ok(())
-		}
-
-		/// Add an approved validator again when it comes back online.
-		///
-		/// For this call, the dispatch origin must be the validator itself.
-		#[pallet::weight(100)]
-		pub fn add_validator_again(
-			origin: OriginFor<T>,
-			validator_id: T::AccountId,
-		) -> DispatchResult {
-			let who = ensure_signed(origin)?;
-			ensure!(who == validator_id, Error::<T>::BadOrigin);
-
-			let approved_set: BTreeSet<_> = <ApprovedValidators<T>>::get().into_iter().collect();
-			ensure!(approved_set.contains(&validator_id), Error::<T>::ValidatorNotApproved);
-
-			Self::do_add_validator(validator_id)?;
 
 			Ok(())
 		}
 
+
+		// /// Add a new validator.
+		// ///
+		// /// New validator's session keys should be set in Session pallet before
+		// /// calling this.
+		// ///
+		// /// The origin can be configured using the `AddRemoveOrigin` type in the
+		// /// host runtime. Can also be set to sudo/root.
+		// ///
 		// #[pallet::weight(100)]
-		// pub fn join_storage_pool(
+		// pub fn add_validator(origin: OriginFor<T>, validator_id: T::AccountId) -> DispatchResult {
+		// 	T::AddRemoveOrigin::ensure_origin(origin)?;
+		// 	Self::do_add_validator(validator_id.clone())?;
+		// 	Self::approve_validator(validator_id)?;
+		// 	Ok(())
+		// }
+
+		// /// Remove a validator.
+		// ///
+		// /// The origin can be configured using the `AddRemoveOrigin` type in the
+		// /// host runtime. Can also be set to sudo/root.
+		// #[pallet::weight(100)]
+		// pub fn remove_validator(
 		// 	origin: OriginFor<T>,
-		// 	pool_owner: <T::Lookup as StaticLookup>::Source,
-		// 	pool_id: T::AssetId,
+		// 	validator_id: T::AccountId,
 		// ) -> DispatchResult {
-		// 	// submit a request to join a storage pool in the next session
+		// 	T::AddRemoveOrigin::ensure_origin(origin)?;
+		// 	Self::do_remove_validator(validator_id.clone())?;
+		// 	Self::unapprove_validator(validator_id)?;
+		// 	Ok(())
+		// }
+
+		// /// Add an approved validator again when it comes back online.
+		// ///
+		// /// For this call, the dispatch origin must be the validator itself.
+		// #[pallet::weight(100)]
+		// pub fn add_validator_again(
+		// 	origin: OriginFor<T>,
+		// 	validator_id: T::AccountId,
+		// ) -> DispatchResult {
 		// 	let who = ensure_signed(origin)?;
-		// 	// let new_origin = system::RawOrigin::Signed(who.clone()).into();
-		// 	// if the node is already a candidate, do not proceed;
-		// 	ensure!(
-		// 		!<QueuedStorageProviders::<T>>::get(pool_id.clone()).contains(&who),
-		// 		Error::<T>::AlreadyACandidate,
-		// 	);
-		// 	// if the node is already a storage provider, do not proceed
-		// 	ensure!(
-		// 		!<StorageProviders::<T>>::get(pool_id.clone()).contains(&who),
-		// 		Error::<T>::AlreadyPinned,
-		// 	);
+		// 	ensure!(who == validator_id, Error::<T>::BadOrigin);
 
-		// 	let owner = T::Lookup::lookup(pool_owner)?;
-		// 	// <pallet_data_assets::Pallet<T>>::insert_pin_request(new_origin, owner, pool_id).map_err(|_| Error::<T>::CantCreateRequest)?;
+		// 	let approved_set: BTreeSet<_> = <ApprovedValidators<T>>::get().into_iter().collect();
+		// 	ensure!(approved_set.contains(&validator_id), Error::<T>::ValidatorNotApproved);
 
-		// 	<QueuedStorageProviders<T>>::mutate(pool_id.clone(), |sp| {
-		// 		sp.push(who.clone());
-		// 	});
-		// 	Self::deposit_event(Event::RequestJoinStoragePoolSuccess(who.clone(), pool_id.clone()));
+		// 	Self::do_add_validator(validator_id)?;
+
 		// 	Ok(())
 		// }
 
@@ -557,28 +521,28 @@ pub mod pallet {
 			asset_id: T::AssetId,
 			pinner: T::AccountId,
 		) -> DispatchResult {
-			let _who = ensure_signed(origin)?;
-			// verify they are a candidate storage provider
-			let candidate_storage_providers = <QueuedStorageProviders::<T>>::get(asset_id.clone());
-			ensure!(candidate_storage_providers.contains(&pinner), Error::<T>::NotACandidate);
-			// verify not already pinning the content
-			let current_pinners = <Pinners::<T>>::get(asset_id.clone());
-			ensure!(!current_pinners.contains(&pinner), Error::<T>::AlreadyPinned);
-			// TODO: we need a better scheme for *generating* pool ids -> should always be unique (cid + owner maybe?)
-			<Pinners<T>>::mutate(asset_id.clone(), |p| {
-				p.push(pinner.clone());
-			});
-			// award point to pinner
-			if let Some(active_era) = ActiveEra::<T>::get() {
-				SessionParticipation::<T>::mutate(active_era.clone(), |p| {
-					p.push(pinner.clone());
-				});
-				// WIP: TODO
-				// <ErasRewardPoints<T>>::mutate(active_era, asset_id, |era_rewards| {
-				// 	*era_rewards.unwrap().individual.entry(pinner.clone()).or_default() += 1;
-				// 	era_rewards.unwrap().total += 1;
-				// });
-			}
+			// let _who = ensure_signed(origin)?;
+			// // verify they are a candidate storage provider
+			// let candidate_storage_providers = <QueuedStorageProviders::<T>>::get(asset_id.clone());
+			// ensure!(candidate_storage_providers.contains(&pinner), Error::<T>::NotACandidate);
+			// // verify not already pinning the content
+			// let current_pinners = <Pinners::<T>>::get(asset_id.clone());
+			// ensure!(!current_pinners.contains(&pinner), Error::<T>::AlreadyPinned);
+			// // TODO: we need a better scheme for *generating* pool ids -> should always be unique (cid + owner maybe?)
+			// <Pinners<T>>::mutate(asset_id.clone(), |p| {
+			// 	p.push(pinner.clone());
+			// });
+			// // award point to pinner
+			// if let Some(active_era) = ActiveEra::<T>::get() {
+			// 	SessionParticipation::<T>::mutate(active_era.clone(), |p| {
+			// 		p.push(pinner.clone());
+			// 	});
+			// 	// WIP: TODO
+			// 	// <ErasRewardPoints<T>>::mutate(active_era, asset_id, |era_rewards| {
+			// 	// 	*era_rewards.unwrap().individual.entry(pinner.clone()).or_default() += 1;
+			// 	// 	era_rewards.unwrap().total += 1;
+			// 	// });
+			// }
 			Ok(())
 		}
 
@@ -614,66 +578,66 @@ pub mod pallet {
 
 impl<T: Config> Pallet<T> {
 
-	fn initialize_validators(validators: &[T::AccountId]) {
-		assert!(validators.len() > 1, "At least 2 validators should be initialized");
-		assert!(<Validators<T>>::get().is_empty(), "Validators are already initialized!");
-		<Validators<T>>::put(validators);
-		<ApprovedValidators<T>>::put(validators);
+	fn initialize_proxies(proxies: &[T::AccountId]) {
+		assert!(proxies.len() > 1, "At least 1 proxy should be initialized");
+		assert!(<Proxies<T>>::get().is_empty(), "Proxies are already initialized!");
+		<Proxies<T>>::put(proxies);
+		<ApprovedProxies<T>>::put(proxies);
 	}
 
-	fn do_add_validator(validator_id: T::AccountId) -> DispatchResult {
-		let validator_set: BTreeSet<_> = <Validators<T>>::get().into_iter().collect();
-		ensure!(!validator_set.contains(&validator_id), Error::<T>::Duplicate);
-		<Validators<T>>::mutate(|v| v.push(validator_id.clone()));
-		UnproductiveSessions::<T>::mutate(validator_id.clone(), |v| {
-			*v = 0;
-		});
+	// fn do_add_validator(proxy_id: T::AccountId) -> DispatchResult {
+	// 	let validator_set: BTreeSet<_> = <Proxies<T>>::get().into_iter().collect();
+	// 	ensure!(!validator_set.contains(&validator_id), Error::<T>::Duplicate);
+	// 	<Proxies<T>>::mutate(|v| v.push(validator_id.clone()));
+	// 	UnproductiveSessions::<T>::mutate(validator_id.clone(), |v| {
+	// 		*v = 0;
+	// 	});
 
-		Self::deposit_event(Event::ValidatorAdditionInitiated(validator_id.clone()));
-		log::debug!(target: LOG_TARGET, "Validator addition initiated.");
+	// 	Self::deposit_event(Event::ValidatorAdditionInitiated(validator_id.clone()));
+	// 	log::debug!(target: LOG_TARGET, "Validator addition initiated.");
 
-		Ok(())
-	}
+	// 	Ok(())
+	// }
 
-	fn do_remove_validator(validator_id: T::AccountId) -> DispatchResult {
-		let mut validators = <Validators<T>>::get();
+	// fn do_remove_validator(validator_id: T::AccountId) -> DispatchResult {
+	// 	let mut validators = <Validators<T>>::get();
 
-		// Ensuring that the post removal, target validator count doesn't go
-		// below the minimum.
-		ensure!(
-			validators.len().saturating_sub(1) as u32 >= T::MinAuthorities::get(),
-			Error::<T>::TooLowValidatorCount
-		);
+	// 	// Ensuring that the post removal, target validator count doesn't go
+	// 	// below the minimum.
+	// 	ensure!(
+	// 		validators.len().saturating_sub(1) as u32 >= T::MinAuthorities::get(),
+	// 		Error::<T>::TooLowValidatorCount
+	// 	);
 
-		validators.retain(|v| *v != validator_id);
+	// 	validators.retain(|v| *v != validator_id);
 
-		<Validators<T>>::put(validators);
+	// 	<Validators<T>>::put(validators);
 
-		Self::deposit_event(Event::ValidatorRemovalInitiated(validator_id.clone()));
-		log::debug!(target: LOG_TARGET, "Validator removal initiated.");
+	// 	Self::deposit_event(Event::ValidatorRemovalInitiated(validator_id.clone()));
+	// 	log::debug!(target: LOG_TARGET, "Validator removal initiated.");
 
-		Ok(())
-	}
+	// 	Ok(())
+	// }
 
-	/// Ensure the candidate validator is eligible to be a validator
-	fn approve_validator(validator_id: T::AccountId) -> DispatchResult {
-		let approved_set: BTreeSet<_> = <ApprovedValidators<T>>::get().into_iter().collect();
-		ensure!(!approved_set.contains(&validator_id), Error::<T>::Duplicate);
-		<ApprovedValidators<T>>::mutate(|v| v.push(validator_id.clone()));
-		Ok(())
-	}
+	// /// Ensure the candidate validator is eligible to be a validator
+	// fn approve_validator(validator_id: T::AccountId) -> DispatchResult {
+	// 	let approved_set: BTreeSet<_> = <ApprovedValidators<T>>::get().into_iter().collect();
+	// 	ensure!(!approved_set.contains(&validator_id), Error::<T>::Duplicate);
+	// 	<ApprovedValidators<T>>::mutate(|v| v.push(validator_id.clone()));
+	// 	Ok(())
+	// }
 
-	/// Remote a validator from the list of approved validators
-	fn unapprove_validator(validator_id: T::AccountId) -> DispatchResult {
-		let mut approved_set = <ApprovedValidators<T>>::get();
-		approved_set.retain(|v| *v != validator_id);
-		Ok(())
-	}
+	// /// Remote a validator from the list of approved validators
+	// fn unapprove_validator(validator_id: T::AccountId) -> DispatchResult {
+	// 	let mut approved_set = <ApprovedValidators<T>>::get();
+	// 	approved_set.retain(|v| *v != validator_id);
+	// 	Ok(())
+	// }
 
-	// Adds offline validators to a local cache for removal at new session.
+	// // Adds offline validators to a local cache for removal at new session.
 	fn mark_for_removal(validator_id: T::AccountId) {
-		<OfflineValidators<T>>::mutate(|v| v.push(validator_id));
-		log::debug!(target: LOG_TARGET, "Offline validator marked for auto removal.");
+		// <OfflineValidators<T>>::mutate(|v| v.push(validator_id));
+		// log::debug!(target: LOG_TARGET, "Offline validator marked for auto removal.");
 	}
 
 	// Removes offline validators from the validator set and clears the offline
@@ -682,65 +646,65 @@ impl<T: Config> Pallet<T> {
 	// check for `MinAuthorities` here, because the offline validators will not
 	// produce blocks and will have the same overall effect on the runtime.
 	fn remove_offline_validators() {
-		let validators_to_remove: BTreeSet<_> = <OfflineValidators<T>>::get().into_iter().collect();
+		// let validators_to_remove: BTreeSet<_> = <OfflineValidators<T>>::get().into_iter().collect();
 
-		// Delete from active validator set.
-		<Validators<T>>::mutate(|vs| vs.retain(|v| !validators_to_remove.contains(v))); 
-		log::debug!(
-			target: LOG_TARGET,
-			"Initiated removal of {:?} offline validators.",
-			validators_to_remove.len()
-		);
+		// // Delete from active validator set.
+		// <Validators<T>>::mutate(|vs| vs.retain(|v| !validators_to_remove.contains(v))); 
+		// log::debug!(
+		// 	target: LOG_TARGET,
+		// 	"Initiated removal of {:?} offline validators.",
+		// 	validators_to_remove.len()
+		// );
 
-		// remove as storage provider
-		// remove from pinners (and unpin the cid)
-		// Clear the offline validator list to avoid repeated deletion.
-		<OfflineValidators<T>>::put(Vec::<T::AccountId>::new());
+		// // remove as storage provider
+		// // remove from pinners (and unpin the cid)
+		// // Clear the offline validator list to avoid repeated deletion.
+		// <OfflineValidators<T>>::put(Vec::<T::AccountId>::new());
 	}
 
-	/// move candidates to the active provider pool for some asset id
-	/// TODO: this undoubtedly will not scale very well 
-	fn select_candidate_storage_providers() {
-		// if there are candidate storage providers => for each candidate that pinned the file, move them to storage providers
-		for asset_id in <pallet_data_assets::Pallet<T>>::asset_ids().into_iter() {
-			// if there are candidates for the asset id
-			if <QueuedStorageProviders<T>>::contains_key(asset_id.clone()) {
-				let candidates = <QueuedStorageProviders<T>>::get(asset_id.clone());
-				let pinners = <Pinners<T>>::get(asset_id.clone());
-				let mut pinner_candidate_intersection = 
-					candidates.into_iter().filter(|c| pinners.contains(c)).collect::<Vec<T::AccountId>>();
-				// <StorageProviders::<T>>::insert(asset_id.clone(), pinner_candidate_intersection);
-				<StorageProviders::<T>>::mutate(asset_id.clone(), |sps| {
-					sps.append(&mut pinner_candidate_intersection);
-				});
-				<QueuedStorageProviders<T>>::mutate(asset_id.clone(), |qsps| {
-					*qsps = Vec::new();
-				});
-			}
-		}
-	}
+	// /// move candidates to the active provider pool for some asset id
+	// /// TODO: this undoubtedly will not scale very well 
+	// fn select_candidate_storage_providers() {
+	// 	// if there are candidate storage providers => for each candidate that pinned the file, move them to storage providers
+	// 	for asset_id in <pallet_data_assets::Pallet<T>>::asset_ids().into_iter() {
+	// 		// if there are candidates for the asset id
+	// 		if <QueuedStorageProviders<T>>::contains_key(asset_id.clone()) {
+	// 			let candidates = <QueuedStorageProviders<T>>::get(asset_id.clone());
+	// 			let pinners = <Pinners<T>>::get(asset_id.clone());
+	// 			let mut pinner_candidate_intersection = 
+	// 				candidates.into_iter().filter(|c| pinners.contains(c)).collect::<Vec<T::AccountId>>();
+	// 			// <StorageProviders::<T>>::insert(asset_id.clone(), pinner_candidate_intersection);
+	// 			<StorageProviders::<T>>::mutate(asset_id.clone(), |sps| {
+	// 				sps.append(&mut pinner_candidate_intersection);
+	// 			});
+	// 			<QueuedStorageProviders<T>>::mutate(asset_id.clone(), |qsps| {
+	// 				*qsps = Vec::new();
+	// 			});
+	// 		}
+	// 	}
+	// }
 
 	fn mark_dead_validators(era_index: EraIndex) {
-		// for each validator that didn't participate, mark for removal
-		let partipating_validators = SessionParticipation::<T>::get(era_index.clone());
-		for acct in Validators::<T>::get() {
-			if !partipating_validators.contains(&acct) {
-				if UnproductiveSessions::<T>::get(acct.clone()) <= T::MaxDeadSession::get() {
-					UnproductiveSessions::<T>::mutate(acct.clone(), |v| {
-						*v += 1;
-					});
-				} else {
-					let mut validators = <Validators<T>>::get();
-					// Ensuring that the post removal, target validator count doesn't go
-					// below the minimum.
-					if validators.len().saturating_sub(1) as u32 >= T::MinAuthorities::get() {
-						validators.retain(|v| *v != acct.clone());
-						<Validators<T>>::put(validators);
-						log::debug!(target: LOG_TARGET, "Validator removal initiated.");
-					}
-				}
-			}
-		}
+		// // for each validator that didn't participate, mark for removal
+		// let partipating_validators = SessionParticipation::<T>::get(era_index.clone());
+		// for acct in Validators::<T>::get() {
+		// 	if !partipating_validators.contains(&acct) {
+		// 		if UnproductiveSessions::<T>::get(acct.clone()) <= T::MaxDeadSession::get() {
+		// 			UnproductiveSessions::<T>::mutate(acct.clone(), |v| {
+		// 				*v += 1;
+		// 			});
+		// 		} else {
+		// 			let mut validators = <Validators<T>>::get();
+		// 			// Ensuring that the post removal, target validator count doesn't go
+		// 			// below the minimum.
+		// 			if validators.len().saturating_sub(1) as u32 >= T::MinAuthorities::get() {
+		// 				validators.retain(|v| *v != acct.clone());
+		// 				<Validators<T>>::put(validators);
+		// 				log::debug!(target: LOG_TARGET, "Validator removal initiated.");
+		// 			}
+		// 		}
+		// 	}
+		// }
 	}
 
 	fn validate_transaction_parameters() -> TransactionValidity {
@@ -957,9 +921,9 @@ impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 		CurrentEra::<T>::mutate(|s| *s = Some(new_index));
 		Self::remove_offline_validators();
 		// TODO: REMOVE OFFLINE STORAGE PROVIDERS
-		Self::select_candidate_storage_providers();
+		// Self::select_candidate_storage_providers();
 		log::debug!(target: LOG_TARGET, "New session called; updated validator set provided.");
-		Some(Self::validators())
+		Some(Self::proxies())
 	}
 
 	fn end_session(end_index: u32) {
@@ -993,9 +957,9 @@ impl<T: Config> EstimateNextSessionRotation<T::BlockNumber> for Pallet<T> {
 }
 
 // Implementation of Convert trait for mapping ValidatorId with AccountId.
-pub struct ValidatorOf<T>(sp_std::marker::PhantomData<T>);
+pub struct ProxyOf<T>(sp_std::marker::PhantomData<T>);
 
-impl<T: Config> Convert<T::ValidatorId, Option<T::ValidatorId>> for ValidatorOf<T> {
+impl<T: Config> Convert<T::ValidatorId, Option<T::ValidatorId>> for ProxyOf<T> {
 	fn convert(account: T::ValidatorId) -> Option<T::ValidatorId> {
 		Some(account)
 	}
@@ -1016,7 +980,7 @@ impl<T: Config> ValidatorSet<T::AccountId> for Pallet<T> {
 
 impl<T: Config> ValidatorSetWithIdentification<T::AccountId> for Pallet<T> {
 	type Identification = T::ValidatorId;
-	type IdentificationOf = ValidatorOf<T>;
+	type IdentificationOf = ProxyOf<T>;
 }
 
 // Offence reporting and unresponsiveness management.
