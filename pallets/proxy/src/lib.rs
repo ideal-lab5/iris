@@ -279,13 +279,7 @@ pub mod pallet {
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
 		/// New validator addition initiated. Effective in ~2 sessions.
-		ValidatorAdditionInitiated(T::AccountId),
-		/// Validator removal initiated. Effective in ~2 sessions.
-		ValidatorRemovalInitiated(T::AccountId),
-		/// Validator published their ipfs public key and maddrs
-		PublishedIdentity(T::AccountId),
-		/// A validator requested to join a storage pool
-		RequestJoinStoragePoolSuccess(T::AccountId, T::AssetId),
+		StakeSuccessful(T::AccountId),
 	}
 
 	
@@ -348,7 +342,7 @@ pub mod pallet {
 				}
 			}
 			// handle data requests each block
-			if let Err(e) = Self::handle_data_requests() {
+			if let Err(e) = Self::prcoess_ingestion_requests() {
 				log::error!("Encountered an error while processing data requests: {:?}", e);
 			}
 
@@ -385,60 +379,18 @@ pub mod pallet {
 			origin: OriginFor<T>,
 			amount: T::Balance
 		) -> DispatchResult {
-
+			let who = ensure_signed(origin)?;
 			Ok(())
 		}
 
+		#[pallet::weight(100)]
+		pub fn unstake(
+			origin: OriginFor<T>,
+			amount: T::Balance
+		) -> DispatchResult {
 
-		// /// Add a new validator.
-		// ///
-		// /// New validator's session keys should be set in Session pallet before
-		// /// calling this.
-		// ///
-		// /// The origin can be configured using the `AddRemoveOrigin` type in the
-		// /// host runtime. Can also be set to sudo/root.
-		// ///
-		// #[pallet::weight(100)]
-		// pub fn add_validator(origin: OriginFor<T>, validator_id: T::AccountId) -> DispatchResult {
-		// 	T::AddRemoveOrigin::ensure_origin(origin)?;
-		// 	Self::do_add_validator(validator_id.clone())?;
-		// 	Self::approve_validator(validator_id)?;
-		// 	Ok(())
-		// }
-
-		// /// Remove a validator.
-		// ///
-		// /// The origin can be configured using the `AddRemoveOrigin` type in the
-		// /// host runtime. Can also be set to sudo/root.
-		// #[pallet::weight(100)]
-		// pub fn remove_validator(
-		// 	origin: OriginFor<T>,
-		// 	validator_id: T::AccountId,
-		// ) -> DispatchResult {
-		// 	T::AddRemoveOrigin::ensure_origin(origin)?;
-		// 	Self::do_remove_validator(validator_id.clone())?;
-		// 	Self::unapprove_validator(validator_id)?;
-		// 	Ok(())
-		// }
-
-		// /// Add an approved validator again when it comes back online.
-		// ///
-		// /// For this call, the dispatch origin must be the validator itself.
-		// #[pallet::weight(100)]
-		// pub fn add_validator_again(
-		// 	origin: OriginFor<T>,
-		// 	validator_id: T::AccountId,
-		// ) -> DispatchResult {
-		// 	let who = ensure_signed(origin)?;
-		// 	ensure!(who == validator_id, Error::<T>::BadOrigin);
-
-		// 	let approved_set: BTreeSet<_> = <ApprovedValidators<T>>::get().into_iter().collect();
-		// 	ensure!(approved_set.contains(&validator_id), Error::<T>::ValidatorNotApproved);
-
-		// 	Self::do_add_validator(validator_id)?;
-
-		// 	Ok(())
-		// }
+			Ok(())
+		}
 
 		/// TODO: I really need to address the fact that this is callable by anyone
 		/// Someone could randomly make an asset class on your behalf, making you the admin
@@ -506,7 +458,7 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             <BootstrapNodes::<T>>::insert(public_key.clone(), multiaddresses.clone());
             <SubstrateIpfsBridge::<T>>::insert(who.clone(), public_key.clone());
-			Self::deposit_event(Event::PublishedIdentity(who.clone()));
+			// Self::deposit_event(Event::PublishedIdentity(who.clone()));
             Ok(())
         }
 
@@ -584,55 +536,6 @@ impl<T: Config> Pallet<T> {
 		<Proxies<T>>::put(proxies);
 		<ApprovedProxies<T>>::put(proxies);
 	}
-
-	// fn do_add_validator(proxy_id: T::AccountId) -> DispatchResult {
-	// 	let validator_set: BTreeSet<_> = <Proxies<T>>::get().into_iter().collect();
-	// 	ensure!(!validator_set.contains(&validator_id), Error::<T>::Duplicate);
-	// 	<Proxies<T>>::mutate(|v| v.push(validator_id.clone()));
-	// 	UnproductiveSessions::<T>::mutate(validator_id.clone(), |v| {
-	// 		*v = 0;
-	// 	});
-
-	// 	Self::deposit_event(Event::ValidatorAdditionInitiated(validator_id.clone()));
-	// 	log::debug!(target: LOG_TARGET, "Validator addition initiated.");
-
-	// 	Ok(())
-	// }
-
-	// fn do_remove_validator(validator_id: T::AccountId) -> DispatchResult {
-	// 	let mut validators = <Validators<T>>::get();
-
-	// 	// Ensuring that the post removal, target validator count doesn't go
-	// 	// below the minimum.
-	// 	ensure!(
-	// 		validators.len().saturating_sub(1) as u32 >= T::MinAuthorities::get(),
-	// 		Error::<T>::TooLowValidatorCount
-	// 	);
-
-	// 	validators.retain(|v| *v != validator_id);
-
-	// 	<Validators<T>>::put(validators);
-
-	// 	Self::deposit_event(Event::ValidatorRemovalInitiated(validator_id.clone()));
-	// 	log::debug!(target: LOG_TARGET, "Validator removal initiated.");
-
-	// 	Ok(())
-	// }
-
-	// /// Ensure the candidate validator is eligible to be a validator
-	// fn approve_validator(validator_id: T::AccountId) -> DispatchResult {
-	// 	let approved_set: BTreeSet<_> = <ApprovedValidators<T>>::get().into_iter().collect();
-	// 	ensure!(!approved_set.contains(&validator_id), Error::<T>::Duplicate);
-	// 	<ApprovedValidators<T>>::mutate(|v| v.push(validator_id.clone()));
-	// 	Ok(())
-	// }
-
-	// /// Remote a validator from the list of approved validators
-	// fn unapprove_validator(validator_id: T::AccountId) -> DispatchResult {
-	// 	let mut approved_set = <ApprovedValidators<T>>::get();
-	// 	approved_set.retain(|v| *v != validator_id);
-	// 	Ok(())
-	// }
 
 	// // Adds offline validators to a local cache for removal at new session.
 	fn mark_for_removal(validator_id: T::AccountId) {
@@ -780,15 +683,15 @@ impl<T: Config> Pallet<T> {
 		Ok(())
 	}
 
-	/// process any requests in the DataQueue
+	/// process any requests in the IngestionQueue
 	/// TODO: This needs some *major* refactoring
-    fn handle_data_requests() -> Result<(), Error<T>> {
-		let data_queue = <pallet_data_assets::Pallet<T>>::data_queue();
-		let len = data_queue.len();
+    fn prcoess_ingestion_requests() -> Result<(), Error<T>> {
+		let ingestion_queue = <pallet_data_assets::Pallet<T>>::ingestion_queue();
+		let len = ingestion_queue.len();
 		if len != 0 {
 			log::info!("{} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });
 		}
-		for cmd in data_queue.into_iter() {
+		for cmd in ingestion_queue.into_iter() {
 			match cmd {
 				DataCommand::AddBytes(_addr, cid, admin, id, balance, dataspace_id) => {
 					if sp_io::offchain::is_validator() {

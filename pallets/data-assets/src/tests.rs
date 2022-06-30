@@ -25,14 +25,14 @@ fn iris_assets_initial_state() {
 	new_test_ext().execute_with(|| {
 		// Given: The node is initialized at block 0
 		// When: I query runtime storage
-		let data_queue = crate::DataQueue::<Test>::get();
-		let data_space_request_queue = crate::DataSpaceRequestQueue::<Test>::get();
+		let ingestion_queue = crate::IngestionQueue::<Test>::get();
+		let ejection_queue = crate::EjectionQueue::<Test>::get();
 
-		let dataqueue_len = data_queue.len();
-		let dataspace_queue_len = data_space_request_queue.len();
+		let ingestion_queue_len = ingestion_queue.len();
+		let dataspace_queue_len = ejection_queue.len();
 
 		// Then: Runtime storage is empty
-		assert_eq!(dataqueue_len, 0);
+		assert_eq!(ingestion_queue_len, 0);
 		assert_eq!(dataspace_queue_len, 0);
 	});
 }
@@ -86,11 +86,11 @@ fn iris_assets_create_works_for_valid_value_when_authorized_for_data_space() {
 			balance.clone(),
 		));
 
-		// THEN: There is a single DataCommand::AddBytes in the DataQueue
-		let mut data_queue = crate::DataQueue::<Test>::get();
-		let len = data_queue.len();
+		// THEN: There is a single DataCommand::AddBytes in the IngestionQueue
+		let mut ingestion_queue = crate::IngestionQueue::<Test>::get();
+		let len = ingestion_queue.len();
 		assert_eq!(len, 1);
-		let actual_data_command = data_queue.pop();
+		let actual_data_command = ingestion_queue.pop();
 		assert_eq!(actual_data_command, Some(expected_data_command));
 	});
 }
@@ -178,11 +178,11 @@ fn iris_assets_create_fails_when_not_authorized_for_data_space() {
 // 			asset_id.clone(),
 // 		));
 
-// 		// THEN: There should be a single DataCommand::CatBytes in the DataQueue
-// 		let mut data_queue = crate::DataQueue::<Test>::get();
-// 		let len = data_queue.len();
+// 		// THEN: There should be a single DataCommand::CatBytes in the IngestionQueue
+// 		let mut ingestion_queue = crate::IngestionQueue::<Test>::get();
+// 		let len = ingestion_queue.len();
 // 		assert_eq!(len, 1);
-// 		let actual_data_command = data_queue.pop();
+// 		let actual_data_command = ingestion_queue.pop();
 // 		assert_eq!(actual_data_command, Some(expected_data_command));
 // 	});
 // }
@@ -214,7 +214,7 @@ fn iris_assets_submit_ipfs_add_results_works_for_valid_values() {
 			balance.clone().try_into().unwrap(),
 		));
 		// THEN: a new request is added to the dataspace request queue
-		let mut dataspace_req_queue = crate::DataSpaceRequestQueue::<Test>::get();
+		let mut dataspace_req_queue = crate::EjectionQueue::<Test>::get();
 		let dataspace_req_queue_len = dataspace_req_queue.len();
 		assert_eq!(1, dataspace_req_queue_len);
 		let mut actual_dataspace_req = dataspace_req_queue.pop();

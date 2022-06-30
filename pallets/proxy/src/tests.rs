@@ -236,8 +236,8 @@
 // // 			dataspace_id.clone(),
 // // 		));
 // // 		// AND: the data queue is cleared after the command is processed
-// // 		// let data_queue = DataAssets::data_queue();
-// // 		// let len = data_queue.len();
+// // 		// let ingestion_queue = DataAssets::ingestion_queue();
+// // 		// let len = ingestion_queue.len();
 // // 		// assert_eq!(len, 0);
 // // 		// AND: the request is removed from the data queue
 // // 		assert_ok!(Authorities::join_storage_pool(

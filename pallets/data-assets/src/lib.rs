@@ -68,6 +68,14 @@ pub enum DataCommand<LookupSource, AssetId, Balance, AccountId> {
     AddToDataSpace(AssetId, AssetId),
 }
 
+pub struct IngestionCommand {
+
+}
+
+pub struct EjectionCommand {
+
+}
+
 /// struct to store metadata of an asset class
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 pub struct AssetMetadata {
@@ -119,8 +127,8 @@ pub mod pallet {
     /// A queue of data to publish or obtain on IPFS.
     /// Commands are processed by offchain workers (of validators) in the iris-session pallet
 	#[pallet::storage]
-    #[pallet::getter(fn data_queue)]
-	pub(super) type DataQueue<T: Config> = StorageValue<
+    #[pallet::getter(fn ingestion_queue)]
+	pub(super) type IngestionQueue<T: Config> = StorageValue<
         _,
         Vec<DataCommand<
             <T::Lookup as StaticLookup>::Source, 
@@ -132,8 +140,8 @@ pub mod pallet {
     >;
 
 	#[pallet::storage]
-    #[pallet::getter(fn data_space_request_queue)]
-	pub(super) type DataSpaceRequestQueue<T: Config> = StorageValue<
+    #[pallet::getter(fn ejection_queue)]
+	pub(super) type EjectionQueue<T: Config> = StorageValue<
         _,
         Vec<DataCommand<
             <T::Lookup as StaticLookup>::Source, 
@@ -242,8 +250,8 @@ pub mod pallet {
          fn on_initialize(block_number: T::BlockNumber) -> Weight {
             // needs to be synchronized with offchain_worker actitivies
             if block_number % 2u32.into() == 1u32.into() {
-                <DataQueue<T>>::kill();
-                <DataSpaceRequestQueue<T>>::kill();
+                <IngestionQueue<T>>::kill();
+                <EjectionQueue<T>>::kill();
             }
 
             0
@@ -281,7 +289,7 @@ pub mod pallet {
             let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
             let balance_primitive = TryInto::<u64>::try_into(balance).ok();
             ensure!(balance_primitive != Some(0), Error::<T>::DataSpaceNotAccessible);
-            <DataQueue<T>>::mutate(
+            <IngestionQueue<T>>::mutate(
                 |queue| queue.push(DataCommand::AddBytes(
                     multiaddr,
                     cid,
@@ -421,7 +429,7 @@ pub mod pallet {
                 // car_addresses: Vec::new(),
             });
             // dispatch update dataspace metadata command
-            <DataSpaceRequestQueue<T>>::mutate(
+            <EjectionQueue<T>>::mutate(
                 |queue| queue.push(DataCommand::AddToDataSpace( 
                     id.clone(),
                     dataspace_id.clone(),
@@ -435,7 +443,7 @@ pub mod pallet {
             Ok(())
         }
 
-        // /// Add a request to pin a cid to the DataQueue for your embedded IPFS node
+        // /// Add a request to pin a cid to the IngestionQueue for your embedded IPFS node
         // /// 
         // /// * `asset_owner`: The owner of the asset class
         // /// * `asset_id`: The asset id of some asset class
@@ -455,7 +463,7 @@ pub mod pallet {
         //     );
 
         //     let cid: Vec<u8> = <Metadata<T>>::get(asset_id.clone()).unwrap().cid;
-        //     <DataQueue<T>>::mutate(
+        //     <IngestionQueue<T>>::mutate(
         //         |queue| queue.push(DataCommand::PinCID( 
         //             who.clone(),
         //             asset_id.clone(),
