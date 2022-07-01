@@ -24,7 +24,7 @@
 //! The pallet uses the Session pallet and implements related traits for session
 //! management. Currently it uses periodic session rotation provided by the
 //! session pallet to automatically rotate sessions. For this reason, the
-//! validator addition and removal becomes effective only after 2 sessions
+//! proxy addition and removal becomes effective only after 2 sessions
 //! (queuing + applying).
 //! 
 //! 
@@ -38,8 +38,8 @@ use frame_support::{
 	ensure,
 	pallet_prelude::*,
 	traits::{
-		EstimateNextSessionRotation, Get, Currency, ReservableCurrency,
-		ValidatorSet, ValidatorSetWithIdentification,
+		EstimateNextSessionRotation, Get, Currency, LockableCurrency,
+		ValidatorSet, ValidatorSetWithIdentification, LockIdentifier, WithdrawReasons,
 	},
 };
 use log;
@@ -108,6 +108,8 @@ pub mod crypto {
 	}
 }
 
+const STAKING_ID: LockIdentifier = *b"staking ";
+
 type BalanceOf<T> =
 	<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -135,6 +137,29 @@ pub struct ActiveEraInfo {
 	/// Start can be none if start hasn't been set for the era yet,
 	/// Start is set on the first on_finalize of the era to guarantee usage of `Time`.
 	start: Option<u64>,
+}
+
+/// The ledger of a (bonded) stash.
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
+#[scale_info(skip_type_params(T))]
+pub struct StakingLedger<T: Config> {
+	/// The stash account whose balance is actually locked and at stake.
+	pub stash: T::AccountId,
+	/// The total amount of the stash's balance that we are currently accounting for.
+	/// It's just `active` plus all the `unlocking` balances.
+	#[codec(compact)]
+	pub total: BalanceOf<T>,
+	/// The total amount of the stash's balance that will be at stake in any forthcoming
+	/// rounds.
+	#[codec(compact)]
+	pub active: BalanceOf<T>,
+	/// Any balance that is becoming free, which may eventually be transferred out of the stash
+	/// (assuming it doesn't get slashed first). It is assumed that this will be treated as a first
+	/// in, first out queue where the new (higher value) eras get pushed on the back.
+	// pub unlocking: BoundedVec<UnlockChunk<BalanceOf<T>>, MaxUnlockingChunks>,
+	/// List of eras for which the stakers behind a validator have claimed rewards. Only updated
+	/// for validators.
+	pub claimed_rewards: Vec<EraIndex>,
 }
 
 #[frame_support::pallet]
@@ -165,7 +190,24 @@ pub mod pallet {
 		/// the overarching call type
 		type Call: From<Call<Self>>;
 		/// the currency used by the pallet
-		type Currency: ReservableCurrency<Self::AccountId>;
+		// type Currency: ReservableCurrency<Self::AccountId>;
+		/// The staking balance.
+		type Currency: LockableCurrency<
+			Self::AccountId,
+			Moment = Self::BlockNumber,
+			Balance = Self::CurrencyBalance,
+		>;
+		/// Just the `Currency::Balance` type; we have this item to allow us to constrain it to
+		/// `From<u64>`.
+		type CurrencyBalance: sp_runtime::traits::AtLeast32BitUnsigned
+			+ codec::FullCodec
+			+ Copy
+			+ MaybeSerializeDeserialize
+			+ sp_std::fmt::Debug
+			+ Default
+			+ From<u64>
+			+ TypeInfo
+			+ MaxEncodedLen;
 		/// Origin for adding or removing a validator.
 		type AddRemoveOrigin: EnsureOrigin<Self::Origin>;
 		/// Minimum number of validators to leave in the validator set during
@@ -175,6 +217,12 @@ pub mod pallet {
 		type MaxDeadSession: Get<u32>;
 		/// the authority id used for sending signed txs
         type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
+	}
+
+	
+	#[pallet::type_value]
+	pub(crate) fn HistoryDepthOnEmpty() -> u32 {
+		84u32
 	}
 
 	#[pallet::pallet]
@@ -245,37 +293,78 @@ pub mod pallet {
 	// pub type DeadValidators<T: Config> = StorageMap<
 	// 	_, Blake2_128Concat, u32, Vec<T::AccountId>, ValueQuery>;
 
+	/// The minimum active bond to become and maintain the role of a nominator.
+	#[pallet::storage]
+	pub type MinProxyBond<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+
+	/// The maximum proxy count before we stop allowing new proxies to join.
+	///
+	/// When this value is not set, no limits are enforced.
+	#[pallet::storage]
+	pub type MaxProxyCount<T> = StorageValue<_, u32, OptionQuery>;
+
+	/// Map from all locked "stash" accounts to the controller account.
+	#[pallet::storage]
+	#[pallet::getter(fn bonded)]
+	pub type Bonded<T: Config> = StorageMap<_, Twox64Concat, T::AccountId, T::AccountId>;
+	
+	/// Map from all (unlocked) "controller" accounts to the info regarding the staking.
+	#[pallet::storage]
+	#[pallet::getter(fn ledger)]
+	pub type Ledger<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, StakingLedger<T>>;
+
+	/// Number of eras to keep in history.
+	///
+	/// Information is kept for eras in `[current_era - history_depth; current_era]`.
+	///
+	/// Must be more than the number of eras delayed by session otherwise. I.e. active era must
+	/// always be in history. I.e. `active_era > current_era - history_depth` must be
+	/// guaranteed.
+	#[pallet::storage]
+	#[pallet::getter(fn history_depth)]
+	pub(crate) type HistoryDepth<T> = StorageValue<_, u32, ValueQuery, HistoryDepthOnEmpty>;
+
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		/// New validator addition initiated. Effective in ~2 sessions.
-		BondSuccessful(T::AccountId),
-		RebondSuccessful(T::AccountId),
-		UnbondSuccessful(T::AccountId),
+		/// An account has bonded this amount. \[stash, amount\]
+		///
+		/// NOTE: This event is only emitted when funds are bonded via a dispatchable. Notably,
+		/// it will not be emitted for staking rewards when they are added to stake.
+		Bonded(T::AccountId, BalanceOf<T>),
+		/// An account has unbonded this amount. \[stash, amount\]
+		Unbonded(T::AccountId, BalanceOf<T>),
 	}
 
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
-		/// Target (post-removal) validator count is below the minimum.
-		TooLowValidatorCount,
-		/// Validator is already in the validator set.
-		Duplicate,
-		/// Validator is not approved for re-addition.
-		ValidatorNotApproved,
-		/// Only the validator can add itself back after coming online.
-		BadOrigin,
+		/// a stash account has already been bonded with a controller account
+		AlreadyBonded,
+		/// a controller has already been paired with a stash account
+		AlreadyPaired,
+		/// the bond amount is below the minimum required amount
+		InsufficientBond,
+		BadState,
 	}
 
 	#[pallet::genesis_config]
 	pub struct GenesisConfig<T: Config> {
 		pub initial_proxies: Vec<T::AccountId>,
+		pub min_proxy_bond: BalanceOf<T>,
+		pub max_proxy_count: Option<u32>,
+		pub history_depth: u32,
 	}
 
 	#[cfg(feature = "std")]
 	impl<T: Config> Default for GenesisConfig<T> {
 		fn default() -> Self {
-			Self { initial_proxies: Default::default() }
+			GenesisConfig { 
+				initial_proxies: Default::default(),
+				min_proxy_bond: Default::default(),
+				max_proxy_count: None,
+				history_depth: 84u32,
+			}
 		}
 	}
 
@@ -283,19 +372,80 @@ pub mod pallet {
 	impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
 		fn build(&self) {
 			Pallet::<T>::initialize_proxies(&self.initial_proxies);
+			HistoryDepth::<T>::put(self.history_depth);
+			MinProxyBond::<T>::put(self.min_proxy_bond);
+			if let Some(x) = self.max_proxy_count {
+				MaxProxyCount::<T>::put(x);
+			}
 		}
 	}
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 
+		/// Take the origin account as a stash and lock up `value` of its balance. `controller` will
+		/// be the account that controls it.
+		///
+		/// `value` must be more than the `minimum_balance` specified by `T::Currency`.
+		///
+		/// The dispatch origin for this call must be _Signed_ by the stash account.
+		///
+		/// Emits `Bonded`.
+		/// # <weight>
+		/// - Independent of the arguments. Moderate complexity.
+		/// - O(1).
+		/// - Three extra DB entries.
+		///
+		/// NOTE: Two of the storage writes (`Self::bonded`, `Self::payee`) are _never_ cleaned
+		/// unless the `origin` falls below _existential deposit_ and gets removed as dust.
+		/// ------------------
+		/// # </weight>
 		#[pallet::weight(100)]
 		pub fn bond(
 			origin: OriginFor<T>,
-			controller: T::AccountId,
-			#[pallet::compact] max_additional: BalanceOf<T>,
+			controller: <T::Lookup as StaticLookup>::Source,
+			#[pallet::compact] value: BalanceOf<T>,
 		) -> DispatchResult {
-			let who = ensure_signed(origin)?;
+			let stash = ensure_signed(origin)?;
+
+			if <Bonded<T>>::contains_key(&stash) {
+				return Err(Error::<T>::AlreadyBonded.into());
+			}
+
+			let controller = T::Lookup::lookup(controller)?;
+
+			if <Ledger<T>>::contains_key(&controller) {
+				return Err(Error::<T>::AlreadyPaired.into())
+			}
+
+			// Reject a bond which is considered to be _dust_.
+			if value < <T as pallet::Config>::Currency::minimum_balance() {
+				return Err(Error::<T>::InsufficientBond.into())
+			}
+
+			frame_system::Pallet::<T>::inc_consumers(&stash).map_err(|_| Error::<T>::BadState)?;
+
+			// You're auto-bonded forever, here. We might improve this by only bonding when
+			// you actually validate/nominate and remove once you unbond __everything__.
+			<Bonded<T>>::insert(&stash, &controller);
+			// <Payee<T>>::insert(&stash, payee);
+
+			let current_era = CurrentEra::<T>::get().unwrap_or(0);
+			let history_depth = Self::history_depth();
+			let last_reward_era = current_era.saturating_sub(history_depth);
+
+			let stash_balance = <T as pallet::Config>::Currency::free_balance(&stash);
+			let value = value.min(stash_balance);
+			Self::deposit_event(Event::<T>::Bonded(stash.clone(), value));
+			let item = StakingLedger {
+				stash,
+				total: value,
+				active: value,
+				// unlocking: Default::default(),
+				claimed_rewards: (last_reward_era..current_era).collect(),
+			};
+			Self::update_ledger(&controller, &item);
+
 			Ok(())
 		}
 
@@ -319,6 +469,7 @@ pub mod pallet {
 	}
 }
 
+// TODO: move this to impl.rs
 impl<T: Config> Pallet<T> {
 
 	fn initialize_proxies(proxies: &[T::AccountId]) {
@@ -326,6 +477,14 @@ impl<T: Config> Pallet<T> {
 		assert!(<Proxies<T>>::get().is_empty(), "Proxies are already initialized!");
 		<Proxies<T>>::put(proxies);
 		<ApprovedProxies<T>>::put(proxies);
+	}
+
+	/// Update the ledger for a controller.
+	///
+	/// This will also update the stash lock.
+	fn update_ledger(controller: &T::AccountId, ledger: &StakingLedger<T>) {
+		<T as pallet::Config>::Currency::set_lock(STAKING_ID, &ledger.stash, ledger.total, WithdrawReasons::all());
+		<Ledger<T>>::insert(controller, ledger);
 	}
 
 	// // Adds offline validators to a local cache for removal at new session.

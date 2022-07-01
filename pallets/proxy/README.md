@@ -14,6 +14,11 @@ The `IngestionQueue` contains commands initiated by data owners to ingest data i
 
 The `EjectionQueue` contains commands initiated  by data consumers to eject data from the underlying IPFS network when authorized consumers make such a request. The proxy is not responsible for authorizing the consumer, only for verifying the authorization.
 
+## Configuration
+
+* min_proxy_bond: The minimum amount of tokens that a proxy must bond
+* max_proxy_count: The maximum number of proxies before we block new proxies from joining
+
 ## Staking
 
 * staking: An authority must stake an additional 50 (TBD) IRIS in order to be eligible to proxy requests.
