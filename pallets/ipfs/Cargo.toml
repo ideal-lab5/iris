@@ -1,12 +1,12 @@
 [package]
 authors = ["Ideal Labs Developers <https://github.com/ideal-lab5>"]
 edition = '2021'
-name = 'pallet-proxy'
+name = 'pallet-ipfs'
 version = "1.0.0"
 license = "GPL-3.0-or-later"
 homepage = "https://idealabs.networks/"
 repository = "https://github.com/ideal-lab5/iris"
-description = "FRAME pallet for proxy nodes."
+description = "FRAME pallet for IPFS integration"
 readme = "README.md"
 publish = false
 

@@ -38,7 +38,7 @@ use frame_support::{
 	ensure,
 	pallet_prelude::*,
 	traits::{
-		EstimateNextSessionRotation, Get,
+		EstimateNextSessionRotation, Get, Currency, ReservableCurrency,
 		ValidatorSet, ValidatorSetWithIdentification,
 	},
 };
@@ -108,6 +108,9 @@ pub mod crypto {
 	}
 }
 
+type BalanceOf<T> =
+	<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
 /// Counter for the number of eras that have passed.
 pub type EraIndex = u32;
 /// counter for the number of "reward" points earned by a given storage provider
@@ -161,6 +164,8 @@ pub mod pallet {
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 		/// the overarching call type
 		type Call: From<Call<Self>>;
+		/// the currency used by the pallet
+		type Currency: ReservableCurrency<Self::AccountId>;
 		/// Origin for adding or removing a validator.
 		type AddRemoveOrigin: EnsureOrigin<Self::Origin>;
 		/// Minimum number of validators to leave in the validator set during
@@ -176,41 +181,6 @@ pub mod pallet {
 	#[pallet::generate_store(pub(super) trait Store)]
 	#[pallet::without_storage_info]
 	pub struct Pallet<T>(_);
-
-    /// map the ipfs public key to a list of multiaddresses
-    #[pallet::storage]
-    #[pallet::getter(fn bootstrap_nodes)]
-    pub(super) type BootstrapNodes<T: Config> = StorageMap<
-        _, Blake2_128Concat, Vec<u8>, Vec<OpaqueMultiaddr>, ValueQuery,
-    >;
-
-	/// map substrate public key to ipfs public key
-	#[pallet::storage]
-	#[pallet::getter(fn substrate_ipfs_bridge)]
-	pub(super) type SubstrateIpfsBridge<T: Config> = StorageMap<
-		_, Blake2_128Concat, T::AccountId, Vec<u8>, ValueQuery,
-	>;
-
-	// /// Maps an asset id to a collection of nodes that want to provider storage
-	// #[pallet::storage]
-	// #[pallet::getter(fn candidate_storage_providers)]
-	// pub(super) type QueuedStorageProviders<T: Config> = StorageMap<
-	// 	_, Blake2_128Concat, T::AssetId, Vec<T::AccountId>, ValueQuery,
-	// >;
-
-	// /// maps an asset id to a collection of nodes that are providing storage
-	// #[pallet::storage]
-	// #[pallet::getter(fn storage_providers)]
-	// pub(super) type StorageProviders<T: Config> = StorageMap<
-	// 	_, Blake2_128Concat, T::AssetId, Vec<T::AccountId>, ValueQuery,
-	// >;
-
-	// /// maps an asset id to a collection of nodes that have inserted the pin for the underlying cid
-	// #[pallet::storage]
-	// #[pallet::getter(fn pinners)]
-	// pub(super) type Pinners<T: Config> = StorageMap<
-	// 	_, Blake2_128Concat, T::AssetId, Vec<T::AccountId>, ValueQuery,
-	// >;
 
 	/// The current era index.
 	///
@@ -279,25 +249,9 @@ pub mod pallet {
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
 		/// New validator addition initiated. Effective in ~2 sessions.
-		StakeSuccessful(T::AccountId),
-	}
-
-	
-	#[pallet::validate_unsigned]
-	impl<T: Config> ValidateUnsigned for Pallet<T> {
-		type Call = Call<T>;
-
-		/// Validate unsigned call to this module.
-		///
-		fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-			if let Call::submit_rpc_ready { .. } = call {
-				Self::validate_transaction_parameters()
-			} else if let Call::submit_ipfs_identity{ .. } = call {
-				Self::validate_transaction_parameters()
-			} else {
-				InvalidTransaction::Call.into()
-			}
-		}
+		BondSuccessful(T::AccountId),
+		RebondSuccessful(T::AccountId),
+		UnbondSuccessful(T::AccountId),
 	}
 
 	// Errors inform users that something went wrong.
@@ -311,45 +265,6 @@ pub mod pallet {
 		ValidatorNotApproved,
 		/// Only the validator can add itself back after coming online.
 		BadOrigin,
-		/// could not build the ipfs request
-		CantCreateRequest,
-		/// the request to IPFS timed out
-		RequestTimeout,
-		/// the request to IPFS failed
-		RequestFailed,
-		/// the specified asset id does not correspond to any owned content
-		NoSuchOwnedContent,
-		/// the nodes balance is insufficient to complete this operation
-		InsufficientBalance,
-		/// the node is already a candidate for some storage pool
-		AlreadyACandidate,
-		/// the node has already pinned the CID
-		AlreadyPinned,
-		/// the node is not a candidate storage provider for some asset id
-		NotACandidate,
-		InvalidMultiaddress,
-		InvalidCID,
-		IpfsError,
-	}
-
-	#[pallet::hooks]
-	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-		fn offchain_worker(block_number: T::BlockNumber) {
-			// every 5 blocks
-			if block_number % 5u32.into() == 0u32.into() {
-				if let Err(e) = Self::connection_housekeeping() {
-					log::error!("Encountered an error while processing data requests: {:?}", e);
-				}
-			}
-			// handle data requests each block
-			if let Err(e) = Self::prcoess_ingestion_requests() {
-				log::error!("Encountered an error while processing data requests: {:?}", e);
-			}
-
-			if let Err(e) = Self::process_ejection_queue() {
-				log::error!("Encountered an error while processing data requests: {:?}", e);
-			}
-		}
 	}
 
 	#[pallet::genesis_config]
@@ -375,156 +290,32 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 
 		#[pallet::weight(100)]
-		pub fn stake(
+		pub fn bond(
 			origin: OriginFor<T>,
-			amount: T::Balance
+			controller: T::AccountId,
+			#[pallet::compact] max_additional: BalanceOf<T>,
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			Ok(())
 		}
 
 		#[pallet::weight(100)]
-		pub fn unstake(
+		pub fn bond_extra(
 			origin: OriginFor<T>,
-			amount: T::Balance
+			#[pallet::compact] max_additional: BalanceOf<T>,
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			Ok(())
 		}
 
-		/// TODO: I really need to address the fact that this is callable by anyone
-		/// Someone could randomly make an asset class on your behalf, making you the admin
-		/// 
-		/// should only be called by offchain workers... how to ensure this?
-        /// submits IPFS results on chain and creates new ticket config in runtime storage
-        ///
-        /// * `admin`: The admin account
-        /// * `cid`: The cid generated by the OCW
-        /// * `id`: The AssetId (passed through from the create_storage_asset call)
-        /// * `balance`: The balance (passed through from the create_storage_asset call)
-        ///
-        #[pallet::weight(100)]
-        pub fn submit_ipfs_add_results(
-            origin: OriginFor<T>,
-            admin: <T::Lookup as StaticLookup>::Source,
-            cid: Vec<u8>,
-            id: T::AssetId,
-            balance: T::Balance,
-			dataspace_id: T::AssetId,
-        ) -> DispatchResult {
-			let who = ensure_signed(origin)?;
-			let new_origin = system::RawOrigin::Signed(who.clone()).into();
-			// creates the asset class
-            <pallet_data_assets::Pallet<T>>::submit_ipfs_add_results(
-				new_origin,
-				admin,
-				cid,
-				dataspace_id,
-				id,
-				balance,
-			)?;
-			// award point to all validators
-			if let Some(_active_era) = ActiveEra::<T>::get() {
-				// WIP: TODO
-				// <ErasRewardPoints<T>>::mutate(active_era.clone(), id, |era_rewards| {
-				// 	// reward all validators
-				// 	for v in <Validators::<T>>::get() {
-				// 		SessionParticipation::<T>::mutate(active_era.clone(), |participants| {
-				// 			participants.push(v.clone());
-				// 		});
-				// 		*era_rewards.unwrap().individual.entry(v.clone()).or_default() += 1;
-				// 		era_rewards.unwrap().total += 1;
-				// 	}
-				// });
-			} else {
-				// error
-			}
-            Ok(())
-        }
-
-        /// Should only be callable by OCWs (TODO)
-        /// Submit the results of an `ipfs identity` call to be stored on chain
-        ///
-        /// * origin: a validator node
-        /// * public_key: The IPFS node's public key
-        /// * multiaddresses: A vector of multiaddresses associate with the public key
-        ///
-        #[pallet::weight(100)]
-        pub fn submit_ipfs_identity(
-            origin: OriginFor<T>,
-            public_key: Vec<u8>,
-            multiaddresses: Vec<OpaqueMultiaddr>,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            <BootstrapNodes::<T>>::insert(public_key.clone(), multiaddresses.clone());
-            <SubstrateIpfsBridge::<T>>::insert(who.clone(), public_key.clone());
-			// Self::deposit_event(Event::PublishedIdentity(who.clone()));
-            Ok(())
-        }
-
-		/// should only be callable by validator nodes (TODO)
-		/// 
-		/// * `asset_id`: The asset id corresponding to the data that was pinned
-		/// * `pinner': The node claiming to have pinned the data
-		/// 
 		#[pallet::weight(100)]
-		pub fn submit_ipfs_pin_result(
+		pub fn unbond(
 			origin: OriginFor<T>,
-			asset_id: T::AssetId,
-			pinner: T::AccountId,
+			#[pallet::compact] max_additional: BalanceOf<T>,
 		) -> DispatchResult {
-			// let _who = ensure_signed(origin)?;
-			// // verify they are a candidate storage provider
-			// let candidate_storage_providers = <QueuedStorageProviders::<T>>::get(asset_id.clone());
-			// ensure!(candidate_storage_providers.contains(&pinner), Error::<T>::NotACandidate);
-			// // verify not already pinning the content
-			// let current_pinners = <Pinners::<T>>::get(asset_id.clone());
-			// ensure!(!current_pinners.contains(&pinner), Error::<T>::AlreadyPinned);
-			// // TODO: we need a better scheme for *generating* pool ids -> should always be unique (cid + owner maybe?)
-			// <Pinners<T>>::mutate(asset_id.clone(), |p| {
-			// 	p.push(pinner.clone());
-			// });
-			// // award point to pinner
-			// if let Some(active_era) = ActiveEra::<T>::get() {
-			// 	SessionParticipation::<T>::mutate(active_era.clone(), |p| {
-			// 		p.push(pinner.clone());
-			// 	});
-			// 	// WIP: TODO
-			// 	// <ErasRewardPoints<T>>::mutate(active_era, asset_id, |era_rewards| {
-			// 	// 	*era_rewards.unwrap().individual.entry(pinner.clone()).or_default() += 1;
-			// 	// 	era_rewards.unwrap().total += 1;
-			// 	// });
-			// }
+			let who = ensure_signed(origin)?;
 			Ok(())
 		}
-
-        /// Should only be callable by OCWs (TODO)
-        /// Submit the results onchain to notify a beneficiary that their data is available: TODO: how to safely share host? spam protection on rpc endpoints?
-        ///
-        /// * `beneficiary`: The account that requested the data
-        /// * `host`: The node's host where the data has been made available (RPC endpoint)
-        ///
-        #[pallet::weight(100)]
-        pub fn submit_rpc_ready(
-            _origin: OriginFor<T>,
-			_asset_id: T::AssetId,
-        ) -> DispatchResult {
-            // ensure_signed(origin)?;
-			// WIP: TODO
-			// if let Some(active_era) = ActiveEra::<T>::get() {
-			// 	<ErasRewardPoints<T>>::mutate(active_era.clone(), asset_id.clone(), |era_rewards| {
-			// 		// reward all active storage providers
-			// 		for k in StorageProviders::<T>::get(asset_id.clone()).into_iter() {
-			// 			SessionParticipation::<T>::mutate(active_era.clone(), |p| {
-			// 				p.push(k.clone());
-			// 			});
-			// 			*era_rewards.unwrap().individual.entry(k.clone()).or_default() += 1;
-			// 			era_rewards.unwrap().total += 1;
-			// 		}
-			// 	});
-			// }
-            Ok(())
-        }
 	}
 }
 
@@ -615,202 +406,6 @@ impl<T: Config> Pallet<T> {
 			.longevity(5)
 			.propagate(true)
 			.build()
-	}
-	
-	/// manage connection to the iris ipfs swarm
-    ///
-    /// If the node is already a bootstrap node, do nothing. Otherwise submits a signed tx 
-    /// containing the public key and multiaddresses of the embedded ipfs node.
-    /// 
-    /// Returns an error if communication with the embedded IPFS fails
-    fn connection_housekeeping() -> Result<(), Error<T>> {
-        Ok(())
-    }
-
-	fn process_ejection_queue() -> Result<(), Error<T>> {
-		let data_retrieval_queue = <pallet_authorization::Pallet<T>>::data_retrieval_queue();
-		let len = data_retrieval_queue.len();
-		if len != 0 {
-			log::info!("{} entr{} in the data retrieval queue", len, if len == 1 { "y" } else { "ies" });
-		}
-		for cmd in data_retrieval_queue.into_iter() {
-			match cmd {
-				DataCommand::CatBytes(_requestor, _owner, asset_id) => {
-					match <pallet_data_assets::Pallet<T>>::metadata(asset_id.clone()) {
-						Some(metadata) => {
-							let cid = metadata.cid;
-							// let res = Self::ipfs_cat(&cid)?;
-							// let data = res.body().collect::<Vec<u8>>();
-							// log::info!("IPFS: Fetched data from IPFS.");
-							// add to offchain index
-							sp_io::offchain::local_storage_set(
-								StorageKind::PERSISTENT,
-								&cid,
-								&cid,
-							);
-
-							let signer = Signer::<T, T::AuthorityId>::all_accounts();
-							if !signer.can_sign() {
-								log::error!(
-									"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-								);
-							}
-
-							let results = signer.send_signed_transaction(|_account| { 
-								Call::submit_rpc_ready {
-									asset_id: asset_id.clone(),
-								}
-							});
-					
-							for (_, res) in &results {
-								match res {
-									Ok(()) => log::info!("Submitted ipfs results"),
-									Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-								}
-							}
-						},
-						None => {
-							return Ok(());
-						}
-					}
-				},
-				_ => {
-
-				}
-			}
-		}
-
-		Ok(())
-	}
-
-	/// process any requests in the IngestionQueue
-	/// TODO: This needs some *major* refactoring
-    fn prcoess_ingestion_requests() -> Result<(), Error<T>> {
-		let ingestion_queue = <pallet_data_assets::Pallet<T>>::ingestion_queue();
-		let len = ingestion_queue.len();
-		if len != 0 {
-			log::info!("{} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });
-		}
-		for cmd in ingestion_queue.into_iter() {
-			match cmd {
-				DataCommand::AddBytes(_addr, cid, admin, id, balance, dataspace_id) => {
-					if sp_io::offchain::is_validator() {
-						// Self::ipfs_connect(&addr);
-						// Self::ipfs_get(&cid);
-						// Self::ipfs_disconnect(&addr);
-
-						let signer = Signer::<T, T::AuthorityId>::all_accounts();
-						if !signer.can_sign() {
-							log::error!(
-								"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-							);
-						}
-						let results = signer.send_signed_transaction(|_account| { 
-							Call::submit_ipfs_add_results{
-								admin: admin.clone(),
-								cid: cid.clone(),
-								dataspace_id: dataspace_id.clone(),
-								id: id.clone(),
-								balance: balance.clone(),
-							}
-						});
-				
-						for (_, res) in &results {
-							match res {
-								Ok(()) => log::info!("Submitted results"),
-								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-							}
-						}
-					}
-				},
-				_ => {
-					// do nothing
-				}
-			}
-		}
-
-        Ok(())
-    }
-
-	/*
-	IPFS commands: This should ultimately be moved to it's own file
-	*/
-	/// ipfs swarm connect
-	fn ipfs_connect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
-		match str::from_utf8(multiaddress) {
-			Ok(maddr) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/connect?arg=".to_owned();
-				endpoint.push_str(maddr);
-				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
-				return Ok(());
-			},
-			Err(_e) => {
-				return Err(Error::<T>::InvalidMultiaddress);
-			}
-		}
-	}
-
-	/// ipfs swarm disconnect
-	fn ipfs_disconnect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
-		match str::from_utf8(multiaddress) {
-			Ok(maddr) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?arg=".to_owned();
-				endpoint.push_str(maddr);
-				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
-				return Ok(());
-			},
-			Err(_e) => {
-				return Err(Error::<T>::InvalidMultiaddress);
-			}
-		}
-	}
-
-	/// ipfs get <CID>
-	fn ipfs_get(cid: &Vec<u8>) -> Result<(), Error<T>> {
-		match str::from_utf8(cid) {
-			Ok(cid_string) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?arg=".to_owned();
-				endpoint.push_str(cid_string);
-				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
-				return Ok(());
-			},
-			Err(_e) => {
-				return Err(Error::<T>::InvalidCID);
-			}
-		}
-	}
-
-	/// ipfs cat <CID>
-	fn ipfs_cat(cid: &Vec<u8>) -> Result<http::Response, Error<T>> {
-		match str::from_utf8(cid) {
-			Ok(cid_string) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/cat?arg=".to_owned();
-				endpoint.push_str(cid_string);
-				let res = Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).ok();
-				return Ok(res.unwrap());
-			},
-			Err(_e) => {
-				return Err(Error::<T>::InvalidCID);
-			}
-		}
-	}
-
-	/// Make an http post request to IPFS
-	/// 
-	/// * `endpoint`: The IPFS endpoint to invoke
-	fn ipfs_post_request(endpoint: &str) -> Result<http::Response, http::Error> {
-		let pending = http::Request::default()
-					.method(http::Method::Post)
-					.url(endpoint)
-					.body(vec![b""])
-					.send()
-					.unwrap();
-		let response = pending.wait().unwrap();
-		if response.code != 200 {
-			log::warn!("Unexpected status code: {}", response.code);
-			return Err(http::Error::Unknown)
-		}
-		Ok(response)
 	}
 }	
 

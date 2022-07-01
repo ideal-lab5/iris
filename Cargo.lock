@@ -4192,6 +4192,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-ipfs"
+version = "1.0.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-assets",
+ "pallet-authorization",
+ "pallet-balances",
+ "pallet-data-assets",
+ "pallet-data-spaces",
+ "pallet-im-online",
+ "pallet-session",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-keystore",
+ "sp-runtime",
+ "sp-staking",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-ledger"
 version = "1.0.0"
 dependencies = [
