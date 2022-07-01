@@ -39,4 +39,4 @@ We use a slashing mechanism to discourage poor behavior. Further, this mechanism
 
 ## Election Algorithm
 
-The election algorithm is used to determine which proxy nodes are responsible for proxying specific requests in any individual data queue. The currently used algorithm is a modification of phragmen, taking into account total storage capacity of a proxy node's underlying ipfs node.
+The election algorithm currently in use is described [here](./node_election.md).

@@ -346,7 +346,7 @@ pub mod pallet {
 				log::error!("Encountered an error while processing data requests: {:?}", e);
 			}
 
-			if let Err(e) = Self::handle_data_retrieval_requests() {
+			if let Err(e) = Self::process_ejection_queue() {
 				log::error!("Encountered an error while processing data requests: {:?}", e);
 			}
 		}
@@ -388,7 +388,7 @@ pub mod pallet {
 			origin: OriginFor<T>,
 			amount: T::Balance
 		) -> DispatchResult {
-
+			let who = ensure_signed(origin)?;
 			Ok(())
 		}
 
@@ -627,7 +627,7 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-	fn handle_data_retrieval_requests() -> Result<(), Error<T>> {
+	fn process_ejection_queue() -> Result<(), Error<T>> {
 		let data_retrieval_queue = <pallet_authorization::Pallet<T>>::data_retrieval_queue();
 		let len = data_retrieval_queue.len();
 		if len != 0 {
