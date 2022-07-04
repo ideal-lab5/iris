@@ -1,12 +1,12 @@
 [package]
 authors = ["Ideal Labs Developers <https://github.com/ideal-lab5>"]
 edition = '2021'
-name = 'pallet-data-spaces'
+name = 'pallet-data-assets'
 version = "1.0.0"
 license = "GPL-3.0-or-later"
 homepage = "https://idealabs.networks/"
-repository = "https://github.com/ideal-lab5/iris/"
-description = "FRAME pallet template for Data Space management."
+repository = "https://github.com/ideal-lab5/iris"
+description = "FRAME pallet template for Iris Asset management."
 readme = "README.md"
 publish = false
 
@@ -21,7 +21,6 @@ sp-io = { version = "6.0.0", default-features = false, git = "https://github.com
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
-# sp-keystore = { version = "0.12.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
@@ -31,7 +30,6 @@ log = { version = "0.4.14", default-features = false }
 
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
 pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = false }
-pallet-data-assets = { version = "1.0.0", default-features = false, path = "../data-assets" }
 
 [features]
 default = ['std']
@@ -48,7 +46,6 @@ std = [
 	'log/std',
 	'pallet-assets/std',
 	'pallet-balances/std',
-	'pallet-data-assets/std',
 ]
 
 runtime-benchmarks = ["frame-benchmarking"]

@@ -16,8 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg(test)]
-use crate::{self as pallet_data_spaces, Config};
-use pallet_data_assets;
+use crate::{self as pallet_authorization, Config};
 use frame_support::{
 	parameter_types,
 	construct_runtime,
@@ -89,8 +88,7 @@ construct_runtime!(
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		Assets: pallet_assets::{Pallet, Storage, Event<T>},
-		DataAssets: pallet_data_assets::{Pallet, Call, Storage, Event<T>},
-		DataSpaces: pallet_data_spaces::{Pallet, Call, Storage, Event<T>},
+		IrisEjection: pallet_authorization::{Pallet, Call, Storage, Event<T>},
 	}
 );
 
@@ -169,12 +167,6 @@ impl pallet_assets::Config for Test {
 	type Extra = ();
 }
 
-/// configure the iris assets pallet
-impl pallet_data_assets::Config for Test {
-	type Event = Event;
-	type Call = Call;
-}
-
 type Extrinsic = TestXt<Call, ()>;
 type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
@@ -206,10 +198,8 @@ where
 }
 
 impl Config for Test {
-	type Currency = Balances;
 	type Call = Call;
 	type Event = Event;
-	type AuthorityId = pallet_data_spaces::crypto::TestAuthId;
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {

@@ -74,10 +74,10 @@ pub use sp_runtime::{Perbill, Permill};
 
 use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
 
-pub use pallet_iris_assets;
-pub use pallet_iris_ejection;
+pub use pallet_data_assets;
+pub use pallet_authorization;
 pub use pallet_data_spaces;
-pub use pallet_iris_session;
+pub use pallet_authorities;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -365,13 +365,13 @@ parameter_types! {
 	pub const MaxDeadSession: u32 = 3;
 }
 
-impl pallet_iris_session::Config for Runtime {
+impl pallet_authorities::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 	type AddRemoveOrigin = EnsureRoot<AccountId>;
 	type MinAuthorities = MinAuthorities;
 	type MaxDeadSession = MaxDeadSession;
-	type AuthorityId = pallet_iris_session::crypto::TestAuthId;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
 parameter_types! {
@@ -381,10 +381,10 @@ parameter_types! {
 
 impl pallet_session::Config for Runtime {
 	type ValidatorId = <Self as frame_system::Config>::AccountId;
-	type ValidatorIdOf = pallet_iris_session::ValidatorOf<Self>;
+	type ValidatorIdOf = pallet_authorities::ValidatorOf<Self>;
 	type ShouldEndSession = pallet_session::PeriodicSessions<Period, Offset>;
 	type NextSessionRotation = pallet_session::PeriodicSessions<Period, Offset>;
-	type SessionManager = IrisSession;
+	type SessionManager = Authorities;
 	type SessionHandler = <opaque::SessionKeys as OpaqueKeys>::KeyTypeIdProviders;
 	type Keys = opaque::SessionKeys;
 	type WeightInfo = pallet_session::weights::SubstrateWeight<Runtime>;
@@ -450,12 +450,12 @@ impl pallet_assets::Config for Runtime {
 }
 
 /// configure the iris assets pallet
-impl pallet_iris_assets::Config for Runtime {
+impl pallet_data_assets::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 }
 
-impl pallet_iris_ejection::Config for Runtime {
+impl pallet_authorization::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 }
@@ -464,10 +464,10 @@ impl pallet_data_spaces::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 	type Currency = Balances;
-	type AuthorityId = pallet_iris_session::crypto::TestAuthId;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
-impl pallet_iris_ledger::Config for Runtime {
+impl pallet_ledger::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 	type IrisCurrency = Balances;
@@ -484,8 +484,8 @@ impl pallet_im_online::Config for Runtime {
 	type AuthorityId = ImOnlineId;
 	type Event = Event;
 	type NextSessionRotation = pallet_session::PeriodicSessions<Period, Offset>;
-	type ValidatorSet = IrisSession;
-	type ReportUnresponsiveness = IrisSession;
+	type ValidatorSet = Authorities;
+	type ReportUnresponsiveness = Authorities;
 	type UnsignedPriority = ImOnlineUnsignedPriority;
 	type WeightInfo = pallet_im_online::weights::SubstrateWeight<Runtime>;
 	type MaxKeys = MaxKeys;
@@ -571,10 +571,10 @@ construct_runtime!(
 		TransactionPayment: pallet_transaction_payment,
 		Sudo: pallet_sudo,
 		Assets: pallet_assets::{Pallet, Storage, Event<T>},
-		IrisAssets: pallet_iris_assets,
-		IrisEjection: pallet_iris_ejection,
-		IrisLedger: pallet_iris_ledger,
-		IrisSession: pallet_iris_session,
+		DataAssets: pallet_data_assets,
+		IrisEjection: pallet_authorization,
+		Ledger: pallet_ledger,
+		Authorities: pallet_authorities,
 		Session: pallet_session,
 		DataSpaces: pallet_data_spaces,
 		ImOnline: pallet_im_online::{Pallet, Call, Storage, Event<T>, ValidateUnsigned, Config<T>},
@@ -623,7 +623,6 @@ mod benches {
 		[frame_system, SystemBench::<Runtime>]
 		[pallet_balances, Balances]
 		[pallet_timestamp, Timestamp]
-		[pallet_template, TemplateModule]
 	);
 }
 
@@ -914,57 +913,57 @@ impl ChainExtension<Runtime> for IrisExtension {
 			func_id
 		);
         match func_id {	
-			// IrisAssets::transfer_asset
+			// DataAssets::transfer_asset
             0 => {
                 let mut env = env.buf_in_buf_out();
 				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u64) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-                crate::IrisAssets::transfer_asset(
+                crate::DataAssets::transfer_asset(
 					origin, sp_runtime::MultiAddress::Id(target), asset_id, amount,
 				)?;
 				Ok(RetVal::Converging(func_id))
             },
-			// IrisAssets::mint
+			// DataAssets::mint
 			1 => {
 				let mut env = env.buf_in_buf_out();
 				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u64) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-                crate::IrisAssets::mint(
+                crate::DataAssets::mint(
 					origin, sp_runtime::MultiAddress::Id(target), asset_id, amount,
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},
-			// IrisAssets::burn
+			// DataAssets::burn
 			2 => {
 				let mut env = env.buf_in_buf_out();
 				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u64) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-                crate::IrisAssets::burn(
+                crate::DataAssets::burn(
 					origin, sp_runtime::MultiAddress::Id(target), asset_id, amount,
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},
-			// IrisLedger::lock_currrency
+			// Ledger::lock_currrency
 			3 => {
 				let mut env = env.buf_in_buf_out();
 				let (caller_account, amount): (AccountId, u64) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-				crate::IrisLedger::lock_currency(
+				crate::Ledger::lock_currency(
 					origin, amount.into(),
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},
-			// IrisLedger::unlock_currency_and_transfer
+			// Ledger::unlock_currency_and_transfer
 			4 => {
 				let mut env = env.buf_in_buf_out();
 				let (caller_account, target): (AccountId, AccountId) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-				crate::IrisLedger::unlock_currency_and_transfer(
+				crate::Ledger::unlock_currency_and_transfer(
 					origin, target,
 				)?;
 				Ok(RetVal::Converging(func_id))

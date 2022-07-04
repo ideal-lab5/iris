@@ -16,14 +16,18 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg(test)]
-use crate::{self as pallet_data_spaces, Config};
+
+use super::*;
+use crate::{self as pallet_authorities, Config};
 use pallet_data_assets;
 use frame_support::{
-	parameter_types,
-	construct_runtime,
-	traits::{GenesisBuild, ConstU32}
+	parameter_types, 
+	traits::{GenesisBuild, ConstU32},
+	BasicExternalities,
 };
+
 use frame_system::EnsureRoot;
+use pallet_session::*;
 use sp_runtime::{
 	impl_opaque_keys,
 	testing::{Header, UintAuthorityId, TestXt},
@@ -79,8 +83,7 @@ impl OpaqueKeys for PreUpgradeMockSessionKeys {
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
 
-// Configure a mock runtime to test the pallet.
-construct_runtime!(
+frame_support::construct_runtime!(
 	pub enum Test where
 		Block = Block,
 		NodeBlock = Block,
@@ -88,15 +91,75 @@ construct_runtime!(
 	{
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
+		Session: pallet_session::{Pallet, Call, Storage, Event, Config<T>},
 		Assets: pallet_assets::{Pallet, Storage, Event<T>},
 		DataAssets: pallet_data_assets::{Pallet, Call, Storage, Event<T>},
-		DataSpaces: pallet_data_spaces::{Pallet, Call, Storage, Event<T>},
+		IrisEjection: pallet_authorization,
+		Authorities: pallet_authorities::{Pallet, Call, Storage, Event<T>, Config<T>},
 	}
 );
 
+thread_local! {
+	pub static NEXT_VALIDATORS: RefCell<Vec<(sp_core::sr25519::Public, UintAuthorityId)>> = RefCell::new(
+		vec![(sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), UintAuthorityId(0)),
+		(sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), UintAuthorityId(1)),
+		(sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), UintAuthorityId(2))]);
+	pub static AUTHORITIES: RefCell<Vec<UintAuthorityId>> =
+		RefCell::new(vec![UintAuthorityId(0), UintAuthorityId(1), UintAuthorityId(2)]);
+	pub static FORCE_SESSION_END: RefCell<bool> = RefCell::new(false);
+	pub static SESSION_LENGTH: RefCell<u64> = RefCell::new(2);
+	pub static SESSION_CHANGED: RefCell<bool> = RefCell::new(false);
+	pub static DISABLED: RefCell<bool> = RefCell::new(false);
+	pub static BEFORE_SESSION_END_CALLED: RefCell<bool> = RefCell::new(false);
+}
+
+pub struct TestSessionHandler;
+impl pallet_session::SessionHandler<sp_core::sr25519::Public> for TestSessionHandler {
+	const KEY_TYPE_IDS: &'static [sp_runtime::KeyTypeId] = &[UintAuthorityId::ID];
+	fn on_genesis_session<T: OpaqueKeys>(_validators: &[(sp_core::sr25519::Public, T)]) {}
+	fn on_new_session<T: OpaqueKeys>(
+		changed: bool,
+		validators: &[(sp_core::sr25519::Public, T)],
+		_queued_validators: &[(sp_core::sr25519::Public, T)],
+	) {
+		SESSION_CHANGED.with(|l| *l.borrow_mut() = changed);
+		AUTHORITIES.with(|l| {
+			*l.borrow_mut() = validators
+				.iter()
+				.map(|(_, id)| id.get::<UintAuthorityId>(DUMMY).unwrap_or_default())
+				.collect()
+		});
+	}
+	fn on_disabled(_validator_index: u32) {
+		DISABLED.with(|l| *l.borrow_mut() = true)
+	}
+	fn on_before_session_ending() {
+		BEFORE_SESSION_END_CALLED.with(|b| *b.borrow_mut() = true);
+	}
+}
+
+pub struct TestShouldEndSession;
+impl ShouldEndSession<u64> for TestShouldEndSession {
+	fn should_end_session(now: u64) -> bool {
+		let l = SESSION_LENGTH.with(|l| *l.borrow());
+		now % l == 0 ||
+			FORCE_SESSION_END.with(|l| {
+				let r = *l.borrow();
+				*l.borrow_mut() = false;
+				r
+			})
+	}
+}
+
+pub fn authorities() -> Vec<UintAuthorityId> {
+	AUTHORITIES.with(|l| l.borrow().to_vec())
+}
+
 parameter_types! {
+	pub const MinimumPeriod: u64 = 5;
 	pub const BlockHashCount: u64 = 250;
-	pub const SS58Prefix: u8 = 42;
+	pub BlockWeights: frame_system::limits::BlockWeights =
+		frame_system::limits::BlockWeights::simple_max(1024);
 }
 
 impl frame_system::Config for Test {
@@ -105,12 +168,13 @@ impl frame_system::Config for Test {
 	type BlockLength = ();
 	type DbWeight = ();
 	type Origin = Origin;
-	type Call = Call;
 	type Index = u64;
 	type BlockNumber = u64;
+	type Call = Call;
 	type Hash = H256;
 	type Hashing = BlakeTwo256;
 	type AccountId = sp_core::sr25519::Public;
+	// type AccountId = u64;
 	type Lookup = IdentityLookup<Self::AccountId>;
 	type Header = Header;
 	type Event = Event;
@@ -118,6 +182,7 @@ impl frame_system::Config for Test {
 	type Version = ();
 	type PalletInfo = PalletInfo;
 	type AccountData = pallet_balances::AccountData<u64>;
+	// type AccountData = sp_core::sr25519::Public;
 	type OnNewAccount = ();
 	type OnKilledAccount = ();
 	type SystemWeightInfo = ();
@@ -143,6 +208,7 @@ impl pallet_balances::Config for Test {
 	type WeightInfo = ();
 }
 
+// implement assets pallet for iris_assets 
 parameter_types! {
 	pub const AssetDeposit: u64 = 1;
 	pub const AssetAccountDeposit: u64 = 1;
@@ -154,7 +220,7 @@ parameter_types! {
 
 impl pallet_assets::Config for Test {
 	type Event = Event;
-	type Balance = u32;
+	type Balance = u64;
 	type AssetId = u32;
 	type Currency = Balances;
 	type ForceOrigin = frame_system::EnsureRoot<sp_core::sr25519::Public>;
@@ -169,10 +235,47 @@ impl pallet_assets::Config for Test {
 	type Extra = ();
 }
 
+
 /// configure the iris assets pallet
 impl pallet_data_assets::Config for Test {
 	type Event = Event;
 	type Call = Call;
+}
+
+impl pallet_authorization::Config for Test {
+	type Event = Event;
+	type Call = Call;
+}
+
+parameter_types! {
+	pub const MinAuthorities: u32 = 2;
+	pub const MaxDeadSession: u32 = 3;
+}
+
+impl Config for Test {
+	// type AddRemoveOrigin = ();
+	type AddRemoveOrigin = EnsureRoot<sp_core::sr25519::Public>;
+	type Call = Call;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type Event = Event;
+	type MinAuthorities = MinAuthorities;
+	type MaxDeadSession = MaxDeadSession;
+}
+
+parameter_types! {
+	pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(33);
+}
+
+impl pallet_session::Config for Test {
+	type ValidatorId = <Self as frame_system::Config>::AccountId;
+	type ValidatorIdOf = pallet_authorities::ValidatorOf<Self>;
+	type ShouldEndSession = TestShouldEndSession;
+	type NextSessionRotation = ();
+	type SessionManager = Authorities;
+	type SessionHandler = TestSessionHandler;
+	type Keys = MockSessionKeys;
+	type WeightInfo = ();
+	type Event = Event;
 }
 
 type Extrinsic = TestXt<Call, ()>;
@@ -205,15 +308,31 @@ where
 	}
 }
 
-impl Config for Test {
-	type Currency = Balances;
-	type Call = Call;
-	type Event = Event;
-	type AuthorityId = pallet_data_spaces::crypto::TestAuthId;
-}
-
-pub fn new_test_ext() -> sp_io::TestExternalities {
+pub fn new_test_ext(
+	validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>,
+	min_proxy_bond: u32,
+	max_proxy_count: u32,
+	history_depth: u32,
+) -> sp_io::TestExternalities {
 	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
+	let keys: Vec<_> = validators.clone().iter()
+		.map(|i| (i.0, i.0, i.1.clone().into())).collect();
+	BasicExternalities::execute_with_storage(&mut t, || {
+		for (ref k, ..) in &keys {
+			frame_system::Pallet::<Test>::inc_providers(k);
+		}
+	});
+
+	pallet_authorities::GenesisConfig::<Test> {
+		initial_validators: keys.iter().map(|x| x.0).collect::<Vec<_>>(),
+	}
+	.assimilate_storage(&mut t)
+	.unwrap();
+	
+	pallet_session::GenesisConfig::<Test> { keys: keys.clone() }
+		.assimilate_storage(&mut t)
+		.unwrap();
+
 	let (pair1, _) = sp_core::sr25519::Pair::generate();
 	let (pair2, _) = sp_core::sr25519::Pair::generate();
 	let (pair3, _) = sp_core::sr25519::Pair::generate();
@@ -222,18 +341,40 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 	}
 	.assimilate_storage(&mut t)
 	.unwrap();
-	t.into()
+
+	sp_io::TestExternalities::new(t)
 }
 
-
 // Build genesis storage according to the mock runtime.
-pub fn new_test_ext_funded(pairs: Vec<(sp_core::sr25519::Public, u64)>) -> sp_io::TestExternalities {
+pub fn new_test_ext_funded(pair1_funded: sp_core::sr25519::Pair) -> sp_io::TestExternalities {
 	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
+	let keys: Vec<_> = NEXT_VALIDATORS
+		.with(|l| l.borrow().iter().cloned().map(|i| (i.0, i.0, i.1.into())).collect());
+	BasicExternalities::execute_with_storage(&mut t, || {
+		for (ref k, ..) in &keys {
+			frame_system::Pallet::<Test>::inc_providers(k);
+		}
+		// frame_system::Pallet::<Test>::inc_providers(&4);
+		// frame_system::Pallet::<Test>::inc_providers(&69);
+	});
 
-	pallet_balances::GenesisConfig::<Test> {
-		balances: pairs,
+	pallet_authorities::GenesisConfig::<Test> {
+		initial_validators: keys.iter().map(|x| x.0).collect::<Vec<_>>(),
 	}
 	.assimilate_storage(&mut t)
 	.unwrap();
-	t.into()
+	
+	pallet_session::GenesisConfig::<Test> { keys: keys.clone() }
+		.assimilate_storage(&mut t)
+		.unwrap();
+
+	let (pair2, _) = sp_core::sr25519::Pair::generate();
+	let (pair3, _) = sp_core::sr25519::Pair::generate();
+	pallet_balances::GenesisConfig::<Test> {
+		balances: vec![(pair1_funded.public(), 10), (pair2.public(), 20), (pair3.public(), 30)],
+	}
+	.assimilate_storage(&mut t)
+	.unwrap();
+
+	sp_io::TestExternalities::new(t)
 }

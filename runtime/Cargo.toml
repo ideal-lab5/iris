@@ -50,11 +50,11 @@ pallet-contracts-rpc-runtime-api = { version = "4.0.0-dev", default-features = f
 
 # Iris pallets
 pallet-assets = { version = "4.0.0-dev", path = "../pallets/assets", default-features = false }
-pallet-iris-assets = { version = "1.0.0", default-features = false, path = "../pallets/iris-assets" }
-pallet-iris-session = { version = "1.0.0", default-features = false, path = "../pallets/iris-session" }
-pallet-iris-ledger = { version = "1.0.0", default-features = false, path = "../pallets/iris-ledger" }
+pallet-data-assets = { version = "1.0.0", default-features = false, path = "../pallets/data-assets" }
+pallet-authorities = { version = "1.0.0", default-features = false, path = "../pallets/authorities" }
+pallet-ledger = { version = "1.0.0", default-features = false, path = "../pallets/ledger" }
 pallet-data-spaces = { version = "1.0.0", default-features = false, path = "../pallets/data-spaces" }
-pallet-iris-ejection = { version = "1.0.0", default-features = false, path = "../pallets/iris-ejection" }
+pallet-authorization = { version = "1.0.0", default-features = false, path = "../pallets/authorization" }
 
 log = { version = "0.4.14", default-features = false }
 
@@ -89,7 +89,9 @@ std = [
 	"pallet-grandpa/std",
 	"pallet-randomness-collective-flip/std",
 	"pallet-sudo/std",
-	"pallet-iris-assets/std",
+	"pallet-data-assets/std",
+	"pallet-authorities/std",
+	"pallet-ledger/std",
 	"pallet-timestamp/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",
@@ -119,7 +121,7 @@ runtime-benchmarks = [
 	"pallet-balances/runtime-benchmarks",
 	"pallet-grandpa/runtime-benchmarks",
 	"pallet-timestamp/runtime-benchmarks",
-	"pallet-iris-assets/runtime-benchmarks",
+	"pallet-data-assets/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",
 ]
 try-runtime = [
@@ -131,7 +133,7 @@ try-runtime = [
 	"pallet-grandpa/try-runtime",
 	"pallet-randomness-collective-flip/try-runtime",
 	"pallet-sudo/try-runtime",
-	"pallet-iris-assets/try-runtime",
+	"pallet-data-assets/try-runtime",
 	"pallet-timestamp/try-runtime",
 	"pallet-transaction-payment/try-runtime",
 ]
