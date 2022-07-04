@@ -42,7 +42,6 @@ use frame_support::{
 		ValidatorSet, ValidatorSetWithIdentification, LockIdentifier, WithdrawReasons,
 	},
 };
-use log;
 use scale_info::TypeInfo;
 pub use pallet::*;
 use sp_runtime::traits::{Convert, Zero};
@@ -72,6 +71,7 @@ use sp_runtime::{
 	offchain::http,
 	traits::StaticLookup,
 };
+// use log;
 use pallet_data_assets::DataCommand;
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";
@@ -106,6 +106,17 @@ pub mod crypto {
 		type GenericSignature = sp_core::sr25519::Signature;
 		type GenericPublic = sp_core::sr25519::Public;
 	}
+}
+
+// syntactic sugar for logging.
+#[macro_export]
+macro_rules! log {
+	($level:tt, $patter:expr $(, $values:expr)* $(,)?) => {
+		log::$level!(
+			target: crate::LOG_TARGET,
+			concat!("[{:?}] 💸 ", $patter), <frame_system::Pallet<T>>::block_number() $(, $values)*
+		)
+	};
 }
 
 const STAKING_ID: LockIdentifier = *b"staking ";
@@ -160,6 +171,22 @@ pub struct StakingLedger<T: Config> {
 	/// List of eras for which the stakers behind a validator have claimed rewards. Only updated
 	/// for validators.
 	pub claimed_rewards: Vec<EraIndex>,
+}
+
+/// Indicates the initial status of the staker.
+#[derive(RuntimeDebug, TypeInfo)]
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize, Clone))]
+pub enum ProxyStatus {
+	/// Chilling.
+	Idle,
+	/// Declared desire in participating as an active proxy
+	Proxy,
+}
+
+/// preferences for a proxy node
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, Default)]
+pub struct ProxyPrefs {
+
 }
 
 #[frame_support::pallet]
@@ -259,15 +286,16 @@ pub mod pallet {
 	// 	_, Twox64Concat, EraIndex, Twox64Concat, T::AssetId, EraRewardPoints<T::AccountId>,
 	// >;
 
+	/// The map from (wannabe) validator stash key to the preferences of that validator.
 	#[pallet::storage]
 	#[pallet::getter(fn proxies)]
-	pub type Proxies<T: Config> = StorageValue<
-		_, Vec<T::AccountId>, ValueQuery>;
+	pub type Proxies<T: Config> =
+		CountedStorageMap<_, Twox64Concat, T::AccountId, ProxyPrefs, ValueQuery>;
  
-	#[pallet::storage]
-	#[pallet::getter(fn approved_proxies)]
-	pub type ApprovedProxies<T: Config> = StorageValue<
-		_, Vec<T::AccountId>, ValueQuery>;
+	// #[pallet::storage]
+	// #[pallet::getter(fn approved_proxies)]
+	// pub type ApprovedProxies<T: Config> = StorageValue<
+	// 	_, Vec<T::AccountId>, ValueQuery>;
 
 	// ///
 	// /// 
@@ -334,6 +362,8 @@ pub mod pallet {
 		Bonded(T::AccountId, BalanceOf<T>),
 		/// An account has unbonded this amount. \[stash, amount\]
 		Unbonded(T::AccountId, BalanceOf<T>),
+		/// A proxy has set their preferences.
+		ProxyPrefsSet(T::AccountId, ProxyPrefs),
 	}
 
 	// Errors inform users that something went wrong.
@@ -345,12 +375,17 @@ pub mod pallet {
 		AlreadyPaired,
 		/// the bond amount is below the minimum required amount
 		InsufficientBond,
+		/// the maximum amount of allowed proxies has been reached
+		TooManyProxies,
+		/// the account is not the controller for the stash account
+		NotController,
 		BadState,
 	}
 
 	#[pallet::genesis_config]
 	pub struct GenesisConfig<T: Config> {
-		pub initial_proxies: Vec<T::AccountId>,
+		pub initial_proxies:
+			Vec<(T::AccountId, T::AccountId, BalanceOf<T>, ProxyStatus)>,
 		pub min_proxy_bond: BalanceOf<T>,
 		pub max_proxy_count: Option<u32>,
 		pub history_depth: u32,
@@ -363,7 +398,7 @@ pub mod pallet {
 				initial_proxies: Default::default(),
 				min_proxy_bond: Default::default(),
 				max_proxy_count: None,
-				history_depth: 84u32,
+				history_depth: 4u32,
 			}
 		}
 	}
@@ -445,7 +480,6 @@ pub mod pallet {
 				claimed_rewards: (last_reward_era..current_era).collect(),
 			};
 			Self::update_ledger(&controller, &item);
-
 			Ok(())
 		}
 
@@ -466,17 +500,99 @@ pub mod pallet {
 			let who = ensure_signed(origin)?;
 			Ok(())
 		}
+
+		/// Declare your intention to proxy requests and assign preferences
+		/// 
+		/// * prefs: The proxy preferences to delcare
+		/// 
+		#[pallet::weight(100)]
+		pub fn declare_proxy(
+			origin: OriginFor<T>,
+			prefs: ProxyPrefs,
+		) -> DispatchResult {
+			let controller = ensure_signed(origin)?;
+
+			let ledger = Self::ledger(&controller).ok_or(Error::<T>::NotController)?;
+
+			ensure!(ledger.active >= MinProxyBond::<T>::get(), Error::<T>::InsufficientBond);
+			let stash = &ledger.stash;
+
+			// ensure their commission is correct.
+			// ensure!(prefs.commission >= MinCommission::<T>::get(), Error::<T>::CommissionTooLow);
+
+			// Only check limits if they are not already a validator.
+			if !Proxies::<T>::contains_key(stash) {
+				// If this error is reached, we need to adjust the `MinValidatorBond` and start
+				// calling `chill_other`. Until then, we explicitly block new validators to protect
+				// the runtime.
+				if let Some(max_proxies) = MaxProxyCount::<T>::get() {
+					ensure!(
+						Proxies::<T>::count() < max_proxies,
+						Error::<T>::TooManyProxies
+					);
+				}
+			}
+
+			// Self::do_remove_nominator(stash);
+			Self::do_add_proxy(stash, prefs.clone());
+			Self::deposit_event(Event::<T>::ProxyPrefsSet(ledger.stash, prefs));
+
+			Ok(())
+		}
 	}
 }
 
-// TODO: move this to impl.rs
+// TODO: move this to impl.rs?
 impl<T: Config> Pallet<T> {
 
-	fn initialize_proxies(proxies: &[T::AccountId]) {
-		assert!(proxies.len() > 1, "At least 1 proxy should be initialized");
-		assert!(<Proxies<T>>::get().is_empty(), "Proxies are already initialized!");
-		<Proxies<T>>::put(proxies);
-		<ApprovedProxies<T>>::put(proxies);
+	fn initialize_proxies(
+		initial_proxies: &Vec<(T::AccountId, T::AccountId, BalanceOf<T>, ProxyStatus)>
+	) {
+		for &(ref stash, ref controller, balance, ref status) in initial_proxies {
+			crate::log!(
+				trace,
+				"inserting genesis proxy: {:?} => {:?} => {:?}",
+				stash,
+				balance,
+				status
+			);
+			assert!(
+				<T as pallet::Config>::Currency::free_balance(stash) >= balance,
+				"Stash does not have enough balance to bond."
+			);
+			frame_support::assert_ok!(<Pallet<T>>::bond(
+				T::Origin::from(Some(stash.clone()).into()),
+				T::Lookup::unlookup(controller.clone()),
+				balance,
+			));
+			frame_support::assert_ok!(match status {
+				ProxyStatus::Proxy => <Pallet<T>>::declare_proxy(
+					T::Origin::from(Some(controller.clone()).into()),
+					Default::default(),
+				),
+				_ => Ok(()),
+			});
+		}
+	}
+
+	/// Add a proxy to the proxies list, along with given preferences
+	/// 
+	/// * who: The proxy node address to insert
+	/// * prefs: The ProxyPrefs to insert
+	/// 
+	fn do_add_proxy(who: &T::AccountId, prefs: ProxyPrefs) {
+		// if !Validators::<T>::contains_key(who) {
+		// 	// maybe update sorted list.
+		// 	let _ = T::VoterList::on_insert(who.clone(), Self::weight_of(who))
+		// 		.defensive_unwrap_or_default();
+		// }
+		Proxies::<T>::insert(who, prefs);
+
+		// debug_assert_eq!(
+		// 	Nominators::<T>::count() + Validators::<T>::count(),
+		// 	T::VoterList::count()
+		// );
+		// debug_assert_eq!(T::VoterList::sanity_check(), Ok(()));
 	}
 
 	/// Update the ledger for a controller.
@@ -570,6 +686,7 @@ impl<T: Config> Pallet<T> {
 
 // Provides the new set of validators to the session module when session is
 // being rotated.
+// TODO: don't really need this
 impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 	// Plan a new session and provide new validator set.
 	fn new_session(new_index: u32) -> Option<Vec<T::AccountId>> {
@@ -580,7 +697,8 @@ impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 		// TODO: REMOVE OFFLINE STORAGE PROVIDERS
 		// Self::select_candidate_storage_providers();
 		log::debug!(target: LOG_TARGET, "New session called; updated validator set provided.");
-		Some(Self::proxies())
+		// Some(Self::proxies())
+		Some(Vec::new())
 	}
 
 	fn end_session(end_index: u32) {

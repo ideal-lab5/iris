@@ -308,7 +308,12 @@ where
 	}
 }
 
-pub fn new_test_ext(validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>) -> sp_io::TestExternalities {
+pub fn new_test_ext(
+	validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>,
+	min_proxy_bond: u32,
+	max_proxy_count: u32,
+	history_depth: u32,
+) -> sp_io::TestExternalities {
 	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
 	let keys: Vec<_> = validators.clone().iter()
 		.map(|i| (i.0, i.0, i.1.clone().into())).collect();
