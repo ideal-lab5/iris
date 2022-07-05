@@ -395,9 +395,7 @@ impl pallet_balances::Config for Runtime {
 	type MaxLocks = ConstU32<50>;
 	type MaxReserves = ();
 	type ReserveIdentifier = [u8; 8];
-	/// The type for recording an account's balance.
 	type Balance = Balance;
-	/// The ubiquitous event type.
 	type Event = Event;
 	type DustRemoval = ();
 	type ExistentialDeposit = ConstU128<500>;
@@ -570,7 +568,7 @@ construct_runtime!(
 		Balances: pallet_balances,
 		TransactionPayment: pallet_transaction_payment,
 		Sudo: pallet_sudo,
-		Assets: pallet_assets::{Pallet, Storage, Event<T>},
+		Assets: pallet_assets,
 		DataAssets: pallet_data_assets,
 		IrisEjection: pallet_authorization,
 		Ledger: pallet_ledger,

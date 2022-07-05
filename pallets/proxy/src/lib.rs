@@ -78,35 +78,35 @@ pub const LOG_TARGET: &'static str = "runtime::proxy";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
 
-pub mod crypto {
-	// use crate::KEY_TYPE;
-	use sp_core::crypto::KeyTypeId;
-	use sp_core::sr25519::Signature as Sr25519Signature;
-	use sp_runtime::app_crypto::{app_crypto, sr25519};
-	use sp_runtime::{traits::Verify, MultiSignature, MultiSigner};
-	use sp_std::convert::TryFrom;
+// pub mod crypto {
+// 	// use crate::KEY_TYPE;
+// 	use sp_core::crypto::KeyTypeId;
+// 	use sp_core::sr25519::Signature as Sr25519Signature;
+// 	use sp_runtime::app_crypto::{app_crypto, sr25519};
+// 	use sp_runtime::{traits::Verify, MultiSignature, MultiSigner};
+// 	use sp_std::convert::TryFrom;
 
-	pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
+// 	pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
 
-	app_crypto!(sr25519, KEY_TYPE);
+// 	app_crypto!(sr25519, KEY_TYPE);
 
-	pub struct TestAuthId;
-	// implemented for runtime
-	impl frame_system::offchain::AppCrypto<MultiSigner, MultiSignature> for TestAuthId {
-		type RuntimeAppPublic = Public;
-		type GenericSignature = sp_core::sr25519::Signature;
-		type GenericPublic = sp_core::sr25519::Public;
-	}
+// 	pub struct TestAuthId;
+// 	// implemented for runtime
+// 	impl frame_system::offchain::AppCrypto<MultiSigner, MultiSignature> for TestAuthId {
+// 		type RuntimeAppPublic = Public;
+// 		type GenericSignature = sp_core::sr25519::Signature;
+// 		type GenericPublic = sp_core::sr25519::Public;
+// 	}
 
-	// implemented for mock runtime in test
-	impl frame_system::offchain::AppCrypto<<Sr25519Signature as Verify>::Signer, Sr25519Signature>
-		for TestAuthId
-	{
-		type RuntimeAppPublic = Public;
-		type GenericSignature = sp_core::sr25519::Signature;
-		type GenericPublic = sp_core::sr25519::Public;
-	}
-}
+// 	// implemented for mock runtime in test
+// 	impl frame_system::offchain::AppCrypto<<Sr25519Signature as Verify>::Signer, Sr25519Signature>
+// 		for TestAuthId
+// 	{
+// 		type RuntimeAppPublic = Public;
+// 		type GenericSignature = sp_core::sr25519::Signature;
+// 		type GenericPublic = sp_core::sr25519::Public;
+// 	}
+// }
 
 // syntactic sugar for logging.
 #[macro_export]
@@ -164,13 +164,13 @@ pub struct StakingLedger<T: Config> {
 	/// rounds.
 	#[codec(compact)]
 	pub active: BalanceOf<T>,
-	/// Any balance that is becoming free, which may eventually be transferred out of the stash
-	/// (assuming it doesn't get slashed first). It is assumed that this will be treated as a first
-	/// in, first out queue where the new (higher value) eras get pushed on the back.
+	// / Any balance that is becoming free, which may eventually be transferred out of the stash
+	// / (assuming it doesn't get slashed first). It is assumed that this will be treated as a first
+	// / in, first out queue where the new (higher value) eras get pushed on the back.
 	// pub unlocking: BoundedVec<UnlockChunk<BalanceOf<T>>, MaxUnlockingChunks>,
-	/// List of eras for which the stakers behind a validator have claimed rewards. Only updated
-	/// for validators.
-	pub claimed_rewards: Vec<EraIndex>,
+	// / List of eras for which the stakers behind a validator have claimed rewards. Only updated
+	// / for validators.
+	// pub claimed_rewards: Vec<EraIndex>,
 }
 
 /// Indicates the initial status of the staker.
@@ -202,15 +202,9 @@ pub mod pallet {
 
 	/// Configure the pallet by specifying the parameters and types on which it
 	/// depends.
-	/// TODO: reafactor? lots of tightly coupled pallets here, there must  
-	/// be a better way to go about this
+	/// TODO: probably don't need to tightly coupole the data assets pallet
 	#[pallet::config]
-	pub trait Config: CreateSignedTransaction<Call<Self>> + 
-					  frame_system::Config +
-					  pallet_session::Config +
-					  pallet_assets::Config + 
-					  pallet_data_assets::Config +
-					  pallet_authorization::Config
+	pub trait Config: frame_system::Config + pallet_data_assets::Config
 	{
 		/// The Event type.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -235,18 +229,10 @@ pub mod pallet {
 			+ From<u64>
 			+ TypeInfo
 			+ MaxEncodedLen;
-		/// Origin for adding or removing a validator.
-		type AddRemoveOrigin: EnsureOrigin<Self::Origin>;
-		/// Minimum number of validators to leave in the validator set during
-		/// auto removal.
-		type MinAuthorities: Get<u32>;
-		/// the maximum number of session that a node can earn less than MinEraRewardPoints before suspension
-		type MaxDeadSession: Get<u32>;
-		/// the authority id used for sending signed txs
-        type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
+		// /// the authority id used for sending signed txs
+        // // type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
 	}
 
-	
 	#[pallet::type_value]
 	pub(crate) fn HistoryDepthOnEmpty() -> u32 {
 		84u32
@@ -291,35 +277,6 @@ pub mod pallet {
 	#[pallet::getter(fn proxies)]
 	pub type Proxies<T: Config> =
 		CountedStorageMap<_, Twox64Concat, T::AccountId, ProxyPrefs, ValueQuery>;
- 
-	// #[pallet::storage]
-	// #[pallet::getter(fn approved_proxies)]
-	// pub type ApprovedProxies<T: Config> = StorageValue<
-	// 	_, Vec<T::AccountId>, ValueQuery>;
-
-	// ///
-	// /// 
-	// #[pallet::storage]
-	// #[pallet::getter(fn offline_proxies)]
-	// pub type OfflineProxies<T: Config> = StorageValue<
-	// 	_, Vec<T::AccountId>, ValueQuery>;
-
-	// #[pallet::storage]
-	// #[pallet::getter(fn total_session_rewards)]
-	// pub type SessionParticipation<T: Config> = StorageMap<
-	// 	_, Blake2_128Concat, EraIndex, Vec<T::AccountId>, ValueQuery,
-	// >;
-
-	// #[pallet::storage]
-	// #[pallet::getter(fn unproductive_sessions)]
-	// pub type UnproductiveSessions<T: Config> = StorageMap<
-	// 	_, Blake2_128Concat, T::AccountId, u32, ValueQuery,
-	// >;
-
-	// #[pallet::storage]
-	// #[pallet::getter(fn dead_validator)]
-	// pub type DeadValidators<T: Config> = StorageMap<
-	// 	_, Blake2_128Concat, u32, Vec<T::AccountId>, ValueQuery>;
 
 	/// The minimum active bond to become and maintain the role of a nominator.
 	#[pallet::storage]
@@ -348,9 +305,9 @@ pub mod pallet {
 	/// Must be more than the number of eras delayed by session otherwise. I.e. active era must
 	/// always be in history. I.e. `active_era > current_era - history_depth` must be
 	/// guaranteed.
-	#[pallet::storage]
-	#[pallet::getter(fn history_depth)]
-	pub(crate) type HistoryDepth<T> = StorageValue<_, u32, ValueQuery, HistoryDepthOnEmpty>;
+	// #[pallet::storage]
+	// #[pallet::getter(fn history_depth)]
+	// pub(crate) type HistoryDepth<T> = StorageValue<_, u32, ValueQuery, HistoryDepthOnEmpty>;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -388,7 +345,7 @@ pub mod pallet {
 			Vec<(T::AccountId, T::AccountId, BalanceOf<T>, ProxyStatus)>,
 		pub min_proxy_bond: BalanceOf<T>,
 		pub max_proxy_count: Option<u32>,
-		pub history_depth: u32,
+		// pub history_depth: u32,
 	}
 
 	#[cfg(feature = "std")]
@@ -398,7 +355,7 @@ pub mod pallet {
 				initial_proxies: Default::default(),
 				min_proxy_bond: Default::default(),
 				max_proxy_count: None,
-				history_depth: 4u32,
+				// history_depth: 4u32,
 			}
 		}
 	}
@@ -407,7 +364,7 @@ pub mod pallet {
 	impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
 		fn build(&self) {
 			Pallet::<T>::initialize_proxies(&self.initial_proxies);
-			HistoryDepth::<T>::put(self.history_depth);
+			// HistoryDepth::<T>::put(self.history_depth);
 			MinProxyBond::<T>::put(self.min_proxy_bond);
 			if let Some(x) = self.max_proxy_count {
 				MaxProxyCount::<T>::put(x);
@@ -466,8 +423,8 @@ pub mod pallet {
 			// <Payee<T>>::insert(&stash, payee);
 
 			let current_era = CurrentEra::<T>::get().unwrap_or(0);
-			let history_depth = Self::history_depth();
-			let last_reward_era = current_era.saturating_sub(history_depth);
+			// let history_depth = Self::history_depth();
+			// let last_reward_era = current_era.saturating_sub(history_depth);
 
 			let stash_balance = <T as pallet::Config>::Currency::free_balance(&stash);
 			let value = value.min(stash_balance);
@@ -477,7 +434,7 @@ pub mod pallet {
 				total: value,
 				active: value,
 				// unlocking: Default::default(),
-				claimed_rewards: (last_reward_era..current_era).collect(),
+				// claimed_rewards: (last_reward_era..current_era).collect(),
 			};
 			Self::update_ledger(&controller, &item);
 			Ok(())
@@ -675,88 +632,12 @@ impl<T: Config> Pallet<T> {
 		// 	}
 		// }
 	}
-
-	fn validate_transaction_parameters() -> TransactionValidity {
-		ValidTransaction::with_tag_prefix("iris")
-			.longevity(5)
-			.propagate(true)
-			.build()
-	}
-}	
-
-// Provides the new set of validators to the session module when session is
-// being rotated.
-// TODO: don't really need this
-impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
-	// Plan a new session and provide new validator set.
-	fn new_session(new_index: u32) -> Option<Vec<T::AccountId>> {
-		log::info!("Starting new session with index: {:?}", new_index);
-		// TODO: how staking pallet uses this, 'trigger_new_era'
-		CurrentEra::<T>::mutate(|s| *s = Some(new_index));
-		Self::remove_offline_validators();
-		// TODO: REMOVE OFFLINE STORAGE PROVIDERS
-		// Self::select_candidate_storage_providers();
-		log::debug!(target: LOG_TARGET, "New session called; updated validator set provided.");
-		// Some(Self::proxies())
-		Some(Vec::new())
-	}
-
-	fn end_session(end_index: u32) {
-		log::info!("Ending session with index: {:?}", end_index);
-		// TODO: calculate which validators should fetch which data? not ideal really.. idk
-		Self::mark_dead_validators(end_index);
-	}
-
-	fn start_session(start_index: u32) {
-		log::info!("Starting session with index: {:?}", start_index);
-		ActiveEra::<T>::mutate(|s| *s = Some(start_index)); 
-	}
 }
 
-impl<T: Config> EstimateNextSessionRotation<T::BlockNumber> for Pallet<T> {
-	fn average_session_length() -> T::BlockNumber {
-		Zero::zero()
-	}
-
-	fn estimate_current_session_progress(
-		_now: T::BlockNumber,
-	) -> (Option<sp_runtime::Permill>, frame_support::dispatch::Weight) {
-		(None, Zero::zero())
-	}
-
-	fn estimate_next_session_rotation(
-		_now: T::BlockNumber,
-	) -> (Option<T::BlockNumber>, frame_support::dispatch::Weight) {
-		(None, Zero::zero())
-	}
-}
-
-// Implementation of Convert trait for mapping ValidatorId with AccountId.
-pub struct ProxyOf<T>(sp_std::marker::PhantomData<T>);
-
-impl<T: Config> Convert<T::ValidatorId, Option<T::ValidatorId>> for ProxyOf<T> {
-	fn convert(account: T::ValidatorId) -> Option<T::ValidatorId> {
-		Some(account)
-	}
-}
-
-impl<T: Config> ValidatorSet<T::AccountId> for Pallet<T> {
-	type ValidatorId = T::ValidatorId;
-	type ValidatorIdOf = T::ValidatorIdOf;
-
-	fn session_index() -> sp_staking::SessionIndex {
-		pallet_session::Pallet::<T>::current_index()
-	}
-
-	fn validators() -> Vec<Self::ValidatorId> {
-		pallet_session::Pallet::<T>::validators()
-	}
-}
-
-impl<T: Config> ValidatorSetWithIdentification<T::AccountId> for Pallet<T> {
-	type Identification = T::ValidatorId;
-	type IdentificationOf = ProxyOf<T>;
-}
+// impl<T: Config> ValidatorSetWithIdentification<T::AccountId> for Pallet<T> {
+// 	type Identification = T::ValidatorId;
+// 	type IdentificationOf = ProxyOf<T>;
+// }
 
 // Offence reporting and unresponsiveness management.
 impl<T: Config, O: Offence<(T::AccountId, T::AccountId)>>
