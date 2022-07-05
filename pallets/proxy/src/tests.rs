@@ -19,10 +19,10 @@
 
 use super::*;
 use crate::mock::{
-	authorities, new_test_ext_default, new_test_ext_default_funded,
+	authorities, new_test_ext_default, new_test_ext_default_funded_validators,
 	Origin, Session, Test, DataAssets, Assets, Proxy,
 };
-use frame_support::{assert_noop, assert_ok, pallet_prelude::*};
+use frame_support::{assert_noop, assert_ok, assert_err, pallet_prelude::*};
 use sp_runtime::testing::UintAuthorityId;
 use sp_core::Pair;
 use sp_core::{
@@ -34,8 +34,17 @@ use std::sync::Arc;
 // validator tests 
 #[test]
 fn iris_proxy_simple_setup_should_work() {
-	// GIVEN: I have properly setup the mock runtime
-	new_test_ext_default().execute_with(|| {
+	// GIVEN: There are two validator nodes
+	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
+		UintAuthorityId(0)
+	);
+	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+		UintAuthorityId(1)
+	);
+	// AND: I have properly setup the mock runtime
+	new_test_ext_default(vec![v0.clone(), v1.clone()]).execute_with(|| {
 		// WHEN: The runtime is initiated with default genesis values
 		// THEN: The values of the proxy pallet match the default values
 		assert_eq!(0, crate::Proxies::<Test>::count());
@@ -45,131 +54,153 @@ fn iris_proxy_simple_setup_should_work() {
 }
 
 #[test]
-fn iris_proxy_bond_with_valid_values_should_work() {
-	// GIVEN: I have a funded pair
-	let (p, _) = sp_core::sr25519::Pair::generate();
-	new_test_ext_default_funded(p.clone()).execute_with(|| {
+fn proxy_bond_with_valid_values_should_work() {
+	// GIVEN: There are two validator nodes
+	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
+		UintAuthorityId(0)
+	);
+	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+		UintAuthorityId(1)
+	);
+	// AND: I have properly setup the mock runtime
+	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
 		// WHEN: I have properly setup the runtime
 		// AND: I attempt to bond my controller to my stash
 		// AND: My controller is my stash (wlog)
 		// THEN: the bonding is successful
 		assert_ok!(Proxy::bond(
-			Origin::signed(p.clone().public()),
-			p.clone().public(),
+			Origin::signed(v0.0.clone()),
+			v0.0.clone(),
 			1,
 		));
+		// AND: The bonds are updated
+		assert_eq!(Some(v0.0.clone()), crate::Bonded::<Test>::get(v0.0.clone()));
+		// AND: The ledger is updated
+		let expect_staking_ledger = crate::StakingLedger {
+			stash: v0.0.clone(),
+			total: 1,
+			active: 1,
+		};
+		assert_eq!(Some(expect_staking_ledger), crate::Ledger::<Test>::get(v0.0.clone()));
 	});
 }
 
-// #[test]
-// fn iris_session_add_validator_updates_validators_list() {
-// 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-// 		UintAuthorityId(0)
-// 	);
-// 	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-// 		UintAuthorityId(1)
-// 	);
-// 	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
-// 		UintAuthorityId(2)
-// 	);
-// 	let v3: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("3")).0.public(), 
-// 		UintAuthorityId(3)
-// 	);
-	
-// 	new_test_ext(vec![v0.clone(), v1.clone(), v2.clone()]).execute_with(|| {
-// 		assert_ok!(Authorities::add_validator(Origin::root(), v3.0));
-// 		assert_eq!(crate::Validators::<Test>::get(), vec![v0.0, v1.0, v2.0, v3.0]);
-// 	});
-// }
+#[test]
+fn proxy_bond_not_validator_err_when_not_validator() {
+	// GIVEN: There are two validator nodes
+	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
+		UintAuthorityId(0)
+	);
+	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+		UintAuthorityId(1)
+	);
+	let (not_validator, _) = sp_core::sr25519::Pair::generate();
+	// AND: I have properly setup the mock runtime
+	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
+		// WHEN: I have properly setup the runtime
+		// AND: I attempt to bond my controller to my stash
+		// AND: I am NOT a validator
+		// THEN: The bond fails
+		assert_err!(Proxy::bond(
+			Origin::signed(not_validator.clone().public()),
+			not_validator.clone().public(),
+			1,
+		), crate::Error::<Test>::NotValidator);
+	});
+}
 
-// #[test]
-// fn iris_session_remove_validator_updates_validators_list() {
-// 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-// 		UintAuthorityId(0)
-// 	);
-// 	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-// 		UintAuthorityId(1)
-// 	);
-// 	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
-// 		UintAuthorityId(2)
-// 	);
-// 	new_test_ext(vec![v0.clone(), v1.clone(), v2.clone()]).execute_with(|| {
-// 		assert_ok!(Authorities::remove_validator(Origin::root(), v1.0));
-// 		assert_eq!(Authorities::validators(), vec![v0.0, v2.0]);
-// 	});
-// }
+#[test]
+fn proxy_bond_already_bonded_err_when_bonded() {
+	// GIVEN: There are two validator nodes
+	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
+		UintAuthorityId(0)
+	);
+	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+		UintAuthorityId(1)
+	);
+	let (not_validator, _) = sp_core::sr25519::Pair::generate();
+	// AND: I have properly setup the mock runtime
+	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
+		// WHEN: I have properly setup the runtime
+		// AND: I attempt to bond my controller to my stash
+		// AND: My controller is my stash (wlog)
+		// THEN: the bonding is successful
+		assert_ok!(Proxy::bond(
+			Origin::signed(v0.0.clone()),
+			v0.0.clone(),
+			1,
+		));
+		// AND: If I try to bond again
+		// THEN: The bond fails
+		assert_err!(Proxy::bond(
+			Origin::signed(v0.0.clone()), 
+			v0.0.clone(),
+			1,
+		), crate::Error::<Test>::AlreadyBonded);
+	});
+}
 
-// #[test]
-// fn iris_session_add_validator_fails_with_invalid_origin() {
-// 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-// 		UintAuthorityId(0)
-// 	);
-// 	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-// 		UintAuthorityId(1)
-// 	);
-// 	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
-// 		UintAuthorityId(2)
-// 	);
-// 	let v3 = sp_core::sr25519::Pair::generate_with_phrase(Some("3")).0.public();
-// 	new_test_ext(vec![v0.clone(), v1.clone(), v2.clone()]).execute_with(|| {
-// 		assert_noop!(Authorities::add_validator(Origin::signed(v3.clone()), v3), DispatchError::BadOrigin);
-// 	});
-// }
+#[test]
+fn proxy_bond_already_paired_when_controller_in_ledger() {
+	// GIVEN: There are two validator nodes
+	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
+		UintAuthorityId(0)
+	);
+	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+		UintAuthorityId(1)
+	);
+	let (not_validator, _) = sp_core::sr25519::Pair::generate();
+	// AND: I have properly setup the mock runtime
+	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
+		// WHEN: I have properly setup the runtime
+		// AND: I attempt to bond my controller to my stash
+		// AND: My controller is my stash (wlog)
+		// THEN: the bonding is successful
+		assert_ok!(Proxy::bond(
+			Origin::signed(v0.0.clone()),
+			v0.0.clone(),
+			1,
+		));
+		// AND: If I try to bond the same controller to a different stash
+		// THEN: I receive an AlreadyPaired error
+		assert_err!(Proxy::bond(
+			Origin::signed(v1.0.clone()), 
+			v0.0.clone(),
+			1,
+		), crate::Error::<Test>::AlreadyPaired);
+	});
+}
 
-// #[test]
-// fn iris_session_remove_validator_fails_with_invalid_origin() {
-// 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-// 		UintAuthorityId(0)
-// 	);
-// 	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-// 		UintAuthorityId(1)
-// 	);
-// 	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
-// 		UintAuthorityId(2)
-// 	);
-// 	let v3 = sp_core::sr25519::Pair::generate_with_phrase(Some("3")).0.public();
-// 	new_test_ext(vec![v0.clone(), v1.clone(), v2.clone()]).execute_with(|| {
-// 		assert_noop!(
-// 			Authorities::remove_validator(Origin::signed(v3.clone()), v3),
-// 			DispatchError::BadOrigin
-// 		);
-// 	});
-// }
-
-// #[test]
-// fn iris_session_duplicate_check() {
-// 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-// 		UintAuthorityId(0)
-// 	);
-// 	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-// 		UintAuthorityId(1)
-// 	);
-// 	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
-// 		UintAuthorityId(2)
-// 	);
-// 	let v3: (sp_core::sr25519::Public, UintAuthorityId) = (
-// 		sp_core::sr25519::Pair::generate_with_phrase(Some("3")).0.public(), 
-// 		UintAuthorityId(3)
-// 	);
-// 	new_test_ext(vec![v0.clone(), v1.clone(), v2.clone()]).execute_with(|| {
-// 		assert_ok!(Authorities::add_validator(Origin::root(), v3.0));
-// 		assert_eq!(Authorities::validators(), vec![v0.0, v1.0, v2.0, v3.0]);
-// 		assert_noop!(Authorities::add_validator(Origin::root(), v3.0), Error::<Test>::Duplicate);
-// 	});
-// }
+#[test]
+fn proxy_bond_insufficient_balance_err_when_value_too_low() {
+	// GIVEN: There are two validator nodes
+	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
+		UintAuthorityId(0)
+	);
+	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+		UintAuthorityId(1)
+	);
+	let (not_validator, _) = sp_core::sr25519::Pair::generate();
+	// AND: I have properly setup the mock runtime
+	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
+		// WHEN: I have properly setup the runtime
+		// AND: I attempt to bond my controller to my stash with a low balance
+		// AND: My controller is my stash (wlog)
+		// THEN: the bonding fails with an InsufficientBond error
+		assert_err!(Proxy::bond(
+			Origin::signed(v1.0.clone()), 
+			v1.0.clone(),
+			0,
+		), crate::Error::<Test>::InsufficientBond);
+	});
+}

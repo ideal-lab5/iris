@@ -4242,6 +4242,7 @@ dependencies = [
  "frame-system",
  "log",
  "pallet-assets",
+ "pallet-authorities",
  "pallet-balances",
  "pallet-data-assets",
  "pallet-im-online",

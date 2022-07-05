@@ -204,7 +204,9 @@ pub mod pallet {
 	/// depends.
 	/// TODO: probably don't need to tightly coupole the data assets pallet
 	#[pallet::config]
-	pub trait Config: frame_system::Config + pallet_data_assets::Config
+	pub trait Config: frame_system::Config + 
+					  pallet_data_assets::Config + 
+					  pallet_authorities::Config
 	{
 		/// The Event type.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -229,20 +231,20 @@ pub mod pallet {
 			+ From<u64>
 			+ TypeInfo
 			+ MaxEncodedLen;
-		/// A stable ID for a validator.
-		type ValidatorId: Member
-			+ Parameter
-			+ MaybeSerializeDeserialize
-			+ MaxEncodedLen
-			+ TryFrom<Self::AccountId>;
-		/// A conversion from account ID to validator ID.
-		///
-		/// Its cost must be at most one storage read.
-		type ValidatorIdOf: Convert<Self::AccountId, Option<Self::ValidatorId>>;
-		/// trait to get current session validators
-		type ValidatorSet: ValidatorSet<Self::AccountId>;
-		// /// the authority id used for sending signed txs
-        // // type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
+		// / A stable ID for a validator.
+		// type ValidatorId: Member
+		// 	+ Parameter
+		// 	+ MaybeSerializeDeserialize
+		// 	+ MaxEncodedLen
+		// 	+ TryFrom<Self::AccountId>;
+		// /// A conversion from account ID to validator ID.
+		// ///
+		// /// Its cost must be at most one storage read.
+		// type ValidatorIdOf: Convert<Self::AccountId, Option<Self::ValidatorId>>;
+		// /// trait to get current session validators
+		// // type ValidatorSet: ValidatorSet<Self::AccountId>;
+		// /// A type for retrieving the validators supposed to be online in a session.
+		// type ValidatorSet: ValidatorSetWithIdentification<Self::AccountId>;
 	}
 
 	#[pallet::type_value]
@@ -272,9 +274,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn active_era)]
 	// TODO: Do I need the ActiveEraInfo?
-	pub type ActiveEra<T> = StorageValue<
-		_, EraIndex
-	>;
+	pub type ActiveEra<T> = StorageValue<_, EraIndex>;
 	
 	// /// Rewards for the last `HISTORY_DEPTH` eras.
 	// /// If reward hasn't been set or has been removed then 0 reward is returned.
@@ -419,9 +419,9 @@ pub mod pallet {
 
 			let controller = T::Lookup::lookup(controller)?;
 
-			let validator_id = <T as pallet::Config>::ValidatorIdOf::convert(controller.clone());
-			if !<T as pallet::Config>::ValidatorSet::validators().contains(&validator_id) {
-				return Err(Error::<T>::NotValidator.into())
+			// ensure that the proxy controller is a validator
+			if !<pallet_authorities::Pallet<T>>::validators().contains(&controller) {
+				return Err(Error::<T>::NotValidator.into());
 			}
 
 			if <Ledger<T>>::contains_key(&controller) {
@@ -517,9 +517,14 @@ pub mod pallet {
 	}
 }
 
-// TODO: move this to impl.rs?
 impl<T: Config> Pallet<T> {
 
+	///
+	/// Initialize proxies on gensis
+	/// 
+	/// * initial_proxies: A vector of proxies to initalize, containing:
+	/// 					(controller, slash, balance, status)
+	/// 
 	fn initialize_proxies(
 		initial_proxies: &Vec<(T::AccountId, T::AccountId, BalanceOf<T>, ProxyStatus)>
 	) {
@@ -577,85 +582,7 @@ impl<T: Config> Pallet<T> {
 		<T as pallet::Config>::Currency::set_lock(STAKING_ID, &ledger.stash, ledger.total, WithdrawReasons::all());
 		<Ledger<T>>::insert(controller, ledger);
 	}
-
-	// // Adds offline validators to a local cache for removal at new session.
-	fn mark_for_removal(validator_id: T::AccountId) {
-		// <OfflineValidators<T>>::mutate(|v| v.push(validator_id));
-		// log::debug!(target: LOG_TARGET, "Offline validator marked for auto removal.");
-	}
-
-	// Removes offline validators from the validator set and clears the offline
-	// cache. It is called in the session change hook and removes the validators
-	// who were reported offline during the session that is ending. We do not
-	// check for `MinAuthorities` here, because the offline validators will not
-	// produce blocks and will have the same overall effect on the runtime.
-	fn remove_offline_validators() {
-		// let validators_to_remove: BTreeSet<_> = <OfflineValidators<T>>::get().into_iter().collect();
-
-		// // Delete from active validator set.
-		// <Validators<T>>::mutate(|vs| vs.retain(|v| !validators_to_remove.contains(v))); 
-		// log::debug!(
-		// 	target: LOG_TARGET,
-		// 	"Initiated removal of {:?} offline validators.",
-		// 	validators_to_remove.len()
-		// );
-
-		// // remove as storage provider
-		// // remove from pinners (and unpin the cid)
-		// // Clear the offline validator list to avoid repeated deletion.
-		// <OfflineValidators<T>>::put(Vec::<T::AccountId>::new());
-	}
-
-	// /// move candidates to the active provider pool for some asset id
-	// /// TODO: this undoubtedly will not scale very well 
-	// fn select_candidate_storage_providers() {
-	// 	// if there are candidate storage providers => for each candidate that pinned the file, move them to storage providers
-	// 	for asset_id in <pallet_data_assets::Pallet<T>>::asset_ids().into_iter() {
-	// 		// if there are candidates for the asset id
-	// 		if <QueuedStorageProviders<T>>::contains_key(asset_id.clone()) {
-	// 			let candidates = <QueuedStorageProviders<T>>::get(asset_id.clone());
-	// 			let pinners = <Pinners<T>>::get(asset_id.clone());
-	// 			let mut pinner_candidate_intersection = 
-	// 				candidates.into_iter().filter(|c| pinners.contains(c)).collect::<Vec<T::AccountId>>();
-	// 			// <StorageProviders::<T>>::insert(asset_id.clone(), pinner_candidate_intersection);
-	// 			<StorageProviders::<T>>::mutate(asset_id.clone(), |sps| {
-	// 				sps.append(&mut pinner_candidate_intersection);
-	// 			});
-	// 			<QueuedStorageProviders<T>>::mutate(asset_id.clone(), |qsps| {
-	// 				*qsps = Vec::new();
-	// 			});
-	// 		}
-	// 	}
-	// }
-
-	fn mark_dead_validators(era_index: EraIndex) {
-		// // for each validator that didn't participate, mark for removal
-		// let partipating_validators = SessionParticipation::<T>::get(era_index.clone());
-		// for acct in Validators::<T>::get() {
-		// 	if !partipating_validators.contains(&acct) {
-		// 		if UnproductiveSessions::<T>::get(acct.clone()) <= T::MaxDeadSession::get() {
-		// 			UnproductiveSessions::<T>::mutate(acct.clone(), |v| {
-		// 				*v += 1;
-		// 			});
-		// 		} else {
-		// 			let mut validators = <Validators<T>>::get();
-		// 			// Ensuring that the post removal, target validator count doesn't go
-		// 			// below the minimum.
-		// 			if validators.len().saturating_sub(1) as u32 >= T::MinAuthorities::get() {
-		// 				validators.retain(|v| *v != acct.clone());
-		// 				<Validators<T>>::put(validators);
-		// 				log::debug!(target: LOG_TARGET, "Validator removal initiated.");
-		// 			}
-		// 		}
-		// 	}
-		// }
-	}
 }
-
-// impl<T: Config> ValidatorSetWithIdentification<T::AccountId> for Pallet<T> {
-// 	type Identification = T::ValidatorId;
-// 	type IdentificationOf = ProxyOf<T>;
-// }
 
 // Offence reporting and unresponsiveness management.
 impl<T: Config, O: Offence<(T::AccountId, T::AccountId)>>
@@ -665,7 +592,7 @@ impl<T: Config, O: Offence<(T::AccountId, T::AccountId)>>
 		let offenders = offence.offenders();
 
 		for (v, _) in offenders.into_iter() {
-			Self::mark_for_removal(v);
+			// Self::mark_for_removal(v);
 		}
 
 		Ok(())

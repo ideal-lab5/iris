@@ -253,7 +253,6 @@ parameter_types! {
 }
 
 impl Config for Test {
-	// type AddRemoveOrigin = ();
 	type AddRemoveOrigin = EnsureRoot<sp_core::sr25519::Public>;
 	type Call = Call;
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;

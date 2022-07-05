@@ -92,6 +92,7 @@ frame_support::construct_runtime!(
 		System: frame_system,
 		Balances: pallet_balances,
 		Assets: pallet_assets,
+		Authorities: pallet_authorities,
 		DataAssets: pallet_data_assets,
 		Session: pallet_session,
 		Proxy: pallet_proxy,
@@ -244,19 +245,28 @@ parameter_types! {
 
 impl pallet_session::Config for Test {
 	type ValidatorId = <Self as frame_system::Config>::AccountId;
-	type ValidatorIdOf = pallet_proxy::ProxyOf<Self>;
+	type ValidatorIdOf = pallet_authorities::ValidatorOf<Self>;
 	type ShouldEndSession = TestShouldEndSession;
 	type NextSessionRotation = ();
-	type SessionManager = Proxy;
+	type SessionManager = Authorities;
 	type SessionHandler = TestSessionHandler;
 	type Keys = MockSessionKeys;
 	type WeightInfo = ();
 	type Event = Event;
 }
 
-
 parameter_types! {
-	
+	pub const MinAuthorities: u32 = 2;
+	pub const MaxDeadSession: u32 = 3;
+}
+
+impl pallet_authorities::Config for Test {
+	type AddRemoveOrigin = EnsureRoot<sp_core::sr25519::Public>;
+	type Call = Call;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type Event = Event;
+	type MinAuthorities = MinAuthorities;
+	type MaxDeadSession = MaxDeadSession;
 }
 
 impl Config for Test {
@@ -264,44 +274,62 @@ impl Config for Test {
 	type Call = Call;
 	type Currency = Balances;
 	type CurrencyBalance = <Self as pallet_balances::Config>::Balance;
-	// type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
-// type Extrinsic = TestXt<Call, ()>;
-// type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
+type Extrinsic = TestXt<Call, ()>;
+type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
-// impl frame_system::offchain::SigningTypes for Test {
-// 	type Public = <Signature as Verify>::Signer;
-// 	type Signature = Signature;
-// }
+impl frame_system::offchain::SigningTypes for Test {
+	type Public = <Signature as Verify>::Signer;
+	type Signature = Signature;
+}
 
-// impl<LocalCall> frame_system::offchain::SendTransactionTypes<LocalCall> for Test
-// where
-// 	Call: From<LocalCall>,
-// {
-// 	type OverarchingCall = Call;
-// 	type Extrinsic = Extrinsic;
-// }
+impl<LocalCall> frame_system::offchain::SendTransactionTypes<LocalCall> for Test
+where
+	Call: From<LocalCall>,
+{
+	type OverarchingCall = Call;
+	type Extrinsic = Extrinsic;
+}
 
-// impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Test
-// where
-// 	Call: From<LocalCall>,
-// {
-// 	fn create_transaction<C: frame_system::offchain::AppCrypto<Self::Public, Self::Signature>>(
-// 		call: Call,
-// 		_public: <Signature as Verify>::Signer,
-// 		_account: AccountId,
-// 		nonce: u64,
-// 	) -> Option<(Call, <Extrinsic as ExtrinsicT>::SignaturePayload)> {
-// 		Some((call, (nonce, ())))
-// 	}
-// }
+impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Test
+where
+	Call: From<LocalCall>,
+{
+	fn create_transaction<C: frame_system::offchain::AppCrypto<Self::Public, Self::Signature>>(
+		call: Call,
+		_public: <Signature as Verify>::Signer,
+		_account: AccountId,
+		nonce: u64,
+	) -> Option<(Call, <Extrinsic as ExtrinsicT>::SignaturePayload)> {
+		Some((call, (nonce, ())))
+	}
+}
 
-pub fn new_test_ext_default() -> sp_io::TestExternalities {
+pub fn new_test_ext_default(validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>) -> sp_io::TestExternalities {
 	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
+	let keys: Vec<_> = validators.clone().iter()
+		.map(|i| (i.0, i.0, i.1.clone().into())).collect();
+	BasicExternalities::execute_with_storage(&mut t, || {
+		for (ref k, ..) in &keys {
+			frame_system::Pallet::<Test>::inc_providers(k);
+		}
+	});
+
+	pallet_authorities::GenesisConfig::<Test> {
+		initial_validators: keys.iter().map(|x| x.0).collect::<Vec<_>>(),
+	}
+	.assimilate_storage(&mut t)
+	.unwrap();
+	
+	pallet_session::GenesisConfig::<Test> { keys: keys.clone() }
+		.assimilate_storage(&mut t)
+		.unwrap();
+
 	let (pair1, _) = sp_core::sr25519::Pair::generate();
 	let (pair2, _) = sp_core::sr25519::Pair::generate();
 	let (pair3, _) = sp_core::sr25519::Pair::generate();
+
 	pallet_balances::GenesisConfig::<Test> {
 		balances: vec![(pair1.public(), 10), (pair2.public(), 20), (pair3.public(), 30)],
 	}
@@ -312,15 +340,34 @@ pub fn new_test_ext_default() -> sp_io::TestExternalities {
 }
 
 // Build genesis storage according to the mock runtime.
-pub fn new_test_ext_default_funded(
-	pair1_funded: sp_core::sr25519::Pair
+pub fn new_test_ext_default_funded_validators(
+	validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>,
 ) -> sp_io::TestExternalities {
 	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
+	let keys: Vec<_> = validators.clone().iter()
+		.map(|i| (i.0, i.0, i.1.clone().into())).collect();
+	BasicExternalities::execute_with_storage(&mut t, || {
+		for (ref k, ..) in &keys {
+			frame_system::Pallet::<Test>::inc_providers(k);
+		}
+	});
+
+	pallet_authorities::GenesisConfig::<Test> {
+		initial_validators: keys.iter().map(|x| x.0).collect::<Vec<_>>(),
+	}
+	.assimilate_storage(&mut t)
+	.unwrap();
+
+	pallet_session::GenesisConfig::<Test> { keys: keys.clone() }
+		.assimilate_storage(&mut t)
+		.unwrap();
+
 	let (pair2, _) = sp_core::sr25519::Pair::generate();
 	let (pair3, _) = sp_core::sr25519::Pair::generate();
+
 	pallet_balances::GenesisConfig::<Test> {
 		balances: vec![
-			(pair1_funded.public(), 10), 
+			(validators[0].0, 10), 
 			(pair2.public(), 20), 
 			(pair3.public(), 30)
 		],
