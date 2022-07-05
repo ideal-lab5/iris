@@ -229,6 +229,18 @@ pub mod pallet {
 			+ From<u64>
 			+ TypeInfo
 			+ MaxEncodedLen;
+		/// A stable ID for a validator.
+		type ValidatorId: Member
+			+ Parameter
+			+ MaybeSerializeDeserialize
+			+ MaxEncodedLen
+			+ TryFrom<Self::AccountId>;
+		/// A conversion from account ID to validator ID.
+		///
+		/// Its cost must be at most one storage read.
+		type ValidatorIdOf: Convert<Self::AccountId, Option<Self::ValidatorId>>;
+		/// trait to get current session validators
+		type ValidatorSet: ValidatorSet<Self::AccountId>;
 		// /// the authority id used for sending signed txs
         // // type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
 	}
@@ -336,6 +348,7 @@ pub mod pallet {
 		TooManyProxies,
 		/// the account is not the controller for the stash account
 		NotController,
+		NotValidator,
 		BadState,
 	}
 
@@ -405,6 +418,11 @@ pub mod pallet {
 			}
 
 			let controller = T::Lookup::lookup(controller)?;
+
+			let validator_id = <T as pallet::Config>::ValidatorIdOf::convert(controller.clone());
+			if !<T as pallet::Config>::ValidatorSet::validators().contains(&validator_id) {
+				return Err(Error::<T>::NotValidator.into())
+			}
 
 			if <Ledger<T>>::contains_key(&controller) {
 				return Err(Error::<T>::AlreadyPaired.into())
