@@ -84,6 +84,7 @@ fn proxy_bond_with_valid_values_should_work() {
 			stash: v0.0.clone(),
 			total: 1,
 			active: 1,
+			unlocking: Default::default(),
 		};
 		assert_eq!(Some(expect_staking_ledger), crate::Ledger::<Test>::get(v0.0.clone()));
 	});
@@ -212,7 +213,7 @@ BOND and DECLARE_PROXY tests
 */
 
 #[test]
-fn proxy_bond_and_declare_proxy_works() {
+fn proxy_declare_proxy_works() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -246,7 +247,7 @@ fn proxy_bond_and_declare_proxy_works() {
 }
 
 #[test]
-fn proxy_bond_and_declare_proxy_err_when_not_controller() {
+fn proxy_declare_proxy_err_when_not_controller() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -277,8 +278,49 @@ fn proxy_bond_and_declare_proxy_err_when_not_controller() {
 	});
 }
 
-// TODO
+// TODO: test setup with genesis config
 // #[test]
 // fn proxy_bond_and_declare_proxy_err_when_max_proxy_count_exceeded() {
 
 // }
+
+/*
+	bond_extra tests
+*/
+
+#[test]
+fn proxy_bond_extra_works_with_valid_values() {
+		// GIVEN: There are two validator nodes
+		let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
+			sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
+			UintAuthorityId(0)
+		);
+		let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
+			sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+			UintAuthorityId(1)
+		);
+		// AND: I have properly setup the mock runtime
+		new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
+			// WHEN: I have properly setup the runtime
+			// AND: I attempt to bond my controller to my stash
+			// AND: My controller is my stash (wlog)
+			// THEN: the bonding is successful
+			assert_ok!(Proxy::bond(
+				Origin::signed(v0.0.clone()),
+				v0.0.clone(),
+				1,
+			));
+			let expect_staking_ledger = crate::StakingLedger {
+				stash: v0.0.clone(),
+				total: 2,
+				active: 2,
+				unlocking: Default::default(),
+			};
+			assert_ok!(Proxy::bond_extra(
+				Origin::signed(v0.0.clone()),
+				1,
+			));
+			// AND: the ledger is updated
+			assert_eq!(Some(expect_staking_ledger), crate::Ledger::<Test>::get(v0.0.clone()));
+		});
+}
