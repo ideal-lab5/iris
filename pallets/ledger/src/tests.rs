@@ -16,7 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 use super::*;
 use frame_support::{assert_ok};
-use mock::*;
+use crate::mock::{Ledger, Origin, Test, new_test_ext_funded};
 use sp_core::Pair;
 use sp_core::{
 	offchain::{testing, OffchainWorkerExt, TransactionPoolExt, OffchainDbExt}
