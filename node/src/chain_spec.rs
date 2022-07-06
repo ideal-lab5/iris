@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 use iris_runtime::{
-	AccountId, AuraConfig, BalancesConfig, 
+	AccountId, AssetsConfig, AuraConfig, BalancesConfig, 
 	GenesisConfig, GrandpaConfig, Signature, 
 	SudoConfig, SessionConfig, AuthoritiesConfig, ImOnlineConfig,
 	SystemConfig, WASM_BINARY,
@@ -167,6 +167,11 @@ fn testnet_genesis(
 		system: SystemConfig {
 			// Add Wasm runtime to storage.
 			code: wasm_binary.to_vec(),
+		},
+		assets: AssetsConfig {
+			accounts: vec![],
+			assets: vec![],
+			metadata: vec![],
 		},
 		balances: BalancesConfig {
 			// Configure endowed accounts with initial balance of 1 << 60.

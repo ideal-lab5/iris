@@ -21,7 +21,7 @@ use mock::*;
 use sp_core::Pair;
 
 #[test]
-fn iris_assets_initial_state() {
+fn data_assets_initial_state() {
 	new_test_ext().execute_with(|| {
 		// Given: The node is initialized at block 0
 		// When: I query runtime storage
@@ -38,7 +38,7 @@ fn iris_assets_initial_state() {
 }
 
 #[test]
-fn iris_assets_create_works_for_valid_value_when_authorized_for_data_space() {
+fn data_assets_create_works_for_valid_value_when_authorized_for_data_space() {
 	// Given: I am a valid node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];
@@ -96,7 +96,7 @@ fn iris_assets_create_works_for_valid_value_when_authorized_for_data_space() {
 }
 
 #[test]
-fn iris_assets_create_fails_when_not_authorized_for_data_space() {
+fn data_assets_create_fails_when_not_authorized_for_data_space() {
 	// Given: I am a valid node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];
@@ -125,7 +125,7 @@ fn iris_assets_create_fails_when_not_authorized_for_data_space() {
 }
 
 // #[test]
-// fn iris_assets_request_data_works_for_valid_values_when_asset_class_exists() {
+// fn data_assets_request_data_works_for_valid_values_when_asset_class_exists() {
 // 	// GIVEN: I am a valid Iris node with a positive balance
 // 	let (p, _) = sp_core::sr25519::Pair::generate();
 // 	let pairs = vec![(p.clone().public(), 10)];
@@ -188,7 +188,7 @@ fn iris_assets_create_fails_when_not_authorized_for_data_space() {
 // }
 
 #[test]
-fn iris_assets_submit_ipfs_add_results_works_for_valid_values() {
+fn data_assets_submit_ipfs_add_results_works_for_valid_values() {
 	// GIVEN: I am a valid Iris node with a positive valance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];
@@ -234,7 +234,7 @@ fn iris_assets_submit_ipfs_add_results_works_for_valid_values() {
 }
 
 #[test]
-fn iris_assets_mint_tickets_works_for_valid_values() {
+fn data_assets_mint_tickets_works_for_valid_values() {
 	// GIVEN: I am a valid Iris node with a positive valance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];
@@ -268,7 +268,7 @@ fn iris_assets_mint_tickets_works_for_valid_values() {
 }
 
 #[test]
-fn iris_assets_can_transer_assets() {
+fn data_assets_can_transer_assets() {
 	// GIVEN: I am  valid Iris node with a positive balance	// GIVEN: I am a valid Iris node with a positive valance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let (p2, _) = sp_core::sr25519::Pair::generate();
@@ -306,7 +306,7 @@ fn iris_assets_can_transer_assets() {
 }
 
 #[test]
-fn iris_assets_can_burn_asset() {
+fn data_assets_can_burn_asset() {
 	// Given: I am a valid node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];

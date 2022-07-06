@@ -16,7 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 use super::*;
 use frame_support::{assert_ok};
-use mock::*;
+use crate::mock::{Ledger, Origin, Test, new_test_ext_funded};
 use sp_core::Pair;
 use sp_core::{
 	offchain::{testing, OffchainWorkerExt, TransactionPoolExt, OffchainDbExt}
@@ -24,7 +24,7 @@ use sp_core::{
 use std::sync::Arc;
 
 #[test]
-fn iris_ledger_can_lock() {
+fn ledger_can_lock() {
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];
 	new_test_ext_funded(pairs).execute_with(|| {
@@ -35,7 +35,7 @@ fn iris_ledger_can_lock() {
 }
 
 #[test]
-fn iris_ledger_can_unlock_and_transfer() {
+fn ledger_can_unlock_and_transfer() {
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let (p2, _) = sp_core::sr25519::Pair::generate();
 

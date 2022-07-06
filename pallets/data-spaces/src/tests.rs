@@ -21,7 +21,7 @@ use mock::*;
 use sp_core::Pair;
 
 #[test]
-fn iris_data_spaces_creation_works() {
+fn data_spaces_creation_works() {
 	// Given: I am a valid node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];
@@ -46,7 +46,7 @@ fn iris_data_spaces_creation_works() {
 }
 
 #[test]
-fn iris_data_spaces_mint_works_for_valid_values() {
+fn data_spaces_mint_works_for_valid_values() {
 	// GIVEN: I am a valid Iris node with a positive valance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];
@@ -82,7 +82,7 @@ fn iris_data_spaces_mint_works_for_valid_values() {
 	INTEGRATION TESTS: should this be moved to a new file? YEAH runtime tests
 */
 #[test]
-fn iris_data_spaces_can_associate_asset_id_with_data_space() {
+fn data_spaces_can_associate_asset_id_with_data_space() {
 	// GIVEN: I am  valid Iris node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];

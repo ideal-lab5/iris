@@ -480,7 +480,6 @@ impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 		// TODO: how staking pallet uses this, 'trigger_new_era'
 		CurrentEra::<T>::mutate(|s| *s = Some(new_index));
 		Self::remove_offline_validators();
-		// TODO: REMOVE OFFLINE STORAGE PROVIDERS
 		log::debug!(target: LOG_TARGET, "New session called; updated validator set provided.");
 		Some(Self::validators())
 	}
