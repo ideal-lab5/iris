@@ -35,12 +35,13 @@ mod mock;
 mod tests;
 
 use frame_support::{
-	ensure,
+	ensure, parameter_types,
 	pallet_prelude::*,
 	traits::{
 		EstimateNextSessionRotation, Get, Currency, LockableCurrency,
 		ValidatorSet, ValidatorSetWithIdentification, LockIdentifier, WithdrawReasons,
 	},
+	BoundedVec,
 };
 use scale_info::TypeInfo;
 pub use pallet::*;
@@ -71,7 +72,7 @@ use sp_runtime::{
 	offchain::http,
 	traits::StaticLookup,
 };
-// use log;
+use codec::HasCompact;
 use pallet_data_assets::DataCommand;
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";
@@ -129,6 +130,11 @@ pub type EraIndex = u32;
 /// counter for the number of "reward" points earned by a given storage provider
 pub type RewardPoint = u32;
 
+
+parameter_types! {
+	pub MaxUnlockingChunks: u32 = 32;
+}
+
 /// Reward points for storage providers of some specific assest id during an era.
 #[derive(PartialEq, Encode, Decode, Default, RuntimeDebug, TypeInfo)]
 pub struct EraRewardPoints<AccountId> {
@@ -150,6 +156,17 @@ pub struct ActiveEraInfo {
 	start: Option<u64>,
 }
 
+/// Just a Balance/BlockNumber tuple to encode when a chunk of funds will be unlocked.
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
+pub struct UnlockChunk<Balance: HasCompact> {
+	/// Amount of funds to be unlocked.
+	#[codec(compact)]
+	value: Balance,
+	/// Era number at which point it'll be unlocked.
+	#[codec(compact)]
+	era: EraIndex,
+}
+
 /// The ledger of a (bonded) stash.
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
 #[scale_info(skip_type_params(T))]
@@ -164,13 +181,53 @@ pub struct StakingLedger<T: Config> {
 	/// rounds.
 	#[codec(compact)]
 	pub active: BalanceOf<T>,
-	// / Any balance that is becoming free, which may eventually be transferred out of the stash
-	// / (assuming it doesn't get slashed first). It is assumed that this will be treated as a first
-	// / in, first out queue where the new (higher value) eras get pushed on the back.
-	// pub unlocking: BoundedVec<UnlockChunk<BalanceOf<T>>, MaxUnlockingChunks>,
+	/// Any balance that is becoming free, which may eventually be transferred out of the stash
+	/// (assuming it doesn't get slashed first). It is assumed that this will be treated as a first
+	/// in, first out queue where the new (higher value) eras get pushed on the back.
+	pub unlocking: BoundedVec<UnlockChunk<BalanceOf<T>>, MaxUnlockingChunks>,
 	// / List of eras for which the stakers behind a validator have claimed rewards. Only updated
 	// / for validators.
 	// pub claimed_rewards: Vec<EraIndex>,
+}
+
+impl<T: Config> StakingLedger<T> {
+	/// Initializes the default object using the given `validator`.
+	pub fn default_from(stash: T::AccountId) -> Self {
+		Self {
+			stash,
+			total: Zero::zero(),
+			active: Zero::zero(),
+			unlocking: Default::default(),
+		}
+	}
+
+
+	/// Re-bond funds that were scheduled for unlocking.
+	///
+	/// Returns the updated ledger, and the amount actually rebonded.
+	fn rebond(mut self, value: BalanceOf<T>) -> (Self, BalanceOf<T>) {
+		let mut unlocking_balance = BalanceOf::<T>::zero();
+
+		while let Some(last) = self.unlocking.last_mut() {
+			if unlocking_balance + last.value <= value {
+				unlocking_balance += last.value;
+				self.active += last.value;
+				self.unlocking.pop();
+			} else {
+				let diff = value - unlocking_balance;
+
+				unlocking_balance += diff;
+				self.active += diff;
+				last.value -= diff;
+			}
+
+			if unlocking_balance >= value {
+				break
+			}
+		}
+
+		(self, unlocking_balance)
+	}
 }
 
 /// Indicates the initial status of the staker.
@@ -349,6 +406,7 @@ pub mod pallet {
 		/// the account is not the controller for the stash account
 		NotController,
 		NotValidator,
+		NoUnlockChunk,
 		BadState,
 	}
 
@@ -451,7 +509,7 @@ pub mod pallet {
 				stash,
 				total: value,
 				active: value,
-				// unlocking: Default::default(),
+				unlocking: Default::default(),
 				// claimed_rewards: (last_reward_era..current_era).collect(),
 			};
 			Self::update_ledger(&controller, &item);
@@ -461,9 +519,30 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn bond_extra(
 			origin: OriginFor<T>,
-			#[pallet::compact] max_additional: BalanceOf<T>,
+			#[pallet::compact] value: BalanceOf<T>,
 		) -> DispatchResult {
-			let who = ensure_signed(origin)?;
+			let controller = ensure_signed(origin)?;
+			let ledger = Self::ledger(&controller).ok_or(Error::<T>::NotController)?;
+			ensure!(!ledger.unlocking.is_empty(), Error::<T>::NoUnlockChunk);
+
+			// let initial_unlocking = ledger.unlocking.len() as u32;
+			let (ledger, rebonded_value) = ledger.rebond(value);
+			// Last check: the new active amount of ledger must be more than ED.
+			ensure!(ledger.active >= <T as pallet::Config>::Currency::minimum_balance(), Error::<T>::InsufficientBond);
+
+			Self::deposit_event(Event::<T>::Bonded(ledger.stash.clone(), rebonded_value));
+
+			// NOTE: ledger must be updated prior to calling `Self::weight_of`.
+			Self::update_ledger(&controller, &ledger);
+			// if T::VoterList::contains(&ledger.stash) {
+			// 	let _ = T::VoterList::on_update(&ledger.stash, Self::weight_of(&ledger.stash))
+			// 		.defensive();
+			// }
+
+			// let removed_chunks = 1u32 // for the case where the last iterated chunk is not removed
+			// 	.saturating_add(initial_unlocking)
+			// 	.saturating_sub(ledger.unlocking.len() as u32);
+			// Ok(Some(T::WeightInfo::rebond(removed_chunks)).into())
 			Ok(())
 		}
 
