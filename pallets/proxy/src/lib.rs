@@ -186,7 +186,7 @@ pub enum ProxyStatus {
 /// preferences for a proxy node
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, Default)]
 pub struct ProxyPrefs {
-
+	mbps: u32,
 }
 
 #[frame_support::pallet]

@@ -31,9 +31,11 @@ use sp_core::{
 use sp_keystore::{testing::KeyStore, KeystoreExt, SyncCryptoStore};
 use std::sync::Arc;
 
-// validator tests 
+/*
+BOND extrinsic tests
+*/
 #[test]
-fn iris_proxy_simple_setup_should_work() {
+fn proxy_simple_setup_should_work() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -204,3 +206,79 @@ fn proxy_bond_insufficient_balance_err_when_value_too_low() {
 		), crate::Error::<Test>::InsufficientBond);
 	});
 }
+
+/*
+BOND and DECLARE_PROXY tests
+*/
+
+#[test]
+fn proxy_bond_and_declare_proxy_works() {
+	// GIVEN: There are two validator nodes
+	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
+		UintAuthorityId(0)
+	);
+	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+		UintAuthorityId(1)
+	);
+	// AND: I have properly setup the mock runtime
+	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
+		// WHEN: I have properly setup the runtime
+		// AND: I attempt to bond my controller to my stash
+		// AND: My controller is my stash (wlog)
+		// THEN: the bonding is successful
+		assert_ok!(Proxy::bond(
+			Origin::signed(v0.0.clone()),
+			v0.0.clone(),
+			1,
+		));
+		let proxy_prefs = crate::ProxyPrefs {
+			mbps: 100,
+		};
+		assert_ok!(Proxy::declare_proxy(
+			Origin::signed(v0.0.clone()),
+			proxy_prefs.clone(),
+		));
+		// AND: the address is added to the proxies list
+		assert_eq!(proxy_prefs.clone(), crate::Proxies::<Test>::get(v0.0.clone()));
+	});
+}
+
+#[test]
+fn proxy_bond_and_declare_proxy_err_when_not_controller() {
+	// GIVEN: There are two validator nodes
+	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
+		UintAuthorityId(0)
+	);
+	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+		UintAuthorityId(1)
+	);
+	// AND: I have properly setup the mock runtime
+	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
+		// WHEN: I have properly setup the runtime
+		// AND: I attempt to bond my controller to my stash
+		// AND: My controller is my stash (wlog)
+		// THEN: the bonding is successful
+		assert_ok!(Proxy::bond(
+			Origin::signed(v0.0.clone()),
+			v0.0.clone(),
+			1,
+		));
+		let proxy_prefs = crate::ProxyPrefs {
+			mbps: 100,
+		};
+		assert_err!(Proxy::declare_proxy(
+			Origin::signed(v1.0.clone()),
+			proxy_prefs.clone(),
+		), crate::Error::<Test>::NotController);
+	});
+}
+
+// TODO
+// #[test]
+// fn proxy_bond_and_declare_proxy_err_when_max_proxy_count_exceeded() {
+
+// }
