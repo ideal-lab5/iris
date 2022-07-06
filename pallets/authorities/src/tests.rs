@@ -20,7 +20,7 @@
 use super::*;
 use crate::mock::{
 	authorities, new_test_ext, new_test_ext_funded, 
-	Origin, Session, Test, Authorities, DataAssets, Assets,
+	Origin, Session, Test, Authorities,
 };
 use frame_support::{assert_noop, assert_ok, pallet_prelude::*};
 use sp_runtime::testing::UintAuthorityId;
@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 // validator tests 
 #[test]
-fn iris_session_simple_setup_should_work() {
+fn authorities_simple_setup_should_work() {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
 		UintAuthorityId(0)
@@ -56,7 +56,7 @@ fn iris_session_simple_setup_should_work() {
 }
 
 #[test]
-fn iris_session_add_validator_updates_validators_list() {
+fn authorities_add_validator_updates_validators_list() {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
 		UintAuthorityId(0)
@@ -81,7 +81,7 @@ fn iris_session_add_validator_updates_validators_list() {
 }
 
 #[test]
-fn iris_session_remove_validator_updates_validators_list() {
+fn authorities_remove_validator_updates_validators_list() {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
 		UintAuthorityId(0)
@@ -101,7 +101,7 @@ fn iris_session_remove_validator_updates_validators_list() {
 }
 
 #[test]
-fn iris_session_add_validator_fails_with_invalid_origin() {
+fn authorities_add_validator_fails_with_invalid_origin() {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
 		UintAuthorityId(0)
@@ -121,7 +121,7 @@ fn iris_session_add_validator_fails_with_invalid_origin() {
 }
 
 #[test]
-fn iris_session_remove_validator_fails_with_invalid_origin() {
+fn authorities_remove_validator_fails_with_invalid_origin() {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
 		UintAuthorityId(0)
@@ -144,7 +144,7 @@ fn iris_session_remove_validator_fails_with_invalid_origin() {
 }
 
 #[test]
-fn iris_session_duplicate_check() {
+fn authorities_duplicate_check() {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
 		UintAuthorityId(0)

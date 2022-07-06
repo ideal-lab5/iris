@@ -52,6 +52,7 @@ std = [
 	'log/std',
 	'pallet-im-online/std',
 	'pallet-session/std',
+	'pallet-balances/std',
 ]
 
 runtime-benchmarks = ["frame-benchmarking"]

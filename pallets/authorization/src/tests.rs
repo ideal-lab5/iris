@@ -21,7 +21,7 @@ use mock::*;
 use sp_core::Pair;
 
 #[test]
-fn iris_ejection_can_register_rule_executor_when_caller_is_asset_owner() {
+fn authorization_can_register_rule_executor_when_caller_is_asset_owner() {
 	// Given: I am a valid node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let (contract_address, _) = sp_core::sr25519::Pair::generate();
@@ -48,7 +48,7 @@ fn iris_ejection_can_register_rule_executor_when_caller_is_asset_owner() {
 }
 
 #[test]
-fn iris_ejection_cant_register_rules_when_not_owned() {
+fn authorization_cant_register_rules_when_not_owned() {
 	// Given: I am a valid node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let (contract_address, _) = sp_core::sr25519::Pair::generate();
@@ -68,7 +68,7 @@ fn iris_ejection_cant_register_rules_when_not_owned() {
 }
 
 #[test]
-fn iris_ejection_can_submit_execution_results() {
+fn authorization_can_submit_execution_results() {
 	// Given: I am a valid node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let (contract_address, _) = sp_core::sr25519::Pair::generate();
@@ -114,7 +114,7 @@ fn iris_ejection_can_submit_execution_results() {
 }
 
 #[test]
-fn iris_ejection_cant_submit_execution_results_when_contract_not_registered_for_asset() {
+fn authorization_cant_submit_execution_results_when_contract_not_registered_for_asset() {
 	// Given: I am a valid node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let (contract_address, _) = sp_core::sr25519::Pair::generate();
@@ -153,7 +153,7 @@ fn iris_ejection_cant_submit_execution_results_when_contract_not_registered_for_
 }
 
 #[test]
-fn iris_ejection_cant_submit_execution_results_when_consumer_owns_no_asset() {
+fn authorization_cant_submit_execution_results_when_consumer_owns_no_asset() {
 	// Given: I am a valid node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let (contract_address, _) = sp_core::sr25519::Pair::generate();

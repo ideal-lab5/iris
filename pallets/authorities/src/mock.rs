@@ -19,7 +19,7 @@
 
 use super::*;
 use crate::{self as pallet_authorities, Config};
-use pallet_data_assets;
+// use pallet_data_assets;
 use frame_support::{
 	parameter_types, 
 	traits::{GenesisBuild, ConstU32},
@@ -89,13 +89,10 @@ frame_support::construct_runtime!(
 		NodeBlock = Block,
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
-		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
-		Session: pallet_session::{Pallet, Call, Storage, Event, Config<T>},
-		Assets: pallet_assets::{Pallet, Storage, Event<T>},
-		DataAssets: pallet_data_assets::{Pallet, Call, Storage, Event<T>},
-		IrisEjection: pallet_authorization,
-		Authorities: pallet_authorities::{Pallet, Call, Storage, Event<T>, Config<T>},
+		System: frame_system,
+		Balances: pallet_balances,
+		Session: pallet_session,
+		Authorities: pallet_authorities,
 	}
 );
 
@@ -206,45 +203,6 @@ impl pallet_balances::Config for Test {
 	type ExistentialDeposit = ExistentialDeposit;
 	type AccountStore = System;
 	type WeightInfo = ();
-}
-
-// implement assets pallet for iris_assets 
-parameter_types! {
-	pub const AssetDeposit: u64 = 1;
-	pub const AssetAccountDeposit: u64 = 1;
-	pub const ApprovalDeposit: u64 = 1;
-	pub const StringLimit: u32 = 50;
-	pub const MetadataDepositBase: u64 = 1;
-	pub const MetadataDepositPerByte: u64 = 1;
-}
-
-impl pallet_assets::Config for Test {
-	type Event = Event;
-	type Balance = u64;
-	type AssetId = u32;
-	type Currency = Balances;
-	type ForceOrigin = frame_system::EnsureRoot<sp_core::sr25519::Public>;
-	type AssetDeposit = AssetDeposit;
-	type AssetAccountDeposit = AssetAccountDeposit;
-	type MetadataDepositBase = MetadataDepositBase;
-	type MetadataDepositPerByte = MetadataDepositPerByte;
-	type ApprovalDeposit = ApprovalDeposit;
-	type StringLimit = StringLimit;
-	type Freezer = ();
-	type WeightInfo = ();
-	type Extra = ();
-}
-
-
-/// configure the iris assets pallet
-impl pallet_data_assets::Config for Test {
-	type Event = Event;
-	type Call = Call;
-}
-
-impl pallet_authorization::Config for Test {
-	type Event = Event;
-	type Call = Call;
 }
 
 parameter_types! {
