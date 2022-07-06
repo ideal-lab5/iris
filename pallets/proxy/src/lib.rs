@@ -45,7 +45,7 @@ use frame_support::{
 };
 use scale_info::TypeInfo;
 pub use pallet::*;
-use sp_runtime::traits::{Convert, Zero};
+use sp_runtime::traits::{CheckedSub, Convert, Zero};
 use sp_staking::offence::{Offence, OffenceError, ReportOffence};
 use sp_std::{
 	collections::{btree_set::BTreeSet, btree_map::BTreeMap},
@@ -405,6 +405,7 @@ pub mod pallet {
 		TooManyProxies,
 		/// the account is not the controller for the stash account
 		NotController,
+		NotStash,
 		NotValidator,
 		NoUnlockChunk,
 		BadState,
@@ -519,30 +520,35 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn bond_extra(
 			origin: OriginFor<T>,
-			#[pallet::compact] value: BalanceOf<T>,
+			#[pallet::compact] max_additional: BalanceOf<T>,
 		) -> DispatchResult {
-			let controller = ensure_signed(origin)?;
-			let ledger = Self::ledger(&controller).ok_or(Error::<T>::NotController)?;
-			ensure!(!ledger.unlocking.is_empty(), Error::<T>::NoUnlockChunk);
+			let stash = ensure_signed(origin)?;
 
-			// let initial_unlocking = ledger.unlocking.len() as u32;
-			let (ledger, rebonded_value) = ledger.rebond(value);
-			// Last check: the new active amount of ledger must be more than ED.
-			ensure!(ledger.active >= <T as pallet::Config>::Currency::minimum_balance(), Error::<T>::InsufficientBond);
+			let controller = Self::bonded(&stash).ok_or(Error::<T>::NotStash)?;
+			let mut ledger = Self::ledger(&controller).ok_or(Error::<T>::NotController)?;
 
-			Self::deposit_event(Event::<T>::Bonded(ledger.stash.clone(), rebonded_value));
+			let stash_balance = <T as pallet::Config>::Currency::free_balance(&stash);
+			if let Some(extra) = stash_balance.checked_sub(&ledger.total) {
+				let extra = extra.min(max_additional);
+				ledger.total += extra;
+				ledger.active += extra;
+				// Last check: the new active amount of ledger must be more than ED.
+				ensure!(
+					ledger.active >= <T as pallet::Config>::Currency::minimum_balance(),
+					Error::<T>::InsufficientBond
+				);
 
-			// NOTE: ledger must be updated prior to calling `Self::weight_of`.
-			Self::update_ledger(&controller, &ledger);
-			// if T::VoterList::contains(&ledger.stash) {
-			// 	let _ = T::VoterList::on_update(&ledger.stash, Self::weight_of(&ledger.stash))
-			// 		.defensive();
-			// }
+				// NOTE: ledger must be updated prior to calling `Self::weight_of`.
+				Self::update_ledger(&controller, &ledger);
+				// update this staker in the sorted list, if they exist in it.
+				// if T::VoterList::contains(&stash) {
+				// 	let _ =
+				// 		T::VoterList::on_update(&stash, Self::weight_of(&ledger.stash)).defensive();
+				// 	debug_assert_eq!(T::VoterList::sanity_check(), Ok(()));
+				// }
 
-			// let removed_chunks = 1u32 // for the case where the last iterated chunk is not removed
-			// 	.saturating_add(initial_unlocking)
-			// 	.saturating_sub(ledger.unlocking.len() as u32);
-			// Ok(Some(T::WeightInfo::rebond(removed_chunks)).into())
+				Self::deposit_event(Event::<T>::Bonded(stash, extra));
+			}
 			Ok(())
 		}
 
