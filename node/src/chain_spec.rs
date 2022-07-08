@@ -18,7 +18,7 @@ use iris_runtime::{
 	AccountId, AssetsConfig, AuraConfig, BalancesConfig, 
 	GenesisConfig, GrandpaConfig, Signature, 
 	SudoConfig, SessionConfig, AuthoritiesConfig, ImOnlineConfig,
-	SystemConfig, WASM_BINARY,
+	ProxyConfig, SystemConfig, WASM_BINARY,
 	opaque::SessionKeys,
 };
 use sc_service::ChainType;
@@ -197,5 +197,10 @@ fn testnet_genesis(
 			key: Some(root_key),
 		},
 		transaction_payment: Default::default(),
+		proxy: ProxyConfig {
+			initial_proxies: vec![],
+			min_proxy_bond: 50,
+			max_proxy_count: Some(256),
+		},
 	}
 }
