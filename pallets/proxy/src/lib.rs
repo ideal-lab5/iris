@@ -39,7 +39,7 @@ use frame_support::{
 	pallet_prelude::*,
 	traits::{
 		EstimateNextSessionRotation, Get, Currency, LockableCurrency,
-		ValidatorSet, ValidatorSetWithIdentification, LockIdentifier, WithdrawReasons,
+		DefensiveSaturating, LockIdentifier, WithdrawReasons,
 	},
 	BoundedVec,
 };
@@ -78,36 +78,6 @@ use pallet_data_assets::DataCommand;
 pub const LOG_TARGET: &'static str = "runtime::proxy";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
-
-// pub mod crypto {
-// 	// use crate::KEY_TYPE;
-// 	use sp_core::crypto::KeyTypeId;
-// 	use sp_core::sr25519::Signature as Sr25519Signature;
-// 	use sp_runtime::app_crypto::{app_crypto, sr25519};
-// 	use sp_runtime::{traits::Verify, MultiSignature, MultiSigner};
-// 	use sp_std::convert::TryFrom;
-
-// 	pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
-
-// 	app_crypto!(sr25519, KEY_TYPE);
-
-// 	pub struct TestAuthId;
-// 	// implemented for runtime
-// 	impl frame_system::offchain::AppCrypto<MultiSigner, MultiSignature> for TestAuthId {
-// 		type RuntimeAppPublic = Public;
-// 		type GenericSignature = sp_core::sr25519::Signature;
-// 		type GenericPublic = sp_core::sr25519::Public;
-// 	}
-
-// 	// implemented for mock runtime in test
-// 	impl frame_system::offchain::AppCrypto<<Sr25519Signature as Verify>::Signer, Sr25519Signature>
-// 		for TestAuthId
-// 	{
-// 		type RuntimeAppPublic = Public;
-// 		type GenericSignature = sp_core::sr25519::Signature;
-// 		type GenericPublic = sp_core::sr25519::Public;
-// 	}
-// }
 
 // syntactic sugar for logging.
 #[macro_export]
@@ -288,20 +258,9 @@ pub mod pallet {
 			+ From<u64>
 			+ TypeInfo
 			+ MaxEncodedLen;
-		// / A stable ID for a validator.
-		// type ValidatorId: Member
-		// 	+ Parameter
-		// 	+ MaybeSerializeDeserialize
-		// 	+ MaxEncodedLen
-		// 	+ TryFrom<Self::AccountId>;
-		// /// A conversion from account ID to validator ID.
-		// ///
-		// /// Its cost must be at most one storage read.
-		// type ValidatorIdOf: Convert<Self::AccountId, Option<Self::ValidatorId>>;
-		// /// trait to get current session validators
-		// // type ValidatorSet: ValidatorSet<Self::AccountId>;
-		// /// A type for retrieving the validators supposed to be online in a session.
-		// type ValidatorSet: ValidatorSetWithIdentification<Self::AccountId>;
+		/// Number of eras that staked funds must remain bonded for.
+		#[pallet::constant]
+		type BondingDuration: Get<EraIndex>;
 	}
 
 	#[pallet::type_value]
@@ -407,6 +366,7 @@ pub mod pallet {
 		NotController,
 		NotStash,
 		NotValidator,
+		NoMoreChunks,
 		NoUnlockChunk,
 		BadState,
 	}
@@ -555,9 +515,65 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn unbond(
 			origin: OriginFor<T>,
-			#[pallet::compact] max_additional: BalanceOf<T>,
+			#[pallet::compact] value: BalanceOf<T>,
 		) -> DispatchResult {
-			let who = ensure_signed(origin)?;
+			let controller = ensure_signed(origin)?;
+			let mut ledger = Self::ledger(&controller).ok_or(Error::<T>::NotController)?;
+			ensure!(
+				ledger.unlocking.len() < MaxUnlockingChunks::get() as usize,
+				Error::<T>::NoMoreChunks,
+			);
+
+			let mut value = value.min(ledger.active);
+
+			if !value.is_zero() {
+				ledger.active -= value;
+
+				// Avoid there being a dust balance left in the staking system.
+				if ledger.active < <T as pallet::Config>::Currency::minimum_balance() {
+					value += ledger.active;
+					ledger.active = Zero::zero();
+				}
+
+				let min_active_bond = MinProxyBond::<T>::get();
+				// let min_active_bond = if Nominators::<T>::contains_key(&ledger.stash) {
+				// 	MinNominatorBond::<T>::get()
+				// } else if Validators::<T>::contains_key(&ledger.stash) {
+				// 	MinValidatorBond::<T>::get()
+				// } else {
+				// 	Zero::zero()
+				// };
+
+				// Make sure that the user maintains enough active bond for their role.
+				// If a user runs into this error, they should chill first.
+				ensure!(ledger.active >= min_active_bond, Error::<T>::InsufficientBond);
+
+				// Note: in case there is no current era it is fine to bond one era more.
+				let era = Self::current_era().unwrap_or(0) + T::BondingDuration::get();
+				if let Some(mut chunk) =
+					ledger.unlocking.last_mut().filter(|chunk| chunk.era == era)
+				{
+					// To keep the chunk count down, we only keep one chunk per era. Since
+					// `unlocking` is a FiFo queue, if a chunk exists for `era` we know that it will
+					// be the last one.
+					chunk.value = chunk.value.defensive_saturating_add(value)
+				} else {
+					ledger
+						.unlocking
+						.try_push(UnlockChunk { value, era })
+						.map_err(|_| Error::<T>::NoMoreChunks)?;
+				};
+				// NOTE: ledger must be updated prior to calling `Self::weight_of`.
+				Self::update_ledger(&controller, &ledger);
+
+				// // update this staker in the sorted list, if they exist in it.
+				// if T::VoterList::contains(&ledger.stash) {
+				// 	let _ = T::VoterList::on_update(&ledger.stash, Self::weight_of(&ledger.stash))
+				// 		.defensive();
+				// }
+
+				Self::deposit_event(Event::<T>::Unbonded(ledger.stash, value));
+			}
 			Ok(())
 		}
 

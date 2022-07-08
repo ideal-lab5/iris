@@ -269,11 +269,16 @@ impl pallet_authorities::Config for Test {
 	type MaxDeadSession = MaxDeadSession;
 }
 
+parameter_types! {
+	pub const BondingDuration: EraIndex = 3;
+}
+
 impl Config for Test {
 	type Event = Event;
 	type Call = Call;
 	type Currency = Balances;
 	type CurrencyBalance = <Self as pallet_balances::Config>::Balance;
+	type BondingDuration = BondingDuration;
 }
 
 type Extrinsic = TestXt<Call, ()>;
