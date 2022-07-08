@@ -73,11 +73,13 @@ pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
 
 use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
+use pallet_authorities::EraIndex;
 
 pub use pallet_data_assets;
 pub use pallet_authorization;
 pub use pallet_data_spaces;
 pub use pallet_authorities;
+pub use pallet_proxy;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -491,6 +493,18 @@ impl pallet_im_online::Config for Runtime {
 	type MaxPeerDataEncodingSize = MaxPeerDataEncodingSize;
 }
 
+parameter_types! {
+	pub const BondingDuration: EraIndex = 3;
+}
+
+impl pallet_proxy::Config for Runtime {
+	type Event = Event;
+	type Call = Call;
+	type Currency = Balances;
+	type CurrencyBalance = <Self as pallet_balances::Config>::Balance ;
+	type BondingDuration = BondingDuration;
+}
+
 use codec::Encode;
 use sp_runtime::traits::StaticLookup;
 
@@ -575,8 +589,9 @@ construct_runtime!(
 		Authorities: pallet_authorities,
 		Session: pallet_session,
 		DataSpaces: pallet_data_spaces,
-		ImOnline: pallet_im_online::{Pallet, Call, Storage, Event<T>, ValidateUnsigned, Config<T>},
+		ImOnline: pallet_im_online,
 		Contracts: pallet_contracts,
+		Proxy: pallet_proxy,
 	}
 );
 

@@ -2440,6 +2440,7 @@ dependencies = [
  "pallet-grandpa",
  "pallet-im-online",
  "pallet-ledger",
+ "pallet-proxy",
  "pallet-randomness-collective-flip",
  "pallet-session",
  "pallet-sudo",
