@@ -477,7 +477,6 @@ impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 	// Plan a new session and provide new validator set.
 	fn new_session(new_index: u32) -> Option<Vec<T::AccountId>> {
 		log::info!("Starting new session with index: {:?}", new_index);
-		// TODO: how staking pallet uses this, 'trigger_new_era'
 		CurrentEra::<T>::mutate(|s| *s = Some(new_index));
 		Self::remove_offline_validators();
 		log::debug!(target: LOG_TARGET, "New session called; updated validator set provided.");
@@ -486,7 +485,6 @@ impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 
 	fn end_session(end_index: u32) {
 		log::info!("Ending session with index: {:?}", end_index);
-		// TODO: calculate which validators should fetch which data? not ideal really.. idk
 		Self::mark_dead_validators(end_index);
 	}
 

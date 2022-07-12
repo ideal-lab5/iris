@@ -105,6 +105,14 @@ pub mod crypto {
 	}
 }
 
+#[derive(Encode, Decode, RuntimeDebug, TypeInfo)]
+pub struct IpfsConfigItem {
+	key: Vec<u8>,
+	value: Vec<u8>,
+	boolean: Option<bool>,
+	json: Option<bool>,
+}
+
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
@@ -176,27 +184,13 @@ pub mod pallet {
 		}
 	}
 
-	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
-		/// could not build the ipfs request
-		CantCreateRequest,
-		/// the request to IPFS timed out
-		RequestTimeout,
-		/// the request to IPFS failed
-		RequestFailed,
-		/// the specified asset id does not correspond to any owned content
-		NoSuchOwnedContent,
-		/// the nodes balance is insufficient to complete this operation
-		InsufficientBalance,
-		/// the node is already a candidate for some storage pool
-		AlreadyACandidate,
-		/// the node has already pinned the CID
-		AlreadyPinned,
-		/// the node is not a candidate storage provider for some asset id
-		NotACandidate,
+		/// The specified multiaddress is invalid (could not be encoded as utf8)
 		InvalidMultiaddress,
+		/// The specified CID is invalid (could not be encoded as utf8)
 		InvalidCID,
+		/// An error occurred while communicated with IPFS
 		IpfsError,
 	}
 
@@ -210,7 +204,7 @@ pub mod pallet {
 				}
 			}
 			// handle data requests each block
-			if let Err(e) = Self::prcoess_ingestion_requests() {
+			if let Err(e) = Self::process_ingestion_requests() {
 				log::error!("Encountered an error while processing data requests: {:?}", e);
 			}
 
@@ -351,6 +345,15 @@ impl<T: Config> Pallet<T> {
 			.propagate(true)
 			.build()
 	}
+
+	/// manage IPFS node configuration
+	/// 
+	///  
+	/// 
+	fn configuration_housekeeping() -> Result<(), Error<T>> {
+		// 
+		Ok(())
+	}
 	
 	/// manage connection to the iris ipfs swarm
     ///
@@ -420,7 +423,7 @@ impl<T: Config> Pallet<T> {
 
 	/// process any requests in the IngestionQueue
 	/// TODO: This needs some *major* refactoring
-    fn prcoess_ingestion_requests() -> Result<(), Error<T>> {
+    fn process_ingestion_requests() -> Result<(), Error<T>> {
 		let ingestion_queue = <pallet_data_assets::Pallet<T>>::ingestion_queue();
 		let len = ingestion_queue.len();
 		if len != 0 {
@@ -470,8 +473,34 @@ impl<T: Config> Pallet<T> {
 	/*
 	IPFS commands: This should ultimately be moved to it's own file
 	*/
-	/// ipfs swarm connect
-	fn ipfs_connect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
+	// TODO: 
+	// 1) where should these functions exist? separate file? need to logically separate these, so we should be able to update the endpoints (if interface changes) with
+	// minimal impacts/code changes
+	// 2) URL builder? e.g. builder().base().swarm().connect(multiaddress), build().base().add(multiaddress, cid), etc.
+
+	/// Update the node's configuration
+	/// 
+	/// * config_item: The ipfs configuration to update. In general, this is a key-value pair.
+	/// 
+	fn config_update(config_item: IpfsConfigItem) -> Result<(), Error<T>> {
+		// "http://127.0.0.1:5001/api/v0/config?arg=<key>&arg=<value>&bool=<value>&json=<value>"
+		Ok(())
+	}
+
+	/// Show the node's current configuration
+	/// 
+	fn config_show() -> Result<http::Response, Error<T>> {
+		let endpoint = "http://127.0.0.1:5001/api/v0/config/show";
+		let res = Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
+		Ok(res.unwrap)
+	}
+
+
+	/// Connect to the given multiaddress
+	/// 
+	/// * multiaddress: The multiaddress to connect to
+	/// 
+	fn connect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
 		match str::from_utf8(multiaddress) {
 			Ok(maddr) => {
 				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/connect?arg=".to_owned();
@@ -485,8 +514,11 @@ impl<T: Config> Pallet<T> {
 		}
 	}
 
-	/// ipfs swarm disconnect
-	fn ipfs_disconnect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
+	/// Disconeect from the given multiaddress
+	/// 
+	/// * multiaddress: The multiaddress to disconnect from
+	/// 
+	fn disconnect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
 		match str::from_utf8(multiaddress) {
 			Ok(maddr) => {
 				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?arg=".to_owned();
@@ -500,11 +532,14 @@ impl<T: Config> Pallet<T> {
 		}
 	}
 
-	/// ipfs get <CID>
-	fn ipfs_get(cid: &Vec<u8>) -> Result<(), Error<T>> {
+	/// Fetch data from the ipfs swarm and make it available from your node
+	/// 
+	/// * cid: The CID to fetch
+	/// 
+	fn get(cid: &Vec<u8>) -> Result<(), Error<T>> {
 		match str::from_utf8(cid) {
 			Ok(cid_string) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?arg=".to_owned();
+				let mut endpoint = "http://127.0.0.1:5001/api/v0/get?arg=".to_owned();
 				endpoint.push_str(cid_string);
 				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
 				return Ok(());
@@ -515,8 +550,11 @@ impl<T: Config> Pallet<T> {
 		}
 	}
 
-	/// ipfs cat <CID>
-	fn ipfs_cat(cid: &Vec<u8>) -> Result<http::Response, Error<T>> {
+	/// retrieve data from IPFS and return it
+	/// 
+	/// cid: The CID to cat
+	/// 
+	fn cat(cid: &Vec<u8>) -> Result<http::Response, Error<T>> {
 		match str::from_utf8(cid) {
 			Ok(cid_string) => {
 				let mut endpoint = "http://127.0.0.1:5001/api/v0/cat?arg=".to_owned();
@@ -533,6 +571,7 @@ impl<T: Config> Pallet<T> {
 	/// Make an http post request to IPFS
 	/// 
 	/// * `endpoint`: The IPFS endpoint to invoke
+	/// 
 	fn ipfs_post_request(endpoint: &str) -> Result<http::Response, http::Error> {
 		let pending = http::Request::default()
 					.method(http::Method::Post)
