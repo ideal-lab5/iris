@@ -80,6 +80,7 @@ pub use pallet_authorization;
 pub use pallet_data_spaces;
 pub use pallet_authorities;
 pub use pallet_proxy;
+pub use pallet_ipfs;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -505,6 +506,12 @@ impl pallet_proxy::Config for Runtime {
 	type BondingDuration = BondingDuration;
 }
 
+impl pallet_ipfs::Config for Runtime {
+	type Event = Event;
+	type Call = Call;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+}
+
 use codec::Encode;
 use sp_runtime::traits::StaticLookup;
 
@@ -592,6 +599,7 @@ construct_runtime!(
 		ImOnline: pallet_im_online,
 		Contracts: pallet_contracts,
 		Proxy: pallet_proxy,
+		Ipfs: pallet_ipfs,
 	}
 );
 

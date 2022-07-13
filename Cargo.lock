@@ -2439,6 +2439,7 @@ dependencies = [
  "pallet-data-spaces",
  "pallet-grandpa",
  "pallet-im-online",
+ "pallet-ipfs",
  "pallet-ledger",
  "pallet-proxy",
  "pallet-randomness-collective-flip",

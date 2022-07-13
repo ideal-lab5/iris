@@ -31,6 +31,8 @@
 mod mock;
 mod tests;
 
+pub mod ipfs;
+
 use frame_support::{
 	ensure,
 	pallet_prelude::*,
@@ -103,14 +105,6 @@ pub mod crypto {
 		type GenericSignature = sp_core::sr25519::Signature;
 		type GenericPublic = sp_core::sr25519::Public;
 	}
-}
-
-#[derive(Encode, Decode, RuntimeDebug, TypeInfo)]
-pub struct IpfsConfigItem {
-	key: Vec<u8>,
-	value: Vec<u8>,
-	boolean: Option<bool>,
-	json: Option<bool>,
 }
 
 #[frame_support::pallet]
@@ -351,6 +345,9 @@ impl<T: Config> Pallet<T> {
 	///  
 	/// 
 	fn configuration_housekeeping() -> Result<(), Error<T>> {
+		if !sp_io::offchain::is_validator() { 
+			return Ok(());
+		}
 		// 
 		Ok(())
 	}
@@ -362,10 +359,16 @@ impl<T: Config> Pallet<T> {
     /// 
     /// Returns an error if communication with the embedded IPFS fails
     fn connection_housekeeping() -> Result<(), Error<T>> {
+		if !sp_io::offchain::is_validator() { 
+			return Ok(());
+		}
         Ok(())
     }
 
 	fn process_ejection_queue() -> Result<(), Error<T>> {
+		if !sp_io::offchain::is_validator() { 
+			return Ok(());
+		}
 		let data_retrieval_queue = <pallet_authorization::Pallet<T>>::data_retrieval_queue();
 		let len = data_retrieval_queue.len();
 		if len != 0 {
@@ -377,15 +380,15 @@ impl<T: Config> Pallet<T> {
 					match <pallet_data_assets::Pallet<T>>::metadata(asset_id.clone()) {
 						Some(metadata) => {
 							let cid = metadata.cid;
-							// let res = Self::ipfs_cat(&cid)?;
-							// let data = res.body().collect::<Vec<u8>>();
-							// log::info!("IPFS: Fetched data from IPFS.");
-							// add to offchain index
-							sp_io::offchain::local_storage_set(
-								StorageKind::PERSISTENT,
-								&cid,
-								&cid,
-							);
+							let res = ipfs::cat(&cid).map_err(|_| Error::<T>::IpfsError).unwrap();
+							let data = res.body().collect::<Vec<u8>>();
+							log::info!("IPFS: Fetched data with cid {:?} from IPFS.", cid);
+							// Need to stream to some offchain client
+							// sp_io::offchain::local_storage_set(
+							// 	StorageKind::PERSISTENT,
+							// 	&cid,
+							// 	&cid,
+							// );
 
 							let signer = Signer::<T, T::AuthorityId>::all_accounts();
 							if !signer.can_sign() {
@@ -424,6 +427,9 @@ impl<T: Config> Pallet<T> {
 	/// process any requests in the IngestionQueue
 	/// TODO: This needs some *major* refactoring
     fn process_ingestion_requests() -> Result<(), Error<T>> {
+		if !sp_io::offchain::is_validator() { 
+			return Ok(());
+		}
 		let ingestion_queue = <pallet_data_assets::Pallet<T>>::ingestion_queue();
 		let len = ingestion_queue.len();
 		if len != 0 {
@@ -432,32 +438,28 @@ impl<T: Config> Pallet<T> {
 		for cmd in ingestion_queue.into_iter() {
 			match cmd {
 				DataCommand::AddBytes(_addr, cid, admin, id, balance, dataspace_id) => {
-					if sp_io::offchain::is_validator() {
-						// Self::ipfs_connect(&addr);
-						// Self::ipfs_get(&cid);
-						// Self::ipfs_disconnect(&addr);
+					// let res = ipfs::add(&cid);
 
-						let signer = Signer::<T, T::AuthorityId>::all_accounts();
-						if !signer.can_sign() {
-							log::error!(
-								"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-							);
+					let signer = Signer::<T, T::AuthorityId>::all_accounts();
+					if !signer.can_sign() {
+						log::error!(
+							"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+						);
+					}
+					let results = signer.send_signed_transaction(|_account| { 
+						Call::submit_ipfs_add_results{
+							admin: admin.clone(),
+							cid: cid.clone(),
+							dataspace_id: dataspace_id.clone(),
+							id: id.clone(),
+							balance: balance.clone(),
 						}
-						let results = signer.send_signed_transaction(|_account| { 
-							Call::submit_ipfs_add_results{
-								admin: admin.clone(),
-								cid: cid.clone(),
-								dataspace_id: dataspace_id.clone(),
-								id: id.clone(),
-								balance: balance.clone(),
-							}
-						});
-				
-						for (_, res) in &results {
-							match res {
-								Ok(()) => log::info!("Submitted results"),
-								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-							}
+					});
+			
+					for (_, res) in &results {
+						match res {
+							Ok(()) => log::info!("Submitted results"),
+							Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
 						}
 					}
 				},
@@ -470,120 +472,124 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-	/*
-	IPFS commands: This should ultimately be moved to it's own file
-	*/
-	// TODO: 
-	// 1) where should these functions exist? separate file? need to logically separate these, so we should be able to update the endpoints (if interface changes) with
-	// minimal impacts/code changes
-	// 2) URL builder? e.g. builder().base().swarm().connect(multiaddress), build().base().add(multiaddress, cid), etc.
+	// /*
+	// IPFS commands: This should ultimately be moved to it's own file
+	// */
+	// // TODO: 
+	// // 1) where should these functions exist? separate file? need to logically separate these, so we should be able to update the endpoints (if interface changes) with
+	// // minimal impacts/code changes
+	// // 2) URL builder? e.g. builder().base().swarm().connect(multiaddress), build().base().add(multiaddress, cid), etc.
 
-	/// Update the node's configuration
-	/// 
-	/// * config_item: The ipfs configuration to update. In general, this is a key-value pair.
-	/// 
-	fn config_update(config_item: IpfsConfigItem) -> Result<(), Error<T>> {
-		// "http://127.0.0.1:5001/api/v0/config?arg=<key>&arg=<value>&bool=<value>&json=<value>"
-		Ok(())
-	}
+	// /// Update the node's configuration
+	// /// 
+	// /// * config_item: The ipfs configuration to update. In general, this is a key-value pair.
+	// /// 
+	// fn config_update(config_item: IpfsConfigItem) -> Result<(), Error<T>> {
+	// 	// "http://127.0.0.1:5001/api/v0/config?arg=<key>&arg=<value>&bool=<value>&json=<value>"
+	// 	Ok(())
+	// }
 
-	/// Show the node's current configuration
-	/// 
-	fn config_show() -> Result<http::Response, Error<T>> {
-		let endpoint = "http://127.0.0.1:5001/api/v0/config/show";
-		let res = Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
-		Ok(res.unwrap)
-	}
+	// /// Show the node's current configuration
+	// /// 
+	// fn config_show() -> Result<http::Response, Error<T>> {
+	// 	let endpoint = "http://127.0.0.1:5001/api/v0/config/show";
+	// 	let res = Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
+	// 	Ok(res)
+	// }
 
 
-	/// Connect to the given multiaddress
-	/// 
-	/// * multiaddress: The multiaddress to connect to
-	/// 
-	fn connect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
-		match str::from_utf8(multiaddress) {
-			Ok(maddr) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/connect?arg=".to_owned();
-				endpoint.push_str(maddr);
-				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
-				return Ok(());
-			},
-			Err(_e) => {
-				return Err(Error::<T>::InvalidMultiaddress);
-			}
-		}
-	}
+	// /// Connect to the given multiaddress
+	// /// 
+	// /// * multiaddress: The multiaddress to connect to
+	// /// 
+	// fn connect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
+	// 	match str::from_utf8(multiaddress) {
+	// 		Ok(maddr) => {
+	// 			let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/connect?arg=".to_owned();
+	// 			endpoint.push_str(maddr);
+	// 			Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
+	// 			return Ok(());
+	// 		},
+	// 		Err(_e) => {
+	// 			return Err(Error::<T>::InvalidMultiaddress);
+	// 		}
+	// 	}
+	// }
 
-	/// Disconeect from the given multiaddress
-	/// 
-	/// * multiaddress: The multiaddress to disconnect from
-	/// 
-	fn disconnect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
-		match str::from_utf8(multiaddress) {
-			Ok(maddr) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?arg=".to_owned();
-				endpoint.push_str(maddr);
-				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
-				return Ok(());
-			},
-			Err(_e) => {
-				return Err(Error::<T>::InvalidMultiaddress);
-			}
-		}
-	}
+	// /// Disconeect from the given multiaddress
+	// /// 
+	// /// * multiaddress: The multiaddress to disconnect from
+	// /// 
+	// fn disconnect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
+	// 	match str::from_utf8(multiaddress) {
+	// 		Ok(maddr) => {
+	// 			let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?arg=".to_owned();
+	// 			endpoint.push_str(maddr);
+	// 			Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
+	// 			return Ok(());
+	// 		},
+	// 		Err(_e) => {
+	// 			return Err(Error::<T>::InvalidMultiaddress);
+	// 		}
+	// 	}
+	// }
 
-	/// Fetch data from the ipfs swarm and make it available from your node
-	/// 
-	/// * cid: The CID to fetch
-	/// 
-	fn get(cid: &Vec<u8>) -> Result<(), Error<T>> {
-		match str::from_utf8(cid) {
-			Ok(cid_string) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/get?arg=".to_owned();
-				endpoint.push_str(cid_string);
-				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
-				return Ok(());
-			},
-			Err(_e) => {
-				return Err(Error::<T>::InvalidCID);
-			}
-		}
-	}
+	// fn add(bytes: &Vec<u8>) -> Result<(), Error<T>> {
+	// 	Ok(())
+	// }
 
-	/// retrieve data from IPFS and return it
-	/// 
-	/// cid: The CID to cat
-	/// 
-	fn cat(cid: &Vec<u8>) -> Result<http::Response, Error<T>> {
-		match str::from_utf8(cid) {
-			Ok(cid_string) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/cat?arg=".to_owned();
-				endpoint.push_str(cid_string);
-				let res = Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).ok();
-				return Ok(res.unwrap());
-			},
-			Err(_e) => {
-				return Err(Error::<T>::InvalidCID);
-			}
-		}
-	}
+	// /// Fetch data from the ipfs swarm and make it available from your node
+	// /// 
+	// /// * cid: The CID to fetch
+	// /// 
+	// fn get(cid: &Vec<u8>) -> Result<(), Error<T>> {
+	// 	match str::from_utf8(cid) {
+	// 		Ok(cid_string) => {
+	// 			let mut endpoint = "http://127.0.0.1:5001/api/v0/get?arg=".to_owned();
+	// 			endpoint.push_str(cid_string);
+	// 			Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
+	// 			return Ok(());
+	// 		},
+	// 		Err(_e) => {
+	// 			return Err(Error::<T>::InvalidCID);
+	// 		}
+	// 	}
+	// }
 
-	/// Make an http post request to IPFS
-	/// 
-	/// * `endpoint`: The IPFS endpoint to invoke
-	/// 
-	fn ipfs_post_request(endpoint: &str) -> Result<http::Response, http::Error> {
-		let pending = http::Request::default()
-					.method(http::Method::Post)
-					.url(endpoint)
-					.body(vec![b""])
-					.send()
-					.unwrap();
-		let response = pending.wait().unwrap();
-		if response.code != 200 {
-			log::warn!("Unexpected status code: {}", response.code);
-			return Err(http::Error::Unknown)
-		}
-		Ok(response)
-	}
+	// /// retrieve data from IPFS and return it
+	// /// 
+	// /// cid: The CID to cat
+	// /// 
+	// fn cat(cid: &Vec<u8>) -> Result<http::Response, Error<T>> {
+	// 	match str::from_utf8(cid) {
+	// 		Ok(cid_string) => {
+	// 			let mut endpoint = "http://127.0.0.1:5001/api/v0/cat?arg=".to_owned();
+	// 			endpoint.push_str(cid_string);
+	// 			let res = Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).ok();
+	// 			return Ok(res.unwrap());
+	// 		},
+	// 		Err(_e) => {
+	// 			return Err(Error::<T>::InvalidCID);
+	// 		}
+	// 	}
+	// }
+
+	// /// Make an http post request to IPFS
+	// /// 
+	// /// * `endpoint`: The IPFS endpoint to invoke
+	// /// 
+	// fn ipfs_post_request(endpoint: &str) -> Result<http::Response, http::Error> {
+	// 	let pending = http::Request::default()
+	// 				.method(http::Method::Post)
+	// 				.url(endpoint)
+	// 				.body(vec![b""])
+	// 				.send()
+	// 				.unwrap();
+	// 	let response = pending.wait().unwrap();
+	// 	if response.code != 200 {
+	// 		log::warn!("Unexpected status code: {}", response.code);
+	// 		return Err(http::Error::Unknown)
+	// 	}
+	// 	Ok(response)
+	// }
 }
