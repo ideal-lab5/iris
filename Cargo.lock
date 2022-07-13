@@ -4200,6 +4200,8 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "futures",
+ "lazy_static",
  "log",
  "pallet-assets",
  "pallet-authorization",

@@ -32,7 +32,6 @@ use sp_runtime::{
     offchain::http,
     RuntimeDebug,
 };
-// use core::alloc::str::UTF8Error;
 
 /// A request object to update ipfs configs
 #[derive(Encode, Decode, RuntimeDebug, TypeInfo)]
@@ -84,18 +83,11 @@ pub fn config_show() -> Result<http::Response, http::Error> {
 /// * multiaddress: The multiaddress to connect to
 /// 
 pub fn connect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
-    match str::from_utf8(multiaddress) {
-        Ok(maddr) => {
-            let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/connect?";
-            endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), &maddr, false)
-                .map_err(|_| http::Error::Unknown).ok().unwrap();
-            ipfs_post_request(&endpoint, None).unwrap();
-            return Ok(());
-        },
-        Err(_e) => {
-            return Err(http::Error::Unknown);
-        }
-    }
+    let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/connect?".to_string();
+    endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), multiaddress, false)
+        .map_err(|_| http::Error::Unknown).ok().unwrap();
+    ipfs_post_request(&endpoint, None)?;
+    Ok(())
 }
 
 /// Disconeect from the given multiaddress
@@ -105,18 +97,11 @@ pub fn connect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
 /// * multiaddress: The multiaddress to disconnect from
 /// 
 pub fn disconnect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
-    match str::from_utf8(multiaddress) {
-        Ok(maddr) => {
-            let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?";
-            endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), &maddr, false)
-                .map_err(|_| http::Error::Unknown).ok().unwrap();
-            ipfs_post_request(&endpoint, None).unwrap();
-            return Ok(());
-        },
-        Err(_e) => {
-            return Err(http::Error::Unknown);
-        }
-    }
+    let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?".to_string();
+    endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), multiaddress, false)
+        .map_err(|_| http::Error::Unknown).ok().unwrap();
+    ipfs_post_request(&endpoint, None)?;
+    Ok(())
 }
 
 /// Add some data to ipfs
@@ -128,7 +113,7 @@ pub fn disconnect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
 /// * ipfs_add_request: The request object containing data to add
 /// 
 pub fn add(ipfs_add_request: IpfsAddRequest) -> Result<(), http::Error> {
-    let mut endpoint = "http://127.0.0.1:5001/api/v0/add";
+    let mut endpoint = "http://127.0.0.1:5001/api/v0/add".to_string();
     Ok(())
 }
 
@@ -139,18 +124,11 @@ pub fn add(ipfs_add_request: IpfsAddRequest) -> Result<(), http::Error> {
 /// * cid: The CID to fetch
 /// 
 pub fn get(cid: &Vec<u8>) -> Result<(), http::Error> {
-    match str::from_utf8(cid) {
-        Ok(cid_string) => {
-            let mut endpoint = "http://127.0.0.1:5001/api/v0/get?";
-            endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), &cid_string, false)
-                .map_err(|_| http::Error::Unknown).ok().unwrap();
-            ipfs_post_request(&endpoint, None).unwrap();
-            return Ok(());
-        },
-        Err(_e) => {
-            return Err(http::Error::Unknown);
-        }
-    }
+    let mut endpoint = "http://127.0.0.1:5001/api/v0/get?".to_string();
+    endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
+        .map_err(|_| http::Error::Unknown).ok().unwrap();
+    ipfs_post_request(&endpoint, None).unwrap();
+    Ok(())
 }
 
 /// retrieve data from IPFS and return it
@@ -160,18 +138,11 @@ pub fn get(cid: &Vec<u8>) -> Result<(), http::Error> {
 /// cid: The CID to cat
 /// 
 pub fn cat(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
-    match str::from_utf8(cid) {
-        Ok(cid_string) => {
-            let mut endpoint = "http://127.0.0.1:5001/api/v0/cat?";
-            endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), &cid_string, false)
-                .map_err(|_| http::Error::Unknown).ok().unwrap();
-            let res = ipfs_post_request(&endpoint, None).ok();
-            return Ok(res.unwrap());
-        },
-        Err(_e) => {
-            return Err(http::Error::Unknown);
-        }
-    }
+    let mut endpoint = "http://127.0.0.1:5001/api/v0/cat?".to_string();
+    endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
+        .map_err(|_| http::Error::Unknown).ok().unwrap();
+    let res = ipfs_post_request(&endpoint, None).ok();
+    Ok(res.unwrap())
 }
 
 /// Append a key-value argument to the endpoint.
@@ -229,26 +200,67 @@ fn ipfs_post_request(endpoint: &str, body: Option<Vec<&[u8]>>) -> Result<http::R
     Ok(response)
 }
 
-// #![cfg(test)]
+mod tests {
 
-use super::*;
-use frame_support::{assert_noop, assert_ok, pallet_prelude::*};
-use sp_core::{
-	offchain::{testing, OffchainWorkerExt, TransactionPoolExt, OffchainDbExt}
-};
+    use super::*;
+	use core::convert::Infallible;
+	use futures::{future, StreamExt};
+	use lazy_static::lazy_static;
+	use sp_core::offchain::{Duration, Externalities, HttpError, HttpRequestId, HttpRequestStatus};
+    use frame_support::{assert_noop, assert_ok, pallet_prelude::*};
+    use sp_core::{
+        offchain::{testing, Timestamp, OffchainWorkerExt}
+    };
+    use sp_io::TestExternalities;
 
+    #[test]
+    pub fn ipfs_can_add_arg() {
+        let input = "https://localhost.com?".to_string();
+        let k_1 = "amphibian".as_bytes().to_vec();
+        let v_1 = "salamander".as_bytes().to_vec();
+    
+        let k_2 = "reptile".as_bytes().to_vec();
+        let v_2 = "alligator".as_bytes().to_vec();
+    
+        let expected_output = "https://localhost.com?amphibian=salamander&reptile=alligator";
+        let next_input = add_arg(input, &k_1, &v_1, true).unwrap();
+        let actual_output = add_arg(next_input, &k_2, &v_2, false).unwrap();
+        assert_eq!(expected_output, actual_output);
+    }
 
-#[test]
-pub fn ipfs_can_add_arg() {
-    let input = "https://localhost.com?".to_string();
-    let k_1 = "amphibian".as_bytes().to_vec();
-    let v_1 = "salamander".as_bytes().to_vec();
+    
+    #[test]
+    pub fn ipfs_can_call_config_show() {
+        let (offchain, state) = testing::TestOffchainExt::new();
+		let mut t = TestExternalities::default();
+		t.register_extension(OffchainWorkerExt::new(offchain));
 
-    let k_2 = "reptile".as_bytes().to_vec();
-    let v_2 = "alligator".as_bytes().to_vec();
+		t.execute_with(|| {
+			// mcok the post request
+			state.write().expect_request(
+				testing::PendingRequest {
+					method: "POST".into(),
+					uri: "http://127.0.0.1:5001/api/v0/config/show".into(),
+					body: b"".to_vec(),
+					sent: true,
+                    response: Some(vec![1, 2, 3]),
+					..Default::default()
+				},
+			);
+            
+			// wait
+			// let mut response = pending.wait().unwrap();
+            let res = config_show();
 
-    let expected_output = "https://localhost.com?amphibian=salamander&reptile=alligator";
-    let next_input = add_arg(input, &k_1, &v_1, true).unwrap();
-    let actual_output = add_arg(next_input, &k_2, &v_2, false).unwrap();
-    assert_eq!(expected_output, actual_output);
+			// then check the response
+			// let mut headers = response.headers().into_iter();
+			// assert_eq!(headers.current(), None);
+			// assert_eq!(headers.next(), true);
+			// assert_eq!(headers.current(), Some(("Test", "Header")));
+
+			// let body = response.body();
+			// assert_eq!(body.clone().collect::<Vec<_>>(), b"".to_vec());
+			// assert_eq!(body.error(), &None);
+		})
+    }
 }
