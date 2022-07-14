@@ -31,6 +31,8 @@
 mod mock;
 mod tests;
 
+pub mod ipfs;
+
 use frame_support::{
 	ensure,
 	pallet_prelude::*,
@@ -176,27 +178,13 @@ pub mod pallet {
 		}
 	}
 
-	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
-		/// could not build the ipfs request
-		CantCreateRequest,
-		/// the request to IPFS timed out
-		RequestTimeout,
-		/// the request to IPFS failed
-		RequestFailed,
-		/// the specified asset id does not correspond to any owned content
-		NoSuchOwnedContent,
-		/// the nodes balance is insufficient to complete this operation
-		InsufficientBalance,
-		/// the node is already a candidate for some storage pool
-		AlreadyACandidate,
-		/// the node has already pinned the CID
-		AlreadyPinned,
-		/// the node is not a candidate storage provider for some asset id
-		NotACandidate,
+		/// The specified multiaddress is invalid (could not be encoded as utf8)
 		InvalidMultiaddress,
+		/// The specified CID is invalid (could not be encoded as utf8)
 		InvalidCID,
+		/// An error occurred while communicated with IPFS
 		IpfsError,
 	}
 
@@ -210,7 +198,7 @@ pub mod pallet {
 				}
 			}
 			// handle data requests each block
-			if let Err(e) = Self::prcoess_ingestion_requests() {
+			if let Err(e) = Self::process_ingestion_requests() {
 				log::error!("Encountered an error while processing data requests: {:?}", e);
 			}
 
@@ -351,18 +339,38 @@ impl<T: Config> Pallet<T> {
 			.propagate(true)
 			.build()
 	}
+
+	/// manage IPFS node configuration
+	/// 
+	/// Returns an error if communication with IPFS fails 
+	fn configuration_housekeeping() -> Result<(), Error<T>> {
+		if !sp_io::offchain::is_validator() { 
+			return Ok(());
+		}
+		// 
+		Ok(())
+	}
 	
 	/// manage connection to the iris ipfs swarm
     ///
     /// If the node is already a bootstrap node, do nothing. Otherwise submits a signed tx 
     /// containing the public key and multiaddresses of the embedded ipfs node.
     /// 
-    /// Returns an error if communication with the embedded IPFS fails
+    /// Returns an error if communication with IPFS fails
     fn connection_housekeeping() -> Result<(), Error<T>> {
+		if !sp_io::offchain::is_validator() { 
+			return Ok(());
+		}
         Ok(())
     }
 
+	/// Process commands in the ejection queue
+	/// 
+	/// Returns an error if communication with IPFS fails
 	fn process_ejection_queue() -> Result<(), Error<T>> {
+		if !sp_io::offchain::is_validator() { 
+			return Ok(());
+		}
 		let data_retrieval_queue = <pallet_authorization::Pallet<T>>::data_retrieval_queue();
 		let len = data_retrieval_queue.len();
 		if len != 0 {
@@ -374,15 +382,14 @@ impl<T: Config> Pallet<T> {
 					match <pallet_data_assets::Pallet<T>>::metadata(asset_id.clone()) {
 						Some(metadata) => {
 							let cid = metadata.cid;
-							// let res = Self::ipfs_cat(&cid)?;
-							// let data = res.body().collect::<Vec<u8>>();
-							// log::info!("IPFS: Fetched data from IPFS.");
-							// add to offchain index
-							sp_io::offchain::local_storage_set(
-								StorageKind::PERSISTENT,
-								&cid,
-								&cid,
-							);
+							let res = ipfs::get(&cid).map_err(|_| Error::<T>::IpfsError).unwrap();
+							log::info!("Data with cid {:?} is available.", cid);
+							// Need to stream to some offchain client
+							// sp_io::offchain::local_storage_set(
+							// 	StorageKind::PERSISTENT,
+							// 	&cid,
+							// 	&cid,
+							// );
 
 							let signer = Signer::<T, T::AuthorityId>::all_accounts();
 							if !signer.can_sign() {
@@ -419,8 +426,12 @@ impl<T: Config> Pallet<T> {
 	}
 
 	/// process any requests in the IngestionQueue
-	/// TODO: This needs some *major* refactoring
-    fn prcoess_ingestion_requests() -> Result<(), Error<T>> {
+	/// 
+	/// Returns an error if communication with IPFS fails
+    fn process_ingestion_requests() -> Result<(), Error<T>> {
+		if !sp_io::offchain::is_validator() { 
+			return Ok(());
+		}
 		let ingestion_queue = <pallet_data_assets::Pallet<T>>::ingestion_queue();
 		let len = ingestion_queue.len();
 		if len != 0 {
@@ -429,32 +440,28 @@ impl<T: Config> Pallet<T> {
 		for cmd in ingestion_queue.into_iter() {
 			match cmd {
 				DataCommand::AddBytes(_addr, cid, admin, id, balance, dataspace_id) => {
-					if sp_io::offchain::is_validator() {
-						// Self::ipfs_connect(&addr);
-						// Self::ipfs_get(&cid);
-						// Self::ipfs_disconnect(&addr);
+					// let res = ipfs::add(&cid);
 
-						let signer = Signer::<T, T::AuthorityId>::all_accounts();
-						if !signer.can_sign() {
-							log::error!(
-								"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-							);
+					let signer = Signer::<T, T::AuthorityId>::all_accounts();
+					if !signer.can_sign() {
+						log::error!(
+							"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+						);
+					}
+					let results = signer.send_signed_transaction(|_account| { 
+						Call::submit_ipfs_add_results{
+							admin: admin.clone(),
+							cid: cid.clone(),
+							dataspace_id: dataspace_id.clone(),
+							id: id.clone(),
+							balance: balance.clone(),
 						}
-						let results = signer.send_signed_transaction(|_account| { 
-							Call::submit_ipfs_add_results{
-								admin: admin.clone(),
-								cid: cid.clone(),
-								dataspace_id: dataspace_id.clone(),
-								id: id.clone(),
-								balance: balance.clone(),
-							}
-						});
-				
-						for (_, res) in &results {
-							match res {
-								Ok(()) => log::info!("Submitted results"),
-								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-							}
+					});
+			
+					for (_, res) in &results {
+						match res {
+							Ok(()) => log::info!("Submitted results"),
+							Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
 						}
 					}
 				},
@@ -466,85 +473,4 @@ impl<T: Config> Pallet<T> {
 
         Ok(())
     }
-
-	/*
-	IPFS commands: This should ultimately be moved to it's own file
-	*/
-	/// ipfs swarm connect
-	fn ipfs_connect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
-		match str::from_utf8(multiaddress) {
-			Ok(maddr) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/connect?arg=".to_owned();
-				endpoint.push_str(maddr);
-				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
-				return Ok(());
-			},
-			Err(_e) => {
-				return Err(Error::<T>::InvalidMultiaddress);
-			}
-		}
-	}
-
-	/// ipfs swarm disconnect
-	fn ipfs_disconnect(multiaddress: &Vec<u8>) -> Result<(), Error<T>> {
-		match str::from_utf8(multiaddress) {
-			Ok(maddr) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?arg=".to_owned();
-				endpoint.push_str(maddr);
-				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
-				return Ok(());
-			},
-			Err(_e) => {
-				return Err(Error::<T>::InvalidMultiaddress);
-			}
-		}
-	}
-
-	/// ipfs get <CID>
-	fn ipfs_get(cid: &Vec<u8>) -> Result<(), Error<T>> {
-		match str::from_utf8(cid) {
-			Ok(cid_string) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?arg=".to_owned();
-				endpoint.push_str(cid_string);
-				Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).unwrap();
-				return Ok(());
-			},
-			Err(_e) => {
-				return Err(Error::<T>::InvalidCID);
-			}
-		}
-	}
-
-	/// ipfs cat <CID>
-	fn ipfs_cat(cid: &Vec<u8>) -> Result<http::Response, Error<T>> {
-		match str::from_utf8(cid) {
-			Ok(cid_string) => {
-				let mut endpoint = "http://127.0.0.1:5001/api/v0/cat?arg=".to_owned();
-				endpoint.push_str(cid_string);
-				let res = Self::ipfs_post_request(&endpoint).map_err(|_| Error::<T>::IpfsError).ok();
-				return Ok(res.unwrap());
-			},
-			Err(_e) => {
-				return Err(Error::<T>::InvalidCID);
-			}
-		}
-	}
-
-	/// Make an http post request to IPFS
-	/// 
-	/// * `endpoint`: The IPFS endpoint to invoke
-	fn ipfs_post_request(endpoint: &str) -> Result<http::Response, http::Error> {
-		let pending = http::Request::default()
-					.method(http::Method::Post)
-					.url(endpoint)
-					.body(vec![b""])
-					.send()
-					.unwrap();
-		let response = pending.wait().unwrap();
-		if response.code != 200 {
-			log::warn!("Unexpected status code: {}", response.code);
-			return Err(http::Error::Unknown)
-		}
-		Ok(response)
-	}
 }
