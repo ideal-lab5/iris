@@ -56,3 +56,129 @@ pub fn ipfs_can_call_config_show() {
 		// assert_eq!(body.error(), &None);
 	})
 }
+
+#[test]
+pub fn ipfs_can_call_config_update() {
+    let (offchain, state) = testing::TestOffchainExt::new();
+	let mut t = TestExternalities::default();
+	t.register_extension(OffchainWorkerExt::new(offchain));
+
+	t.execute_with(|| {
+		// mcok the post request
+		state.write().expect_request(
+			testing::PendingRequest {
+				method: "POST".into(),
+				uri: "https://127.0.0.1:5001/api/v0/config?key=reptile&value=alligator".into(),
+				body: b"".to_vec(),
+				sent: true,
+                response: Some(vec![1, 2, 3]),
+				..Default::default()
+			},
+		);
+
+		let config_request = ipfs::IpfsConfigRequest {
+			key: &"reptile".as_bytes().to_vec(),
+			value: &"alligator".as_bytes().to_vec(),
+			boolean: None,
+			json: None,
+		}
+        assert_ok!(ipfs::config_update(config_request));
+	})
+}
+
+#[test]
+pub fn ipfs_can_call_connect() {
+    let (offchain, state) = testing::TestOffchainExt::new();
+	let mut t = TestExternalities::default();
+	t.register_extension(OffchainWorkerExt::new(offchain));
+
+	t.execute_with(|| {
+		// mcok the post request
+		state.write().expect_request(
+			testing::PendingRequest {
+				method: "POST".into(),
+				uri: "https://127.0.0.1:5001/api/v0/connect?arg=abc123".into(),
+				body: b"".to_vec(),
+				sent: true,
+                response: Some(vec![1, 2, 3]),
+				..Default::default()
+			},
+		);
+
+		let mock_maddr = &"abc123".as_bytes().to_vec();
+        assert_ok!(ipfs::connect(mock_maddr));
+	})
+}
+
+#[test]
+pub fn ipfs_can_call_disconnect() {
+    let (offchain, state) = testing::TestOffchainExt::new();
+	let mut t = TestExternalities::default();
+	t.register_extension(OffchainWorkerExt::new(offchain));
+
+	t.execute_with(|| {
+		// mcok the post request
+		state.write().expect_request(
+			testing::PendingRequest {
+				method: "POST".into(),
+				uri: "https://127.0.0.1:5001/api/v0/disconnect?arg=abc123".into(),
+				body: b"".to_vec(),
+				sent: true,
+                response: Some(vec![1, 2, 3]),
+				..Default::default()
+			},
+		);
+
+		let mock_maddr = &"abc123".as_bytes().to_vec();
+        assert_ok!(ipfs::disconnect(mock_maddr));
+	})
+}
+
+
+#[test]
+pub fn ipfs_can_call_get() {
+    let (offchain, state) = testing::TestOffchainExt::new();
+	let mut t = TestExternalities::default();
+	t.register_extension(OffchainWorkerExt::new(offchain));
+
+	t.execute_with(|| {
+		// mcok the post request
+		state.write().expect_request(
+			testing::PendingRequest {
+				method: "POST".into(),
+				uri: "https://127.0.0.1:5001/api/v0/get?arg=abc123".into(),
+				body: b"".to_vec(),
+				sent: true,
+                response: Some(vec![1, 2, 3]),
+				..Default::default()
+			},
+		);
+
+		let mock_cid = &"abc123".as_bytes().to_vec();
+        assert_ok!(ipfs::get(mock_maddr));
+	})
+}
+
+#[test]
+pub fn ipfs_can_call_cat() {
+    let (offchain, state) = testing::TestOffchainExt::new();
+	let mut t = TestExternalities::default();
+	t.register_extension(OffchainWorkerExt::new(offchain));
+
+	t.execute_with(|| {
+		// mcok the post request
+		state.write().expect_request(
+			testing::PendingRequest {
+				method: "POST".into(),
+				uri: "https://127.0.0.1:5001/api/v0/cat?arg=abc123".into(),
+				body: b"".to_vec(),
+				sent: true,
+                response: Some(vec![1, 2, 3]),
+				..Default::default()
+			},
+		);
+
+		let mock_cid = &"abc123".as_bytes().to_vec();
+        assert_ok!(ipfs::cat(mock_maddr));
+	})
+}
