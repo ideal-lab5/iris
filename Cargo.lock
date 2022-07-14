@@ -2442,6 +2442,7 @@ dependencies = [
  "pallet-ipfs",
  "pallet-ledger",
  "pallet-proxy",
+ "pallet-proxy-rpc-runtime-api",
  "pallet-randomness-collective-flip",
  "pallet-session",
  "pallet-sudo",
@@ -4259,6 +4260,17 @@ dependencies = [
  "sp-keystore",
  "sp-runtime",
  "sp-staking",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-proxy-rpc-runtime-api"
+version = "1.0.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api",
+ "sp-core",
+ "sp-runtime",
  "sp-std",
 ]
 

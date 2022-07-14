@@ -58,6 +58,7 @@ use sp_core::{
         OpaqueMultiaddr, StorageKind,
     },
 	crypto::KeyTypeId,
+	Bytes,
 };
 use frame_system::{
 	self as system, 
@@ -68,7 +69,6 @@ use frame_system::{
 	}
 };
 use sp_runtime::{
-	// offchain::ipfs,
 	offchain::http,
 	traits::StaticLookup,
 };
@@ -682,6 +682,16 @@ impl<T: Config> Pallet<T> {
 	fn update_ledger(controller: &T::AccountId, ledger: &StakingLedger<T>) {
 		<T as pallet::Config>::Currency::set_lock(STAKING_ID, &ledger.stash, ledger.total, WithdrawReasons::all());
 		<Ledger<T>>::insert(controller, ledger);
+	}
+
+	/// Placeholder for now, to be called by RPC
+	pub fn handle_add_bytes() -> Bytes {
+		Bytes(Vec::new())
+	}
+
+	/// Placeholder for now, to be called by RPC
+	pub fn handle_retrieve_bytes() -> Bytes {
+		Bytes(Vec::new())
 	}
 }
 

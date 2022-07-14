@@ -27,7 +27,7 @@ use pallet_grandpa::{
 };
 use sp_api::impl_runtime_apis;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
-use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
+use sp_core::{crypto::KeyTypeId, OpaqueMetadata, Bytes};
 use sp_runtime::{
 	create_runtime_str, generic, impl_opaque_keys,
 	traits::{
@@ -819,6 +819,21 @@ impl_runtime_apis! {
 			key: [u8; 32],
 		) -> pallet_contracts_primitives::GetStorageResult {
 			Contracts::get_storage(address, key)
+		}
+	}
+
+	impl pallet_proxy_rpc_runtime_api::IrisApi<Block>
+		for Runtime
+	{
+		// TODO: not yet implemented
+		fn add_bytes() -> Bytes {
+			Proxy::handle_add_bytes()
+		}
+		
+		fn retrieve_bytes(
+			asset_id: u32,
+		) -> Bytes {
+			Proxy::handle_retrieve_bytes()
 		}
 	}
 

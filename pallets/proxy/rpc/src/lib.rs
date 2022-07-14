@@ -16,8 +16,15 @@ use std::sync::Arc;
 use codec::{Codec, Decode, Encode};
 use sp_std::vec::Vec;
 
-#[rpc]
+#[rpc(client, server)]
 pub trait IrisApi<BlockHash> {
+
+	#[rpc(name = "iris_addBytes")]
+	fn retrieve_bytes(
+		&self,
+		at: Option<BlockHash>,
+	) -> Result<Bytes>;
+
 	#[rpc(name = "iris_retrieveBytes")]
 	fn retrieve_bytes(
 		&self,
@@ -62,6 +69,23 @@ where
 	C: HeaderBackend<Block>,
 	C::Api: IrisRuntimeApi<Block>,
 {
+
+	fn add_bytes(
+		&self,
+		at: Option<Block as BlockT>::Hash,
+	) -> Result<Bytes> {
+		let api = self.client.runtime_api();
+		let at = BlockId::hash(at.unwrap_or_else(||
+			self.client.info().best_hash
+		));
+		let runtime_api_result = api.retrieve_bytes(&at, asset_id);
+		runtime_api_result.map_err(|e| RpcError{
+			code: ErrorCode::ServerError(Error::DecodeError.into()),
+			message: "unable to query runtime api".into(),
+			data: Some(format!("{:?}", e).into()),
+		})
+	}
+
 	fn retrieve_bytes(
 		&self,
 		asset_id: u32,
