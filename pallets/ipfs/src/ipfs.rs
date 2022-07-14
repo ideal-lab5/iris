@@ -17,8 +17,6 @@
 
 //!
 //! functions that make HTTP calls to various IPFS endpoints
-//! 
-//! 
 //!
 use codec::{Encode, Decode};
 use scale_info::TypeInfo;
@@ -32,6 +30,7 @@ use sp_runtime::{
     offchain::http,
     RuntimeDebug,
 };
+use scale_info::prelude::string::String;
 
 /// A request object to update ipfs configs
 #[derive(Encode, Decode, RuntimeDebug, TypeInfo)]
@@ -48,15 +47,42 @@ pub struct IpfsAddRequest {
     bytes: Vec<u8>, 
 }
 
+/// IPFS capabilities
+#[derive(Clone, PartialEq, Eq, RuntimeDebug)]
+pub enum Endpoint {
+	ConfigUpdate,
+	ConfigShow,
+	Connect,
+    Disconnect, 
+    Add,
+    Get, 
+    Cat,
+	Other(&'static str),
+}
+
+/// IPFS capabilities mapped to appropriate RPC endpoints
+impl AsRef<str> for Endpoint {
+	fn as_ref(&self) -> &str {
+		match *self {
+            Endpoint::ConfigUpdate => "https://127.0.0.1:5001/api/v0/config?",
+            Endpoint::ConfigShow => "https://127.0.0.1:5001/api/v0/config/show",
+            Endpoint::Connect => "https://127.0.0.1:5001/api/v0/swarm/connect?",
+            Endpoint::Disconnect => "https://127.0.0.1:5001/api/v0/swarm/disconnect?",
+            Endpoint::Add => "https://127.0.0.1:5001/api/v0/add",
+            Endpoint::Get => "https://127.0.0.1:5001/api/v0/get",
+            Endpoint::Cat => "https://127.0.0.1:5001/api/v0/cat",
+			Endpoint::Other(m) => m,
+		}
+	}
+}
+
 /// Update the node's configuration. For the time being, we omit the optional
 /// bool and json arguments
-/// 
-/// http://127.0.0.1:5001/api/v0/config?arg=<key>&arg=<value>&bool=<value>&json=<value>
 /// 
 /// * config_item: The ipfs configuration to update. In general, this is a key-value pair.
 /// 
 pub fn config_update(config_item: IpfsConfigRequest) -> Result<(), http::Error> {
-    let mut endpoint = "http://127.0.0.1:5001/api/v0/config?".to_string();
+    let mut endpoint = Endpoint::ConfigUpdate.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"key".as_bytes().to_vec(), &config_item.key, true)
         .map_err(|_| http::Error::Unknown).ok().unwrap();
     endpoint = add_arg(endpoint, &"value".as_bytes().to_vec(), &config_item.value, false)
@@ -67,10 +93,8 @@ pub fn config_update(config_item: IpfsConfigRequest) -> Result<(), http::Error> 
 
 /// Show the node's current configuration
 /// 
-/// http://127.0.0.1:5001/api/v0/config/show
-/// 
 pub fn config_show() -> Result<http::Response, http::Error> {
-    let endpoint = "http://127.0.0.1:5001/api/v0/config/show";
+    let endpoint = Endpoint::ConfigShow.as_ref().to_owned();
     let res = ipfs_post_request(&endpoint, None).unwrap();
     Ok(res)
 }
@@ -78,26 +102,22 @@ pub fn config_show() -> Result<http::Response, http::Error> {
 
 /// Connect to the given multiaddress
 /// 
-/// http://127.0.0.1:5001/api/v0/swarm/connect?arg={maddr}
-/// 
 /// * multiaddress: The multiaddress to connect to
 /// 
 pub fn connect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
-    let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/connect?".to_string();
+    let mut endpoint = Endpoint::Connect.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), multiaddress, false)
         .map_err(|_| http::Error::Unknown).ok().unwrap();
     ipfs_post_request(&endpoint, None)?;
     Ok(())
 }
 
-/// Disconeect from the given multiaddress
-/// 
-/// http://127.0.0.1:5001/api/v0/swarm/disconnect?arg={maddr}
+/// Disconnect from the given multiaddress
 /// 
 /// * multiaddress: The multiaddress to disconnect from
 /// 
 pub fn disconnect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
-    let mut endpoint = "http://127.0.0.1:5001/api/v0/swarm/disconnect?".to_string();
+    let mut endpoint = Endpoint::Disconnect.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), multiaddress, false)
         .map_err(|_| http::Error::Unknown).ok().unwrap();
     ipfs_post_request(&endpoint, None)?;
@@ -106,25 +126,46 @@ pub fn disconnect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
 
 /// Add some data to ipfs
 /// 
-/// http://127.0.0.1:5001/api/v0/add
-/// 
-/// TODO: not yet implemented
-/// 
+/// For the initial implementation, we will ignore all optional args
 /// * ipfs_add_request: The request object containing data to add
 /// 
-pub fn add(ipfs_add_request: IpfsAddRequest) -> Result<(), http::Error> {
-    let mut endpoint = "http://127.0.0.1:5001/api/v0/add".to_string();
-    Ok(())
+pub fn add(ipfs_add_request: IpfsAddRequest) -> Result<http::Response, http::Error> {
+    let mut endpoint = Endpoint::Add.as_ref();
+    // construct body
+    // {"path": <file bytes>"}
+    let mut req_body = "{ \"path\" : ".to_owned();
+    match str::from_utf8(&ipfs_add_request.bytes) {
+        Ok(b) => {
+            req_body.push_str(b);
+        }, 
+        Err(e) => {
+            return Err(http::Error::Unknown);
+        }
+    }
+    req_body.push_str(&"}".to_owned());
+    let body: &[u8] = req_body.as_bytes();
+    let pending = http::Request::default()
+                .add_header("Content-Type", "multipart/form-data")
+                .method(http::Method::Post)
+                .url(&endpoint)
+                .body(vec![body])
+                .send()
+                .unwrap();
+    let response = pending.wait().unwrap();
+    if response.code != 200 {
+        log::warn!("Unexpected status code: {}", response.code);
+        return Err(http::Error::Unknown);
+    }
+    Ok(response)
 }
 
 /// Fetch data from the ipfs swarm and make it available from your node
 /// 
-/// http://127.0.0.1:5001/api/v0/get?
+/// * cid: The CID to fetch.
 /// 
-/// * cid: The CID to fetch
 /// 
 pub fn get(cid: &Vec<u8>) -> Result<(), http::Error> {
-    let mut endpoint = "http://127.0.0.1:5001/api/v0/get?".to_string();
+    let mut endpoint = Endpoint::Get.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
         .map_err(|_| http::Error::Unknown).ok().unwrap();
     ipfs_post_request(&endpoint, None).unwrap();
@@ -133,12 +174,10 @@ pub fn get(cid: &Vec<u8>) -> Result<(), http::Error> {
 
 /// retrieve data from IPFS and return it
 /// 
-/// http://127.0.0.1:5001/api/v0/cat?
-/// 
 /// cid: The CID to cat
 /// 
 pub fn cat(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
-    let mut endpoint = "http://127.0.0.1:5001/api/v0/cat?".to_string();
+    let mut endpoint = Endpoint::Cat.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
         .map_err(|_| http::Error::Unknown).ok().unwrap();
     let res = ipfs_post_request(&endpoint, None).ok();
@@ -152,12 +191,11 @@ pub fn cat(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
 ///      (endpoint?, k, v, false) => endpoint?k=v
 /// 
 fn add_arg(
-    endpoint: std::string::String,
+    mut endpoint: String,
     key: &Vec<u8>,
     value: &Vec<u8>,
     append_and: bool,
-) -> Result<std::string::String, Utf8Error> {
-    let mut endpoint = endpoint.to_owned();
+) -> Result<String, Utf8Error> {
     match str::from_utf8(key) {
         Ok(k) => {
             match str::from_utf8(value) {
@@ -203,15 +241,7 @@ fn ipfs_post_request(endpoint: &str, body: Option<Vec<&[u8]>>) -> Result<http::R
 mod tests {
 
     use super::*;
-	use core::convert::Infallible;
-	use futures::{future, StreamExt};
-	use lazy_static::lazy_static;
-	use sp_core::offchain::{Duration, Externalities, HttpError, HttpRequestId, HttpRequestStatus};
     use frame_support::{assert_noop, assert_ok, pallet_prelude::*};
-    use sp_core::{
-        offchain::{testing, Timestamp, OffchainWorkerExt}
-    };
-    use sp_io::TestExternalities;
 
     #[test]
     pub fn ipfs_can_add_arg() {
@@ -226,41 +256,5 @@ mod tests {
         let next_input = add_arg(input, &k_1, &v_1, true).unwrap();
         let actual_output = add_arg(next_input, &k_2, &v_2, false).unwrap();
         assert_eq!(expected_output, actual_output);
-    }
-
-    
-    #[test]
-    pub fn ipfs_can_call_config_show() {
-        let (offchain, state) = testing::TestOffchainExt::new();
-		let mut t = TestExternalities::default();
-		t.register_extension(OffchainWorkerExt::new(offchain));
-
-		t.execute_with(|| {
-			// mcok the post request
-			state.write().expect_request(
-				testing::PendingRequest {
-					method: "POST".into(),
-					uri: "http://127.0.0.1:5001/api/v0/config/show".into(),
-					body: b"".to_vec(),
-					sent: true,
-                    response: Some(vec![1, 2, 3]),
-					..Default::default()
-				},
-			);
-            
-			// wait
-			// let mut response = pending.wait().unwrap();
-            let res = config_show();
-
-			// then check the response
-			// let mut headers = response.headers().into_iter();
-			// assert_eq!(headers.current(), None);
-			// assert_eq!(headers.next(), true);
-			// assert_eq!(headers.current(), Some(("Test", "Header")));
-
-			// let body = response.body();
-			// assert_eq!(body.clone().collect::<Vec<_>>(), b"".to_vec());
-			// assert_eq!(body.error(), &None);
-		})
     }
 }

@@ -382,9 +382,8 @@ impl<T: Config> Pallet<T> {
 					match <pallet_data_assets::Pallet<T>>::metadata(asset_id.clone()) {
 						Some(metadata) => {
 							let cid = metadata.cid;
-							let res = ipfs::cat(&cid).map_err(|_| Error::<T>::IpfsError).unwrap();
-							let data = res.body().collect::<Vec<u8>>();
-							log::info!("IPFS: Fetched data with cid {:?} from IPFS.", cid);
+							let res = ipfs::get(&cid).map_err(|_| Error::<T>::IpfsError).unwrap();
+							log::info!("Data with cid {:?} is available.", cid);
 							// Need to stream to some offchain client
 							// sp_io::offchain::local_storage_set(
 							// 	StorageKind::PERSISTENT,
