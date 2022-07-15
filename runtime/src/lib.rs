@@ -826,14 +826,26 @@ impl_runtime_apis! {
 		for Runtime
 	{
 		// TODO: not yet implemented
-		fn add_bytes() -> Bytes {
-			Proxy::handle_add_bytes()
+		fn add_bytes(
+			byte_stream: Bytes,
+			asset_id: u32,
+			signature: Bytes,
+			signer: Bytes,
+			message: Bytes,
+		) -> Bytes {
+			Proxy::handle_add_bytes(
+				byte_stream,
+				asset_id,
+				signature,
+				signer,
+				message,
+			)
 		}
 		
 		fn retrieve_bytes(
 			asset_id: u32,
 		) -> Bytes {
-			Proxy::handle_retrieve_bytes()
+			Proxy::handle_retrieve_bytes(asset_id)
 		}
 	}
 

@@ -25,7 +25,14 @@ use sp_std::vec::Vec;
 sp_api::decl_runtime_apis! {
 	pub trait IrisApi
 	{
-		fn add_bytes() -> Bytes;
+		fn add_bytes(
+			byte_stream: Bytes, 
+			asset_id: u32, 
+			signature: Bytes, 
+			signer: Bytes, 
+			message: Bytes
+		) -> Bytes;
+
 		fn retrieve_bytes(asset_id: u32) -> Bytes;
 	}
 }

@@ -45,7 +45,7 @@ use frame_support::{
 };
 use scale_info::TypeInfo;
 pub use pallet::*;
-use sp_runtime::traits::{CheckedSub, Convert, Zero};
+use sp_runtime::traits::{CheckedSub, Convert, Zero, Verify};
 use sp_staking::offence::{Offence, OffenceError, ReportOffence};
 use sp_std::{
 	collections::{btree_set::BTreeSet, btree_map::BTreeMap},
@@ -59,6 +59,7 @@ use sp_core::{
     },
 	crypto::KeyTypeId,
 	Bytes,
+	sr25519::{Signature, Public},
 };
 use frame_system::{
 	self as system, 
@@ -619,7 +620,6 @@ pub mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-
 	///
 	/// Initialize proxies on gensis
 	/// 
@@ -685,12 +685,34 @@ impl<T: Config> Pallet<T> {
 	}
 
 	/// Placeholder for now, to be called by RPC
-	pub fn handle_add_bytes() -> Bytes {
+	pub fn handle_add_bytes(
+		byte_stream: Bytes,
+		asset_id: u32,
+		signature: Bytes,
+		signer: Bytes,
+		message: Bytes,
+	) -> Bytes
+		where <T as pallet_assets::pallet::Config>::AssetId: From<u32> {
+		// convert Bytes type to types needed for verification
+        let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
+		let msg: Vec<u8> = message.to_vec();
+		let account_bytes: [u8; 32] = signer.to_vec().try_into().unwrap();
+		let public_key = Public::from_raw(account_bytes);
+
+        // signature verification
+		if sig.verify(msg.as_slice(), &public_key) {
+			// let add_request = ipfs::IpfsAddRequest{
+			// 	bytes: byte_stream,
+			// };
+			// let res = ipfs::add(add_request);
+			return Bytes(Vec::new());
+		}
 		Bytes(Vec::new())
 	}
 
 	/// Placeholder for now, to be called by RPC
-	pub fn handle_retrieve_bytes() -> Bytes {
+	pub fn handle_retrieve_bytes(asset_id: u32) -> Bytes 
+		where <T as pallet_assets::pallet::Config>::AssetId: From<u32>{
 		Bytes(Vec::new())
 	}
 }

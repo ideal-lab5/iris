@@ -39,6 +39,11 @@ pub trait IrisApi<BlockHash> {
 	#[rpc(name = "iris_addBytes")]
 	fn retrieve_bytes(
 		&self,
+		byte_stream: Bytes,
+		asset_id: u32,
+		signature: Bytes,
+		signer: Bytes,
+		message: Bytes,
 		at: Option<BlockHash>,
 	) -> Result<Bytes>;
 
@@ -89,6 +94,11 @@ where
 
 	fn add_bytes(
 		&self,
+		byte_stream: Bytes,
+		asset_id: u32,
+		signature: Bytes,
+		signer: Bytes,
+		message: Bytes,
 		at: Option<Block as BlockT>::Hash,
 	) -> Result<Bytes> {
 		let api = self.client.runtime_api();
