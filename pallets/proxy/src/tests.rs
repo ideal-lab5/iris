@@ -237,7 +237,8 @@ fn proxy_declare_proxy_works() {
 			1,
 		));
 		let proxy_prefs = crate::ProxyPrefs {
-			mbps: 100,
+			max_mbps: 100,
+			storage_mbytes: 100,
 		};
 		assert_ok!(Proxy::declare_proxy(
 			Origin::signed(v0.0.clone()),
@@ -271,7 +272,8 @@ fn proxy_declare_proxy_err_when_not_controller() {
 			1,
 		));
 		let proxy_prefs = crate::ProxyPrefs {
-			mbps: 100,
+			max_mbps: 100,
+			storage_mbytes: 100,
 		};
 		assert_err!(Proxy::declare_proxy(
 			Origin::signed(v1.0.clone()),

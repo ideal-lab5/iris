@@ -37,8 +37,6 @@ pallet-session = { version = "4.0.0-dev", default-features = false, git = "https
 pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = false }
 pallet-data-assets = { version = "1.0.0", default-features = false, path = "../data-assets" }
 pallet-authorities = { version = "1.0.0", default-features = false, path = "../authorities" }
-# pallet-authorization = { version = "1.0.0", default-features = false, path = "../authorization" }
-# pallet-data-spaces = { version = "1.0.0", default-features = false, path = "../data-spaces" }
 
 [dev-dependencies]
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }

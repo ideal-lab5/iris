@@ -44,19 +44,20 @@ pub struct IpfsConfigRequest {
 /// A request object to add data to ipfs
 #[derive(Encode, Decode, RuntimeDebug, TypeInfo)]
 pub struct IpfsAddRequest {
-    bytes: Vec<u8>, 
+    pub bytes: Vec<u8>, 
 }
 
 /// IPFS capabilities
 #[derive(Clone, PartialEq, Eq, RuntimeDebug)]
 pub enum Endpoint {
+    Add,
+    Cat,
+    ConfigShow,
 	ConfigUpdate,
-	ConfigShow,
 	Connect,
     Disconnect, 
-    Add,
-    Get, 
-    Cat,
+    Get,
+    Identity,
 	Other(&'static str),
 }
 
@@ -64,16 +65,25 @@ pub enum Endpoint {
 impl AsRef<str> for Endpoint {
 	fn as_ref(&self) -> &str {
 		match *self {
-            Endpoint::ConfigUpdate => "https://127.0.0.1:5001/api/v0/config?",
-            Endpoint::ConfigShow => "https://127.0.0.1:5001/api/v0/config/show",
-            Endpoint::Connect => "https://127.0.0.1:5001/api/v0/swarm/connect?",
-            Endpoint::Disconnect => "https://127.0.0.1:5001/api/v0/swarm/disconnect?",
-            Endpoint::Add => "https://127.0.0.1:5001/api/v0/add",
-            Endpoint::Get => "https://127.0.0.1:5001/api/v0/get",
-            Endpoint::Cat => "https://127.0.0.1:5001/api/v0/cat",
+            Endpoint::Add => "http://127.0.0.1:5001/api/v0/add",
+            Endpoint::Cat => "http://127.0.0.1:5001/api/v0/cat",
+            Endpoint::ConfigShow => "http://127.0.0.1:5001/api/v0/config/show",
+            Endpoint::ConfigUpdate => "http://127.0.0.1:5001/api/v0/config?",
+            Endpoint::Connect => "http://127.0.0.1:5001/api/v0/swarm/connect?",
+            Endpoint::Disconnect => "http://127.0.0.1:5001/api/v0/swarm/disconnect?",
+            Endpoint::Get => "http://127.0.0.1:5001/api/v0/get",
+            Endpoint::Identity => "http://127.0.0.1:5001/api/v0/id",
 			Endpoint::Other(m) => m,
 		}
 	}
+}
+
+/// Get the ipfs node identity
+/// 
+pub fn identity() -> Result<http::Response, http::Error> {
+    let mut endpoint = Endpoint::Identity.as_ref().to_owned();
+    let res = ipfs_post_request(&endpoint, None)?;
+    Ok(res)
 }
 
 /// Update the node's configuration. For the time being, we omit the optional

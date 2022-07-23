@@ -25,6 +25,29 @@ use sp_core::{
 use sp_io::TestExternalities;
 
 #[test]
+pub fn ipfs_can_call_identity() {
+    let (offchain, state) = testing::TestOffchainExt::new();
+	let mut t = TestExternalities::default();
+	t.register_extension(OffchainWorkerExt::new(offchain));
+
+	t.execute_with(|| {
+		// mcok the post request
+		state.write().expect_request(
+			testing::PendingRequest {
+				method: "POST".into(),
+				uri: "https://127.0.0.1:5001/api/v0/id".into(),
+				body: b"".to_vec(),
+				sent: true,
+                response: Some(vec![1, 2, 3]),
+				..Default::default()
+			},
+		);
+
+        let res = ipfs::identity();
+	})	
+}
+
+#[test]
 pub fn ipfs_can_call_config_show() {
     let (offchain, state) = testing::TestOffchainExt::new();
 	let mut t = TestExternalities::default();

@@ -58,7 +58,6 @@ use sp_core::{
         OpaqueMultiaddr, StorageKind,
     },
 	crypto::KeyTypeId,
-	Bytes,
 	sr25519::{Signature, Public},
 };
 use frame_system::{
@@ -209,12 +208,15 @@ pub enum ProxyStatus {
 	Idle,
 	/// Declared desire in participating as an active proxy
 	Proxy,
+	/// The proxy node is misconfigured and requires attention (e.g. no IPFS daemon is detected)
+	Invalid,
 }
 
 /// preferences for a proxy node
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, Default)]
 pub struct ProxyPrefs {
-	mbps: u32,
+	max_mbps: u32,
+	storage_mbytes: u32,
 }
 
 #[frame_support::pallet]
@@ -262,6 +264,10 @@ pub mod pallet {
 		/// Number of eras that staked funds must remain bonded for.
 		#[pallet::constant]
 		type BondingDuration: Get<EraIndex>;
+		#[pallet::constant]
+		type MinimumStorageSize: Get<u32>;
+		#[pallet::constant]
+		type MinimumMbps: Get<u32>;
 	}
 
 	#[pallet::type_value]
@@ -292,20 +298,20 @@ pub mod pallet {
 	#[pallet::getter(fn active_era)]
 	// TODO: Do I need the ActiveEraInfo?
 	pub type ActiveEra<T> = StorageValue<_, EraIndex>;
-	
-	// /// Rewards for the last `HISTORY_DEPTH` eras.
-	// /// If reward hasn't been set or has been removed then 0 reward is returned.
-	// #[pallet::storage]
-	// #[pallet::getter(fn eras_reward_points)]
-	// pub type ErasRewardPoints<T: Config> = StorageDoubleMap<
-	// 	_, Twox64Concat, EraIndex, Twox64Concat, T::AssetId, EraRewardPoints<T::AccountId>,
-	// >;
 
 	/// The map from (wannabe) validator stash key to the preferences of that validator.
 	#[pallet::storage]
 	#[pallet::getter(fn proxies)]
 	pub type Proxies<T: Config> =
 		CountedStorageMap<_, Twox64Concat, T::AccountId, ProxyPrefs, ValueQuery>;
+
+	/// Track which proxy nodes require configuration and identity verification
+	/// If an address is mapped to true, then it requires configuration
+	/// If it is mapped to false, then it is already configured
+	///
+	#[pallet::storage]
+	#[pallet::getter(fn proxy_config_status)]
+	pub type ProxyConfigStatus<T: Config> = StorageMap<_, Twox64Concat, T::AccountId, bool>;
 
 	/// The minimum active bond to become and maintain the role of a nominator.
 	#[pallet::storage]
@@ -475,6 +481,7 @@ pub mod pallet {
 				// claimed_rewards: (last_reward_era..current_era).collect(),
 			};
 			Self::update_ledger(&controller, &item);
+
 			Ok(())
 		}
 
@@ -588,15 +595,12 @@ pub mod pallet {
 			prefs: ProxyPrefs,
 		) -> DispatchResult {
 			let controller = ensure_signed(origin)?;
-
 			let ledger = Self::ledger(&controller).ok_or(Error::<T>::NotController)?;
 
 			ensure!(ledger.active >= MinProxyBond::<T>::get(), Error::<T>::InsufficientBond);
 			let stash = &ledger.stash;
-
 			// ensure their commission is correct.
 			// ensure!(prefs.commission >= MinCommission::<T>::get(), Error::<T>::CommissionTooLow);
-
 			// Only check limits if they are not already a validator.
 			if !Proxies::<T>::contains_key(stash) {
 				// If this error is reached, we need to adjust the `MinValidatorBond` and start
@@ -662,18 +666,9 @@ impl<T: Config> Pallet<T> {
 	/// * prefs: The ProxyPrefs to insert
 	/// 
 	fn do_add_proxy(who: &T::AccountId, prefs: ProxyPrefs) {
-		// if !Validators::<T>::contains_key(who) {
-		// 	// maybe update sorted list.
-		// 	let _ = T::VoterList::on_insert(who.clone(), Self::weight_of(who))
-		// 		.defensive_unwrap_or_default();
-		// }
+		// mark all new proxy nodes as requiring configuration
+		ProxyConfigStatus::<T>::insert(who, true);
 		Proxies::<T>::insert(who, prefs);
-
-		// debug_assert_eq!(
-		// 	Nominators::<T>::count() + Validators::<T>::count(),
-		// 	T::VoterList::count()
-		// );
-		// debug_assert_eq!(T::VoterList::sanity_check(), Ok(()));
 	}
 
 	/// Update the ledger for a controller.
@@ -682,38 +677,6 @@ impl<T: Config> Pallet<T> {
 	fn update_ledger(controller: &T::AccountId, ledger: &StakingLedger<T>) {
 		<T as pallet::Config>::Currency::set_lock(STAKING_ID, &ledger.stash, ledger.total, WithdrawReasons::all());
 		<Ledger<T>>::insert(controller, ledger);
-	}
-
-	/// Placeholder for now, to be called by RPC
-	pub fn handle_add_bytes(
-		byte_stream: Bytes,
-		asset_id: u32,
-		signature: Bytes,
-		signer: Bytes,
-		message: Bytes,
-	) -> Bytes
-		where <T as pallet_assets::pallet::Config>::AssetId: From<u32> {
-		// convert Bytes type to types needed for verification
-        let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
-		let msg: Vec<u8> = message.to_vec();
-		let account_bytes: [u8; 32] = signer.to_vec().try_into().unwrap();
-		let public_key = Public::from_raw(account_bytes);
-
-        // signature verification
-		if sig.verify(msg.as_slice(), &public_key) {
-			// let add_request = ipfs::IpfsAddRequest{
-			// 	bytes: byte_stream,
-			// };
-			// let res = ipfs::add(add_request);
-			return Bytes(Vec::new());
-		}
-		Bytes(Vec::new())
-	}
-
-	/// Placeholder for now, to be called by RPC
-	pub fn handle_retrieve_bytes(asset_id: u32) -> Bytes 
-		where <T as pallet_assets::pallet::Config>::AssetId: From<u32>{
-		Bytes(Vec::new())
 	}
 }
 

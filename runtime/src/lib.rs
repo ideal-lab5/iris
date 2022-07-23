@@ -496,6 +496,8 @@ impl pallet_im_online::Config for Runtime {
 
 parameter_types! {
 	pub const BondingDuration: EraIndex = 3;
+	pub const MinimumMbps: u32 = 50;
+	pub const MinimumStorageSize: u32 = 50;
 }
 
 impl pallet_proxy::Config for Runtime {
@@ -504,12 +506,19 @@ impl pallet_proxy::Config for Runtime {
 	type Currency = Balances;
 	type CurrencyBalance = <Self as pallet_balances::Config>::Balance ;
 	type BondingDuration = BondingDuration;
+	type MinimumMbps = MinimumMbps;
+	type MinimumStorageSize = MinimumStorageSize;
+}
+
+parameter_types! {
+	pub const NodeConfigBlockDuration: u32 = 10;
 }
 
 impl pallet_ipfs::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type NodeConfigBlockDuration = NodeConfigBlockDuration;
 }
 
 use codec::Encode;
@@ -825,7 +834,6 @@ impl_runtime_apis! {
 	impl pallet_proxy_rpc_runtime_api::IrisApi<Block>
 		for Runtime
 	{
-		// TODO: not yet implemented
 		fn add_bytes(
 			byte_stream: Bytes,
 			asset_id: u32,
@@ -833,7 +841,7 @@ impl_runtime_apis! {
 			signer: Bytes,
 			message: Bytes,
 		) -> Bytes {
-			Proxy::handle_add_bytes(
+			Ipfs::handle_add_bytes(
 				byte_stream,
 				asset_id,
 				signature,
@@ -845,7 +853,7 @@ impl_runtime_apis! {
 		fn retrieve_bytes(
 			asset_id: u32,
 		) -> Bytes {
-			Proxy::handle_retrieve_bytes(asset_id)
+			Ipfs::handle_retrieve_bytes(asset_id)
 		}
 	}
 

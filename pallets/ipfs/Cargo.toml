@@ -18,6 +18,7 @@ codec = { package = "parity-scale-codec", version = "3.0.0", default-features = 
 scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 futures = { version = "0.3.21", features = ["thread-pool"] }
 lazy_static = "1.4.0"
+lite-json = { version = "0.2", default-features = false }
 
 sp-io = { version = "6.0.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
@@ -35,9 +36,10 @@ pallet-im-online = { version = "4.0.0-dev", default-features = false, git = "htt
 pallet-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
 
 pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = false }
-pallet-data-assets = { version = "1.0.0", default-features = false, path = "../data-assets" }
-pallet-authorization = { version = "1.0.0", default-features = false, path = "../authorization" }
-pallet-data-spaces = { version = "1.0.0", default-features = false, path = "../data-spaces" }
+# pallet-data-assets = { version = "1.0.0", default-features = false, path = "../data-assets" }
+# pallet-authorization = { version = "1.0.0", default-features = false, path = "../authorization" }
+# pallet-data-spaces = { version = "1.0.0", default-features = false, path = "../data-spaces" }
+pallet-proxy = { version = "1.0.0", default-features = false, path = "../proxy" }
 
 [dev-dependencies]
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
@@ -56,12 +58,15 @@ std = [
 	'sp-runtime/std',
 	'sp-staking/std',
 	'log/std',
+	'lite-json/std',
 	'pallet-im-online/std',
 	'pallet-session/std',
 	'pallet-assets/std',
-	'pallet-data-assets/std',
-	'pallet-data-spaces/std', 
-	'pallet-authorization/std',
+	'pallet-balances/std',
+	# 'pallet-data-assets/std',
+	# 'pallet-data-spaces/std', 
+	# 'pallet-authorization/std',
+	'pallet-proxy/std',
 ]
 
 runtime-benchmarks = ["frame-benchmarking"]
