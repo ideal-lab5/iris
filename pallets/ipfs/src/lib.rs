@@ -42,7 +42,12 @@ use frame_support::{
 	},
 };
 use log;
-use lite_json::json_parser::parse_json;
+use serde_json::Value;
+// use lite_json::json_parser::{
+// 	parse_json
+// };
+// use lite_json::json::JsonValue;
+
 use scale_info::TypeInfo;
 pub use pallet::*;
 use sp_runtime::traits::{Convert, Verify, Zero};
@@ -303,14 +308,9 @@ impl<T: Config> Pallet<T> {
 
 	/// verify if an ipfs daemon is running and if so, report its identity on chain
 	/// 
-	fn ipfs_verify_identity() -> Result<(), Error::<T>> {
+	fn ipfs_verify_identity() -> Result<(), Error<T>> {
 		log::info!("CHECKING IPFS IDENTITY");
-		let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-		if !signer.can_sign() {
-			log::error!(
-				"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-			);
-		}
+		
 		let id_res = match ipfs::identity() {
 			Ok(res) => {
 				log::info!("{:?}", res);
@@ -321,24 +321,75 @@ impl<T: Config> Pallet<T> {
 			}
 		};
 
-		let body_str = sp_std::str::from_utf8(&id_res).map_err(|_| {
-			log::warn!("No UTF8 body");
-			Error::<T>::ResponseParsingFailure
-		})?;
-		let val = lite_json::parse_json(body_str).expect("Invalid JSON specified!");
-		log::info!("IPFS ID RESPONSE AS JSON");
-		// log::info!("{:?}", val);
-		// let results = signer.send_signed_transaction(|_account| { 
-		// 	Call::submit_ipfs_identity{
-		// 		admin: admin.clone(),
-		// 		maddrs: id_res,
-		// 	}
-		// });
+		let body = sp_std::str::from_utf8(&id_res).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+		let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+		let id = &json["ID"];
+		let pubkey = id.clone().as_str().unwrap().to_vec();
+		log::info!("{:?}", id);
+
+		// let raw_maddrs = json["Addresses"];
+		// let first = &raw_maddrs[0];
+
+		let maddr_vec: Vec<Vec<u8>> = serde_json::from_value(json["Addresses"].clone()).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+		let maddrs: Vec<OpaqueMultiaddr> = maddr_vec.to_vec().iter().map(|m| OpaqueMultiaddr(m.to_vec())).collect();
+		
+		let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+		if !signer.can_sign() {
+			log::error!(
+				"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+			);
+		}
+		let results = signer.send_signed_transaction(|_account| { 
+			Call::submit_ipfs_identity{
+				public_key: pubkey,
+				multiaddresses: maddrs.clone(),
+			}
+		});
 	
-		// for (_, res) in &results {
-		// 	match res {
-		// 		Ok(()) => log::info!("Submitted results successfully"),
-		// 		Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+		for (_, res) in &results {
+			match res {
+				Ok(()) => log::info!("Submitted results successfully"),
+				Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+			}
+		}
+
+
+
+		// match sp_std::str::from_utf8(&id_res) {
+		// 	Ok(parsed) => {
+		// 		match ipfs::parse(parsed) {
+		// 			Ok(json) => {
+		// 				log::info!("{:?}", json);
+		// 				let id = &json["ID"];
+		// 				log::info!("{:?}", id);
+
+		// 				let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+		// 				if !signer.can_sign() {
+		// 					log::error!(
+		// 						"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+		// 					);
+		// 				}
+		// 				let results = signer.send_signed_transaction(|_account| { 
+		// 					Call::submit_ipfs_identity{
+		// 						admin: admin.clone(),
+		// 						maddrs: id_res,
+		// 					}
+		// 				});
+					
+		// 				for (_, res) in &results {
+		// 					match res {
+		// 						Ok(()) => log::info!("Submitted results successfully"),
+		// 						Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+		// 					}
+		// 				}
+		// 			},
+		// 			Err(e) => {
+		// 				return Err(Error::<T>::ResponseParsingFailure);
+		// 			}
+		// 		}
+		// 	},
+		// 	Err(e) => {
+		// 		return Err(Error::<T>::ResponseParsingFailure);
 		// 	}
 		// }
 		Ok(())
@@ -347,7 +398,7 @@ impl<T: Config> Pallet<T> {
 	/// update the running ipfs daemon's configuration to be in sync
 	/// with the latest on-chain valid configuration values
 	/// 
-	fn ipfs_update_configs() -> Result<(), Error::<T>> {
+	fn ipfs_update_configs() -> Result<(), Error<T>> {
 		Ok(())
 	}
 	

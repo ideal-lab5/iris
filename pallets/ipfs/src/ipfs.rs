@@ -31,6 +31,7 @@ use sp_runtime::{
     RuntimeDebug,
 };
 use scale_info::prelude::string::String;
+use serde_json::Value;
 
 /// A request object to update ipfs configs
 #[derive(Encode, Decode, RuntimeDebug, TypeInfo)]
@@ -190,8 +191,23 @@ pub fn cat(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
     let mut endpoint = Endpoint::Cat.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
         .map_err(|_| http::Error::Unknown).ok().unwrap();
-    let res = ipfs_post_request(&endpoint, None).ok();
+    let res = ipfs_post_request(&endpoint, None);
     Ok(res.unwrap())
+}
+
+/// Parse the input string as json
+/// 
+/// returns Result<serde_json::Value, serde_json::Error>
+/// 
+pub fn parse(input: &str) -> Result<Value, serde_json::Error> {
+    match serde_json::from_str(input) {
+        Ok(v) => {
+            return Ok(v);
+        },
+        Err(e) => {
+            return Err(e)
+        }
+    }
 }
 
 /// Append a key-value argument to the endpoint.
