@@ -831,7 +831,7 @@ impl_runtime_apis! {
 		}
 	}
 
-	impl pallet_proxy_rpc_runtime_api::IrisApi<Block>
+	impl pallet_ipfs_rpc_runtime_api::IpfsApi<Block>
 		for Runtime
 	{
 		fn add_bytes(

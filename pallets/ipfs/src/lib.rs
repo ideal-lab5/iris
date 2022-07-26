@@ -280,6 +280,10 @@ pub mod pallet {
 			match <pallet_proxy::Pallet<T>>::proxy_config_status(&who) {
 				Some(result) => {
 					if result == ProxyConfigState::Unconfigured {
+						if <SubstrateIpfsBridge::<T>>::contains_key(public_key.clone()) {
+							let existing_association = <SubstrateIpfsBridge::<T>>::get(public_key.clone()).unwrap();
+							ensure!(who == existing_association, Error::<T>::InvalidMultiaddress);
+						}
 						<BootstrapNodes::<T>>::insert(public_key.clone(), multiaddresses.clone());
 						<SubstrateIpfsBridge::<T>>::insert(public_key.clone(), who.clone());
 						<pallet_proxy::Pallet<T>>::update_proxy_state(who.clone(), ProxyConfigState::Identified);
@@ -382,7 +386,7 @@ impl<T: Config> Pallet<T> {
 				match <pallet_proxy::Pallet<T>>::proxies(&acct_id) {
 					Some(preferences) => {
 						// 4. Make calls to update ipfs node config
-						// Datastore.StorageMax
+						// TODO: should create enum for the key: Datastore.StorageMax
 						let key = "Datastore.StorageMax".as_bytes().to_vec();
 						let val = format!("{}", preferences.storage_max_gb).as_bytes().to_vec();
 						let storage_size_config_item = ipfs::IpfsConfigRequest{
@@ -449,7 +453,17 @@ impl<T: Config> Pallet<T> {
 			let req = ipfs::IpfsAddRequest {
 				bytes: byte_stream.to_vec(),
 			};
-			let _res = ipfs::add(req);
+			match ipfs::add(req) {
+				Ok(res) => {
+					let res_u8 = res.body().collect::<Vec<u8>>();
+					let body = sp_std::str::from_utf8(&res_u8).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+					let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+					log::info!("{:?}", json["Size"]);
+				},
+				Err(e) => {
+					return Bytes(Vec::new());
+				}
+			}
 			// submit signed tx to create asset class
 			let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
 			if !signer.can_sign() {
