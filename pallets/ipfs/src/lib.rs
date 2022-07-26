@@ -43,10 +43,6 @@ use frame_support::{
 };
 use log;
 use serde_json::Value;
-// use lite_json::json_parser::{
-// 	parse_json
-// };
-// use lite_json::json::JsonValue;
 
 use scale_info::TypeInfo;
 pub use pallet::*;
@@ -75,11 +71,10 @@ use frame_system::{
 	}
 };
 use sp_runtime::{
-	// offchain::ipfs,
 	offchain::http,
 	traits::StaticLookup,
 };
-// use pallet_data_assets::DataCommand;
+use pallet_proxy::ProxyConfigState;
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
@@ -161,7 +156,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn substrate_ipfs_bridge)]
 	pub(super) type SubstrateIpfsBridge<T: Config> = StorageMap<
-		_, Blake2_128Concat, T::AccountId, Vec<u8>, ValueQuery,
+		_, Blake2_128Concat, Vec<u8>, T::AccountId,
 	>;
 
 	#[pallet::event]
@@ -201,6 +196,8 @@ pub mod pallet {
 		IpfsNotAvailable,
 		/// failed to parse the response body -> maybe temp 
 		ResponseParsingFailure,
+		/// failure when calling the /config endpoint to update config
+		ConfigUpdateFailure,
 	}
 
 	#[pallet::hooks]
@@ -209,14 +206,22 @@ pub mod pallet {
 			// every 100 blocks
 			if block_number % T::NodeConfigBlockDuration::get().into() == 0u32.into() {
 				if sp_io::offchain::is_validator() {
-					if let Err(e) = Self::ipfs_configuration_management() {
+					if let Err(e) = Self::ipfs_verify_identity() {
+						log::error!("Encountered an error while attempting to verify ipfs node identity: {:?}", e);
+					} 
+					if let Err(e) = Self::ipfs_update_configs() {
 						log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
-					} else {
-						// if configuration succeeded, continue to swarm connection management
-						if let Err(e) = Self::ipfs_swarm_connection_management() {
-							log::error!("Encountered an error while managing swarm connections: {:?}", e);
-						}
 					}
+					// else {
+					// 	// check if identity verification success and data has been submitted
+					// 	if let Err(e) = Self::ipfs_update_configs() {
+					// 		log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
+					// 	}	
+					// 	// if configuration succeeded, continue to swarm connection management
+					// 	if let Err(e) = Self::ipfs_swarm_connection_management() {
+					// 		log::error!("Encountered an error while managing swarm connections: {:?}", e);
+					// 	}
+					// }
 				}
 			}
 		}
@@ -273,9 +278,10 @@ pub mod pallet {
 			// if not, then do not proceed
 			match <pallet_proxy::Pallet<T>>::proxy_config_status(&who) {
 				Some(result) => {
-					if result {
+					if result == ProxyConfigState::Unconfigured {
 						<BootstrapNodes::<T>>::insert(public_key.clone(), multiaddresses.clone());
-						<SubstrateIpfsBridge::<T>>::insert(who.clone(), public_key.clone());
+						<SubstrateIpfsBridge::<T>>::insert(public_key.clone(), who.clone());
+						<pallet_proxy::Pallet<T>>::update_proxy_state(who.clone(), ProxyConfigState::Identified);
 						Self::deposit_event(Event::IdentitySubmitted(who.clone()));
 					}
 				},
@@ -297,20 +303,9 @@ impl<T: Config> Pallet<T> {
 			.build()
 	}
 
-	/// manage IPFS node configuration
-	/// 
-	/// Returns an error if communication with IPFS fails 
-	fn ipfs_configuration_management() -> Result<(), Error<T>> {
-		Self::ipfs_verify_identity()?;
-		Self::ipfs_update_configs()?;
-		Ok(())
-	}
-
 	/// verify if an ipfs daemon is running and if so, report its identity on chain
 	/// 
 	fn ipfs_verify_identity() -> Result<(), Error<T>> {
-		log::info!("CHECKING IPFS IDENTITY");
-		
 		let id_res = match ipfs::identity() {
 			Ok(res) => {
 				log::info!("{:?}", res);
@@ -321,18 +316,20 @@ impl<T: Config> Pallet<T> {
 			}
 		};
 
+		// parse body
 		let body = sp_std::str::from_utf8(&id_res).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
 		let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+
+		// get pubkey
 		let id = &json["ID"];
-		let pubkey = id.clone().as_str().unwrap().to_vec();
-		log::info!("{:?}", id);
-
-		// let raw_maddrs = json["Addresses"];
-		// let first = &raw_maddrs[0];
-
-		let maddr_vec: Vec<Vec<u8>> = serde_json::from_value(json["Addresses"].clone()).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-		let maddrs: Vec<OpaqueMultiaddr> = maddr_vec.to_vec().iter().map(|m| OpaqueMultiaddr(m.to_vec())).collect();
-		
+		let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
+		// get multiaddresses
+		let addrs: Vec<Value> = serde_json::from_value(json["Addresses"].clone())
+			.map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+		let addrs_vec: Vec<_> = addrs.iter()
+			.map(|x| OpaqueMultiaddr(x.as_str().unwrap().as_bytes().to_vec()))
+			.collect();
+		// submit extrinsic
 		let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
 		if !signer.can_sign() {
 			log::error!(
@@ -341,8 +338,8 @@ impl<T: Config> Pallet<T> {
 		}
 		let results = signer.send_signed_transaction(|_account| { 
 			Call::submit_ipfs_identity{
-				public_key: pubkey,
-				multiaddresses: maddrs.clone(),
+				public_key: pubkey.clone(),
+				multiaddresses: addrs_vec.clone(),
 			}
 		});
 	
@@ -352,46 +349,6 @@ impl<T: Config> Pallet<T> {
 				Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
 			}
 		}
-
-
-
-		// match sp_std::str::from_utf8(&id_res) {
-		// 	Ok(parsed) => {
-		// 		match ipfs::parse(parsed) {
-		// 			Ok(json) => {
-		// 				log::info!("{:?}", json);
-		// 				let id = &json["ID"];
-		// 				log::info!("{:?}", id);
-
-		// 				let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-		// 				if !signer.can_sign() {
-		// 					log::error!(
-		// 						"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-		// 					);
-		// 				}
-		// 				let results = signer.send_signed_transaction(|_account| { 
-		// 					Call::submit_ipfs_identity{
-		// 						admin: admin.clone(),
-		// 						maddrs: id_res,
-		// 					}
-		// 				});
-					
-		// 				for (_, res) in &results {
-		// 					match res {
-		// 						Ok(()) => log::info!("Submitted results successfully"),
-		// 						Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-		// 					}
-		// 				}
-		// 			},
-		// 			Err(e) => {
-		// 				return Err(Error::<T>::ResponseParsingFailure);
-		// 			}
-		// 		}
-		// 	},
-		// 	Err(e) => {
-		// 		return Err(Error::<T>::ResponseParsingFailure);
-		// 	}
-		// }
 		Ok(())
 	}
 
@@ -399,6 +356,52 @@ impl<T: Config> Pallet<T> {
 	/// with the latest on-chain valid configuration values
 	/// 
 	fn ipfs_update_configs() -> Result<(), Error<T>> {
+		// 1. get ipfs node id
+		let id_res = match ipfs::identity() {
+			Ok(res) => {
+				log::info!("{:?}", res);
+				res.body().collect::<Vec<u8>>()
+			} 
+			Err(e) => {
+				return Err(Error::<T>::IpfsNotAvailable);
+			}
+		};
+
+		// parse body as json
+		let body = sp_std::str::from_utf8(&id_res).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+		let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+
+		// get pubkey
+		let id = &json["ID"];
+		let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
+		// 2. use id to get associated accountid
+		match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
+			Some(acct_id) => {
+				// 3. use accountid to get proxy prefs
+				match <pallet_proxy::Pallet<T>>::proxies(&acct_id) {
+					Some(prefs) => {
+						// 4. Make calls to update ipfs node config
+						// Datastore.StorageMax
+						let key = "Datastore.StorageMax".as_bytes().to_vec();
+						// let val = preferences.storage_mbytes.to_string().clone().as_bytes().to_vec();
+						let val = "12".as_bytes().to_vec();
+						let storage_size_config_item = ipfs::IpfsConfigRequest{
+							key: key.clone(),
+							value: val.clone(),
+							boolean: None,
+							json: None,
+						};
+						ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure);
+					},
+					None => {
+						log::info!("No preferences found!");
+					}
+				}
+			},
+			None => {
+				log::info!("No identifiable ipfs-substrate association");
+			}
+		}
 		Ok(())
 	}
 	

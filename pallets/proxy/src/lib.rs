@@ -219,6 +219,14 @@ pub struct ProxyPrefs {
 	storage_mbytes: u32,
 }
 
+/// Indicates the configuration phase of the proxy node
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+pub enum ProxyConfigState {
+	Unconfigured,
+	Identified,
+	FullyConfigured,
+}
+
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
@@ -303,7 +311,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn proxies)]
 	pub type Proxies<T: Config> =
-		CountedStorageMap<_, Twox64Concat, T::AccountId, ProxyPrefs, ValueQuery>;
+		CountedStorageMap<_, Twox64Concat, T::AccountId, ProxyPrefs>;
 
 	/// Track which proxy nodes require configuration and identity verification
 	/// If an address is mapped to true, then it requires configuration
@@ -311,7 +319,7 @@ pub mod pallet {
 	///
 	#[pallet::storage]
 	#[pallet::getter(fn proxy_config_status)]
-	pub type ProxyConfigStatus<T: Config> = StorageMap<_, Twox64Concat, T::AccountId, bool>;
+	pub type ProxyConfigStatus<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, ProxyConfigState>;
 
 	/// The minimum active bond to become and maintain the role of a nominator.
 	#[pallet::storage]
@@ -667,7 +675,7 @@ impl<T: Config> Pallet<T> {
 	/// 
 	fn do_add_proxy(who: &T::AccountId, prefs: ProxyPrefs) {
 		// mark all new proxy nodes as requiring configuration
-		ProxyConfigStatus::<T>::insert(who, true);
+		ProxyConfigStatus::<T>::insert(who, ProxyConfigState::Unconfigured);
 		Proxies::<T>::insert(who, prefs);
 	}
 
@@ -677,6 +685,14 @@ impl<T: Config> Pallet<T> {
 	fn update_ledger(controller: &T::AccountId, ledger: &StakingLedger<T>) {
 		<T as pallet::Config>::Currency::set_lock(STAKING_ID, &ledger.stash, ledger.total, WithdrawReasons::all());
 		<Ledger<T>>::insert(controller, ledger);
+	}
+
+	pub fn update_proxy_state(
+		addr: T::AccountId,
+		new_status: ProxyConfigState,
+	) -> DispatchResult {
+		<ProxyConfigStatus<T>>::insert(addr, new_status);
+		Ok(())
 	}
 }
 

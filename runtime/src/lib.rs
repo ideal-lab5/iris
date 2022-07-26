@@ -600,7 +600,7 @@ construct_runtime!(
 		Sudo: pallet_sudo,
 		Assets: pallet_assets,
 		DataAssets: pallet_data_assets,
-		IrisEjection: pallet_authorization,
+		Authorization: pallet_authorization,
 		Ledger: pallet_ledger,
 		Authorities: pallet_authorities,
 		Session: pallet_session,
@@ -1030,7 +1030,7 @@ impl ChainExtension<Runtime> for IrisExtension {
 				let (caller_account, asset_id, target, result): (AccountId, u32, AccountId, bool) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-				crate::IrisEjection::submit_execution_results(
+				crate::Authorization::submit_execution_results(
 					origin, asset_id, target, result,
 				)?;
 				Ok(RetVal::Converging(func_id))

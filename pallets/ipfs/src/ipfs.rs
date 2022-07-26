@@ -32,14 +32,15 @@ use sp_runtime::{
 };
 use scale_info::prelude::string::String;
 use serde_json::Value;
+use log;
 
 /// A request object to update ipfs configs
 #[derive(Encode, Decode, RuntimeDebug, TypeInfo)]
 pub struct IpfsConfigRequest {
-	key: Vec<u8>,
-	value: Vec<u8>,
-	boolean: Option<bool>,
-	json: Option<bool>,
+	pub key: Vec<u8>,
+	pub value: Vec<u8>,
+	pub boolean: Option<bool>,
+	pub json: Option<bool>,
 }
 
 /// A request object to add data to ipfs
@@ -94,9 +95,9 @@ pub fn identity() -> Result<http::Response, http::Error> {
 /// 
 pub fn config_update(config_item: IpfsConfigRequest) -> Result<(), http::Error> {
     let mut endpoint = Endpoint::ConfigUpdate.as_ref().to_owned();
-    endpoint = add_arg(endpoint, &"key".as_bytes().to_vec(), &config_item.key, true)
+    endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), &config_item.key, true)
         .map_err(|_| http::Error::Unknown).ok().unwrap();
-    endpoint = add_arg(endpoint, &"value".as_bytes().to_vec(), &config_item.value, false)
+    endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), &config_item.value, false)
         .map_err(|_| http::Error::Unknown).ok().unwrap();
     ipfs_post_request(&endpoint, None)?;
     Ok(())
@@ -246,6 +247,7 @@ fn add_arg(
 /// * `endpoint`: The IPFS endpoint to invoke
 /// 
 fn ipfs_post_request(endpoint: &str, body: Option<Vec<&[u8]>>) -> Result<http::Response, http::Error> {
+    log::info!("Making POST request to: {:?}", endpoint);
     let body = match body {
         Some(v) => v,
         None => Vec::new(),
@@ -256,7 +258,7 @@ fn ipfs_post_request(endpoint: &str, body: Option<Vec<&[u8]>>) -> Result<http::R
                 .body(body)
                 .send()
                 .unwrap();
-    let response = pending.wait().unwrap();
+    let response = pending.wait()?;
     if response.code != 200 {
         log::warn!("Unexpected status code: {}", response.code);
         return Err(http::Error::Unknown);
