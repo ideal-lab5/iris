@@ -216,7 +216,7 @@ pub enum ProxyStatus {
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, Default)]
 pub struct ProxyPrefs {
 	max_mbps: u32,
-	storage_mbytes: u32,
+	pub storage_max_gb: u32,
 }
 
 /// Indicates the configuration phase of the proxy node

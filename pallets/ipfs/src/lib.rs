@@ -74,10 +74,11 @@ use sp_runtime::{
 	offchain::http,
 	traits::StaticLookup,
 };
+use scale_info::prelude::format;
 use pallet_proxy::ProxyConfigState;
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";
-// TODO: should a new KeyTypeId be defined? e.g. b"iris"
+
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
 
 pub mod crypto {
@@ -379,12 +380,11 @@ impl<T: Config> Pallet<T> {
 			Some(acct_id) => {
 				// 3. use accountid to get proxy prefs
 				match <pallet_proxy::Pallet<T>>::proxies(&acct_id) {
-					Some(prefs) => {
+					Some(preferences) => {
 						// 4. Make calls to update ipfs node config
 						// Datastore.StorageMax
 						let key = "Datastore.StorageMax".as_bytes().to_vec();
-						// let val = preferences.storage_mbytes.to_string().clone().as_bytes().to_vec();
-						let val = "12".as_bytes().to_vec();
+						let val = format!("{}", preferences.storage_max_gb).as_bytes().to_vec();
 						let storage_size_config_item = ipfs::IpfsConfigRequest{
 							key: key.clone(),
 							value: val.clone(),
