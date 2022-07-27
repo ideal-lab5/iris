@@ -39,6 +39,7 @@ use frame_support::{
 	traits::{
 		EstimateNextSessionRotation, Get,
 		ValidatorSet, ValidatorSetWithIdentification,
+		Currency, LockableCurrency,
 	},
 };
 use log;
@@ -111,6 +112,11 @@ pub mod crypto {
 	}
 }
 
+// type BalanceOf<T> =
+// 	<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
+type BalanceOf<T> = <T as pallet_assets::Config>::Balance;
+
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
@@ -137,6 +143,8 @@ pub mod pallet {
 		/// the authority id used for sending signed txs
         type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
 		/// Number of blocks between checks for ipfs daemon availability and configuration
+		/// the currency used by the pallet
+		type Currency: LockableCurrency<Self::AccountId>;
 		#[pallet::constant]
 		type NodeConfigBlockDuration: Get<u32>;
 	}
@@ -241,11 +249,11 @@ pub mod pallet {
         #[pallet::weight(100)]
         pub fn submit_ipfs_add_results(
             origin: OriginFor<T>,
-            admin: <T::Lookup as StaticLookup>::Source,
+			ipfs_pubkey: Vec<u8>,
             cid: Vec<u8>,
             id: T::AssetId,
-            balance: T::Balance,
 			dataspace_id: T::AssetId,
+            balance: T::Balance,
         ) -> DispatchResult {
 			// let who = ensure_signed(origin)?;
 			// let new_origin = system::RawOrigin::Signed(who.clone()).into();
@@ -308,9 +316,9 @@ impl<T: Config> Pallet<T> {
 			.build()
 	}
 
-	/// verify if an ipfs daemon is running and if so, report its identity on chain
-	/// 
-	fn ipfs_verify_identity() -> Result<(), Error<T>> {
+	/// Fetch the identity of a locally running ipfs node and convert it to json
+	/// TODO: could potentially move this into the ipfs.rs file
+	fn fetch_identity_json() -> Result<serde_json::Value, Error<T>> {
 		let id_res = match ipfs::identity() {
 			Ok(res) => {
 				log::info!("{:?}", res);
@@ -324,12 +332,18 @@ impl<T: Config> Pallet<T> {
 		// parse body
 		let body = sp_std::str::from_utf8(&id_res).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
 		let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+		Ok(json)
+	}
 
+	/// verify if an ipfs daemon is running and if so, report its identity on chain
+	/// 
+	fn ipfs_verify_identity() -> Result<(), Error<T>> {
+		let id_json = Self::fetch_identity_json()?;
 		// get pubkey
-		let id = &json["ID"];
+		let id = &id_json["ID"];
 		let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
 		// get multiaddresses
-		let addrs: Vec<Value> = serde_json::from_value(json["Addresses"].clone())
+		let addrs: Vec<Value> = serde_json::from_value(id_json["Addresses"].clone())
 			.map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
 		let addrs_vec: Vec<_> = addrs.iter()
 			.map(|x| OpaqueMultiaddr(x.as_str().unwrap().as_bytes().to_vec()))
@@ -361,23 +375,9 @@ impl<T: Config> Pallet<T> {
 	/// with the latest on-chain valid configuration values
 	/// 
 	fn ipfs_update_configs() -> Result<(), Error<T>> {
-		// 1. get ipfs node id
-		let id_res = match ipfs::identity() {
-			Ok(res) => {
-				log::info!("{:?}", res);
-				res.body().collect::<Vec<u8>>()
-			} 
-			Err(e) => {
-				return Err(Error::<T>::IpfsNotAvailable);
-			}
-		};
-
-		// parse body as json
-		let body = sp_std::str::from_utf8(&id_res).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-		let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-
+		let id_json = Self::fetch_identity_json()?;
 		// get pubkey
-		let id = &json["ID"];
+		let id = &id_json["ID"];
 		let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
 		// 2. use id to get associated accountid
 		match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
@@ -433,14 +433,14 @@ impl<T: Config> Pallet<T> {
 	pub fn handle_add_bytes(
 		byte_stream: Bytes,
 		asset_id: u32,
+		dataspace_id: u32,
+		balance: BalanceOf<T>,
 		signature: Bytes,
 		signer: Bytes,
 		message: Bytes,
 	) -> Bytes
 		where <T as pallet_assets::pallet::Config>::AssetId: From<u32> {
 		// TODO: can probably replace signer with AccountId type
-		// TODO: fail fast by checking that the signer is an authorized caller
-		// TODO: allow proxy node to execute this logic: check if self is proxydsd
 		let account_bytes: [u8; 32] = signer.to_vec().try_into().unwrap();
 		let pubkey = Public::from_raw(account_bytes);
 		// convert Bytes type to types needed for verification
@@ -459,35 +459,49 @@ impl<T: Config> Pallet<T> {
 					let body = sp_std::str::from_utf8(&res_u8).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
 					let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
 					log::info!("{:?}", json["Size"]);
+					let raw_cid = &json["Hash"];
+					let cid = raw_cid.clone().as_str().unwrap().as_bytes().to_vec();
+					match Self::fetch_identity_json() {
+						Ok(id_json) => {
+							// get pubkey
+							let id = &id_json["ID"];
+							let ipfs_pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
+							// submit signed tx to create asset class
+							let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+							if !signer.can_sign() {
+								log::error!(
+									"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+								);
+							}
+							let asset_id_type: T::AssetId = asset_id.clone().into();
+							let dataspace_id_type: T::AssetId = dataspace_id.clone().into();
+							let results = signer.send_signed_transaction(|_account| { 
+								Call::submit_ipfs_add_results{
+									ipfs_pubkey: ipfs_pubkey.clone(),
+									cid: cid.clone(),
+									id: asset_id_type.clone(),
+									dataspace_id: dataspace_id_type.clone(),
+									balance: balance.clone(),
+								}
+							});
+						
+							for (_, res) in &results {
+								match res {
+									Ok(()) => log::info!("Submitted results successfully"),
+									Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+								}
+							}
+						},
+						Err(e) => {
+							return Bytes(Vec::new());
+						}
+					}
 				},
 				Err(e) => {
 					return Bytes(Vec::new());
 				}
 			}
-			// submit signed tx to create asset class
-			let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-			if !signer.can_sign() {
-				log::error!(
-					"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-				);
-			}
-			// TODO: send signed tx
-			// let results = signer.send_signed_transaction(|_account| { 
-			// 	Call::submit_ipfs_add_results{
-			// 		admin: admin.clone(),
-			// 		cid: cid.clone(),
-			// 		dataspace_id: dataspace_id.clone(),
-			// 		id: id.clone(),
-			// 		balance: balance.clone(),
-			// 	}
-			// });
-		
-			// for (_, res) in &results {
-			// 	match res {
-			// 		Ok(()) => log::info!("Submitted results successfully"),
-			// 		Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-			// 	}
-			// }
+			
 			// Add bytes to offchain client
 			return Bytes(Vec::new());
 		}

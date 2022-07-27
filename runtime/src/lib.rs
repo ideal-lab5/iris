@@ -435,7 +435,7 @@ parameter_types! {
 
 impl pallet_assets::Config for Runtime {
 	type Event = Event;
-	type Balance = u64;
+	type Balance = Balance;
 	type AssetId = u32;
 	type Currency = Balances;
 	type ForceOrigin = EnsureRoot<AccountId>;
@@ -518,6 +518,7 @@ impl pallet_ipfs::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type Currency = Balances;
 	type NodeConfigBlockDuration = NodeConfigBlockDuration;
 }
 
@@ -831,12 +832,14 @@ impl_runtime_apis! {
 		}
 	}
 
-	impl pallet_ipfs_rpc_runtime_api::IpfsApi<Block>
+	impl pallet_ipfs_rpc_runtime_api::IpfsApi<Block, Balance>
 		for Runtime
 	{
 		fn add_bytes(
 			byte_stream: Bytes,
 			asset_id: u32,
+			dataspace_id: u32,
+			balance: Balance,
 			signature: Bytes,
 			signer: Bytes,
 			message: Bytes,
@@ -844,6 +847,8 @@ impl_runtime_apis! {
 			Ipfs::handle_add_bytes(
 				byte_stream,
 				asset_id,
+				dataspace_id,
+				balance,
 				signature,
 				signer,
 				message,
@@ -972,7 +977,7 @@ impl ChainExtension<Runtime> for IrisExtension {
 			// DataAssets::transfer_asset
             0 => {
                 let mut env = env.buf_in_buf_out();
-				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u64) = env.read_as()?;
+				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u128) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
                 crate::DataAssets::transfer_asset(
@@ -983,7 +988,7 @@ impl ChainExtension<Runtime> for IrisExtension {
 			// DataAssets::mint
 			1 => {
 				let mut env = env.buf_in_buf_out();
-				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u64) = env.read_as()?;
+				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u128) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
                 crate::DataAssets::mint(
@@ -994,7 +999,7 @@ impl ChainExtension<Runtime> for IrisExtension {
 			// DataAssets::burn
 			2 => {
 				let mut env = env.buf_in_buf_out();
-				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u64) = env.read_as()?;
+				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u128) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
                 crate::DataAssets::burn(
@@ -1005,7 +1010,7 @@ impl ChainExtension<Runtime> for IrisExtension {
 			// Ledger::lock_currrency
 			3 => {
 				let mut env = env.buf_in_buf_out();
-				let (caller_account, amount): (AccountId, u64) = env.read_as()?;
+				let (caller_account, amount): (AccountId, u128) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
 				crate::Ledger::lock_currency(

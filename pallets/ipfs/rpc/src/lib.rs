@@ -28,8 +28,9 @@ use sp_core::{
 };
 use sp_runtime::{
 	generic::BlockId,
-	traits::{Block as BlockT},
+	traits::{Block as BlockT, MaybeDisplay},
 };
+use sp_rpc::number::NumberOrHex;
 use std::sync::Arc;
 use codec::{Codec, Decode, Encode};
 use sp_std::vec::Vec;
@@ -37,13 +38,15 @@ use sp_std::vec::Vec;
 pub use pallet_ipfs_rpc_runtime_api::IpfsApi as IpfsRuntimeApi;
 
 #[rpc(client, server)]
-pub trait IpfsApi<BlockHash> {
+pub trait IpfsApi<BlockHash, Balance> {
 
 	#[method(name = "ipfs_addBytes")]
 	fn add_bytes(
 		&self,
 		byte_stream: Bytes,
 		asset_id: u32,
+		dataspace_id: u32,
+		balance: Balance,
 		signature: Bytes,
 		signer: Bytes,
 		message: Bytes,
@@ -86,19 +89,22 @@ impl From<Error> for i32 {
 }
 
 #[async_trait]
-impl<C, Block> 
-	IpfsApiServer<<Block as BlockT>::Hash>
+impl<C, Block, Balance> 
+	IpfsApiServer<<Block as BlockT>::Hash, Balance>
 	for Ipfs<C, Block>
 where 
 	Block: BlockT,
 	C: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync + 'static,
-	C::Api: IpfsRuntimeApi<Block>,
+	C::Api: IpfsRuntimeApi<Block, Balance>,
+	Balance: Codec + MaybeDisplay + Copy + TryInto<NumberOrHex> + Send + Sync + 'static,
 {
 
 	fn add_bytes(
 		&self,
 		byte_stream: Bytes,
 		asset_id: u32,
+		dataspace_id: u32,
+		balance: Balance,
 		signature: Bytes,
 		signer: Bytes,
 		message: Bytes,
@@ -108,12 +114,14 @@ where
 		let at = BlockId::hash(at.unwrap_or_else(||
 			self.client.info().best_hash
 		));
-		api.retrieve_bytes(&at, asset_id).map_err(|e| {
-			CallError::Custom(ErrorObject::owned(
-				Error::RuntimeError.into(),
-				"Unable to add bytes.",
-				Some(e.to_string())
-			)).into()
+		api.add_bytes(&at, byte_stream, asset_id, dataspace_id, balance, signature, signer, message)
+			.map_err(|e| {
+				CallError::Custom(ErrorObject::owned(
+					Error::RuntimeError.into(),
+					"Unable to add bytes.",
+					Some(e.to_string())
+				)
+			).into()
 		})
 	}
 

@@ -22,12 +22,18 @@
 use sp_core::Bytes;
 use sp_std::vec::Vec;
 
+use codec::Codec;
+use sp_runtime::traits::MaybeDisplay;
+
 sp_api::decl_runtime_apis! {
-	pub trait IpfsApi
+	pub trait IpfsApi<Balance> 
+		where Balance: Codec + MaybeDisplay,
 	{
 		fn add_bytes(
 			byte_stream: Bytes, 
-			asset_id: u32, 
+			asset_id: u32,
+			dataspace_id: u32,
+			balance: Balance,
 			signature: Bytes, 
 			signer: Bytes, 
 			message: Bytes
