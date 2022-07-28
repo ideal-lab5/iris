@@ -77,6 +77,7 @@ use sp_runtime::{
 };
 use scale_info::prelude::format;
 use pallet_proxy::ProxyConfigState;
+use pallet_ipfs_primitives::{IpfsResult, IpfsError};
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";
 
@@ -111,9 +112,6 @@ pub mod crypto {
 		type GenericPublic = sp_core::sr25519::Public;
 	}
 }
-
-// type BalanceOf<T> =
-// 	<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 type BalanceOf<T> = <T as pallet_assets::Config>::Balance;
 
@@ -207,6 +205,7 @@ pub mod pallet {
 		ResponseParsingFailure,
 		/// failure when calling the /config endpoint to update config
 		ConfigUpdateFailure,
+		InvalidSigner,
 	}
 
 	#[pallet::hooks]
@@ -221,16 +220,6 @@ pub mod pallet {
 					if let Err(e) = Self::ipfs_update_configs() {
 						log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
 					}
-					// else {
-					// 	// check if identity verification success and data has been submitted
-					// 	if let Err(e) = Self::ipfs_update_configs() {
-					// 		log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
-					// 	}	
-					// 	// if configuration succeeded, continue to swarm connection management
-					// 	if let Err(e) = Self::ipfs_swarm_connection_management() {
-					// 		log::error!("Encountered an error while managing swarm connections: {:?}", e);
-					// 	}
-					// }
 				}
 			}
 		}
@@ -429,7 +418,7 @@ impl<T: Config> Pallet<T> {
 	/// * signature: The signature of the caller
 	/// * signer: The account id of the caller
 	/// * message: A signed message
-	/// 
+	/// TODO: change response type to be able to encode errors
 	pub fn handle_add_bytes(
 		byte_stream: Bytes,
 		asset_id: u32,
@@ -438,74 +427,110 @@ impl<T: Config> Pallet<T> {
 		signature: Bytes,
 		signer: Bytes,
 		message: Bytes,
-	) -> Bytes
+	) -> IpfsResult
 		where <T as pallet_assets::pallet::Config>::AssetId: From<u32> {
-		// TODO: can probably replace signer with AccountId type
-		let account_bytes: [u8; 32] = signer.to_vec().try_into().unwrap();
+		// if no bytes are provided, fail immediately
+		if byte_stream.is_empty() {
+			// TODO: replace with relevant error type after creating response obj
+			// return Bytes(Vec::new());
+			return IpfsResult {
+				response: Bytes(Vec::new()),
+				error: Some(vec![IpfsError::EmptyInput])
+			}
+		}
+
+		let msg: Vec<u8> = message.to_vec();
+		let account_bytes: [u8; 32] = signer.to_vec().try_into()
+			.map_err(|e| Error::<T>::InvalidSigner).unwrap(); 
 		let pubkey = Public::from_raw(account_bytes);
 		// convert Bytes type to types needed for verification
-        let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
-		let msg: Vec<u8> = message.to_vec();
-
-        // signature verification
-		if sig.verify(msg.as_slice(), &pubkey) {
-			// add bytes to ipfs
-			let req = ipfs::IpfsAddRequest {
-				bytes: byte_stream.to_vec(),
-			};
-			match ipfs::add(req) {
-				Ok(res) => {
-					let res_u8 = res.body().collect::<Vec<u8>>();
-					let body = sp_std::str::from_utf8(&res_u8).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-					let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-					log::info!("{:?}", json["Size"]);
-					let raw_cid = &json["Hash"];
-					let cid = raw_cid.clone().as_str().unwrap().as_bytes().to_vec();
-					match Self::fetch_identity_json() {
-						Ok(id_json) => {
-							// get pubkey
-							let id = &id_json["ID"];
-							let ipfs_pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-							// submit signed tx to create asset class
-							let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-							if !signer.can_sign() {
-								log::error!(
-									"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-								);
-							}
-							let asset_id_type: T::AssetId = asset_id.clone().into();
-							let dataspace_id_type: T::AssetId = dataspace_id.clone().into();
-							let results = signer.send_signed_transaction(|_account| { 
-								Call::submit_ipfs_add_results{
-									ipfs_pubkey: ipfs_pubkey.clone(),
-									cid: cid.clone(),
-									id: asset_id_type.clone(),
-									dataspace_id: dataspace_id_type.clone(),
-									balance: balance.clone(),
-								}
-							});
-						
-							for (_, res) in &results {
-								match res {
-									Ok(()) => log::info!("Submitted results successfully"),
-									Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+        match Signature::from_slice(signature.to_vec().as_ref()) {
+			Some(sig) => {
+				// signature verification
+				if sig.verify(msg.as_slice(), &pubkey) {
+					// add bytes to ipfs
+					let req = ipfs::IpfsAddRequest {
+						bytes: byte_stream.to_vec(),
+					};
+					match ipfs::add(req) {
+						Ok(res) => {
+							log::info!("IPFS ADD BYTES RESPONSE BODY: {:?}", res);
+							let res_u8 = res.body().collect::<Vec<u8>>();
+							let body = sp_std::str::from_utf8(&res_u8).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+							let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+							log::info!("{:?}", json["Size"]);
+							let raw_cid = &json["Hash"];
+							let cid = raw_cid.clone().as_str().unwrap().as_bytes().to_vec();
+							match Self::fetch_identity_json() {
+								Ok(id_json) => {
+									// get pubkey
+									let id = &id_json["ID"];
+									let ipfs_pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
+									// submit signed tx to create asset class
+									let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+									if !signer.can_sign() {
+										log::error!(
+											"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+										);
+									}
+									let asset_id_type: T::AssetId = asset_id.clone().into();
+									let dataspace_id_type: T::AssetId = dataspace_id.clone().into();
+									let results = signer.send_signed_transaction(|_account| { 
+										Call::submit_ipfs_add_results{
+											ipfs_pubkey: ipfs_pubkey.clone(),
+											cid: cid.clone(),
+											id: asset_id_type.clone(),
+											dataspace_id: dataspace_id_type.clone(),
+											balance: balance.clone(),
+										}
+									});
+								
+									for (_, res) in &results {
+										match res {
+											Ok(()) => log::info!("Submitted results successfully"),
+											Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+										}
+									}
+								},
+								Err(e) => {
+									return IpfsResult {
+										response: Bytes(Vec::new()),
+										error: Some(vec![IpfsError::IpfsUnavailable])
+									}
 								}
 							}
 						},
 						Err(e) => {
-							return Bytes(Vec::new());
+							return IpfsResult {
+								response: Bytes(Vec::new()),
+								error: Some(vec![IpfsError::IpfsFailedToAddBytes])
+							};
 						}
 					}
-				},
-				Err(e) => {
-					return Bytes(Vec::new());
+					
+					// success scenario
+					return IpfsResult {
+						response: Bytes(Vec::new()),
+						error: None,
+					};
+				} else {
+					// success scenario
+					return IpfsResult {
+						response: Bytes(Vec::new()),
+						error: Some(vec![IpfsError::InvalidSignature]),
+					};
 				}
+			},
+			None => {
+				// success scenario
+				return IpfsResult {
+					response: Bytes(Vec::new()),
+					error: Some(vec![IpfsError::InvalidSignature]),
+				};
 			}
-			
-			// Add bytes to offchain client
-			return Bytes(Vec::new());
 		}
-		Bytes(Vec::new())
+		// should be unreachable
+		// Bytes(Vec::new())
 	}
 
 	/// Placeholder for now, to be called by RPC

@@ -34,6 +34,7 @@ use sp_rpc::number::NumberOrHex;
 use std::sync::Arc;
 use codec::{Codec, Decode, Encode};
 use sp_std::vec::Vec;
+use pallet_ipfs_primitives::IpfsResult;
 
 pub use pallet_ipfs_rpc_runtime_api::IpfsApi as IpfsRuntimeApi;
 
@@ -51,7 +52,7 @@ pub trait IpfsApi<BlockHash, Balance> {
 		signer: Bytes,
 		message: Bytes,
 		at: Option<BlockHash>,
-	) -> RpcResult<Bytes>;
+	) -> RpcResult<IpfsResult>;
 
 	#[method(name = "ipfs_retrieveBytes")]
 	fn retrieve_bytes(
@@ -109,7 +110,7 @@ where
 		signer: Bytes,
 		message: Bytes,
 		at: Option<<Block as BlockT>::Hash>
-	) -> RpcResult<Bytes> {
+	) -> RpcResult<IpfsResult> {
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			self.client.info().best_hash

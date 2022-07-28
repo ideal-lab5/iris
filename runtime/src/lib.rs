@@ -74,6 +74,7 @@ pub use sp_runtime::{Perbill, Permill};
 
 use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
 use pallet_authorities::EraIndex;
+use pallet_ipfs_primitives::IpfsResult;
 
 pub use pallet_data_assets;
 pub use pallet_authorization;
@@ -843,7 +844,7 @@ impl_runtime_apis! {
 			signature: Bytes,
 			signer: Bytes,
 			message: Bytes,
-		) -> Bytes {
+		) -> IpfsResult {
 			Ipfs::handle_add_bytes(
 				byte_stream,
 				asset_id,

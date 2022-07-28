@@ -24,6 +24,7 @@ use sp_std::vec::Vec;
 
 use codec::Codec;
 use sp_runtime::traits::MaybeDisplay;
+use pallet_ipfs_primitives::IpfsResult;
 
 sp_api::decl_runtime_apis! {
 	pub trait IpfsApi<Balance> 
@@ -37,7 +38,7 @@ sp_api::decl_runtime_apis! {
 			signature: Bytes, 
 			signer: Bytes, 
 			message: Bytes
-		) -> Bytes;
+		) -> IpfsResult;
 
 		fn retrieve_bytes(asset_id: u32) -> Bytes;
 	}

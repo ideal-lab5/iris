@@ -2441,6 +2441,7 @@ dependencies = [
  "pallet-grandpa",
  "pallet-im-online",
  "pallet-ipfs",
+ "pallet-ipfs-primitives",
  "pallet-ipfs-rpc-runtime-api",
  "pallet-ledger",
  "pallet-proxy",
@@ -4208,6 +4209,7 @@ dependencies = [
  "pallet-assets",
  "pallet-balances",
  "pallet-im-online",
+ "pallet-ipfs-primitives",
  "pallet-proxy",
  "pallet-session",
  "parity-scale-codec",
@@ -4222,10 +4224,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-ipfs-primitives"
+version = "1.0.0"
+dependencies = [
+ "bitflags",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-rpc",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-ipfs-rpc"
 version = "1.0.0"
 dependencies = [
  "jsonrpsee",
+ "pallet-ipfs-primitives",
  "pallet-ipfs-rpc-runtime-api",
  "parity-scale-codec",
  "serde",
@@ -4241,6 +4258,7 @@ dependencies = [
 name = "pallet-ipfs-rpc-runtime-api"
 version = "1.0.0"
 dependencies = [
+ "pallet-ipfs-primitives",
  "parity-scale-codec",
  "sp-api",
  "sp-core",

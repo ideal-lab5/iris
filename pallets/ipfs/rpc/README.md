@@ -14,4 +14,13 @@ TODO
 
 ## Data Ejection
 
-TODO
+## Developers
+
+### Guide to updating rpc endpoints
+
+Update required lines in:
+
+- rpc/lib.rs
+- rpc/runtime-api/lib.rs
+- runtime/lib.rs
+- module/lib.rs

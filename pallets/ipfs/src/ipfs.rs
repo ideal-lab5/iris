@@ -31,13 +31,19 @@ use sp_runtime::{
     RuntimeDebug,
 };
 use scale_info::prelude::string::String;
+use sp_core::Bytes;
 use serde_json::Value;
 use log;
 
 /// A request object to update ipfs configs
 #[derive(Encode, Decode, RuntimeDebug, TypeInfo)]
 pub struct IpfsConfigRequest {
+    /// the key of the config request: the flattened path of the json in the ipfs config to be updated
+    /// ex: if you're targeting to update the value of the config item "b" and the json is:
+    ///                                  "a": { "b": {...}}
+    //      then you would provide the key "a.b"
 	pub key: Vec<u8>,
+    /// the value to update the config key with
 	pub value: Vec<u8>,
 	pub boolean: Option<bool>,
 	pub json: Option<bool>,
