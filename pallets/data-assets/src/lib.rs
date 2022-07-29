@@ -57,6 +57,27 @@ use sp_std::{
 use core::convert::TryInto;
 
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+pub struct IngestionCommand<AccountId, AssetId, OccId, Balance> {
+    pub owner: AccountId,
+    /// the desired asset id
+    pub asset_id: AssetId,
+    /// the dataspace id to associate the asset with
+    pub dataspace_id: AssetId,
+    /// the id of the data within the offchain client
+    pub occ_id: OccId,
+    /// a 'self-reported' estimated size of data to be transferred
+    /// the true data size can only be known after querying the OCC within the OCW
+    pub estimated_size_gb: u32,
+    /// the balance used to create an asset class and pay a proxy node
+    pub balance: Balance,
+}
+
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+pub struct EjectionCommand {
+
+}
+
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 pub enum DataCommand<LookupSource, AssetId, Balance, AccountId> {
     /// (ipfs_address, cid, requesting node address, asset id, balance, dataspace_id)
     AddBytes(Vec<u8>, Vec<u8>, LookupSource, AssetId, Balance, AssetId),
@@ -68,20 +89,13 @@ pub enum DataCommand<LookupSource, AssetId, Balance, AccountId> {
     AddToDataSpace(AssetId, AssetId),
 }
 
-pub struct IngestionCommand {
-
-}
-
-pub struct EjectionCommand {
-
-}
-
 /// struct to store metadata of an asset class
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 pub struct AssetMetadata {
     /// the cid of some data
     pub cid: Vec<u8>,
-    // pub car_addresses: Vec<AccountId>,
+    /// the occ id of the data
+    pub occ_id: Vec<u8>,
 }
 
 pub use pallet::*;
@@ -129,14 +143,7 @@ pub mod pallet {
 	#[pallet::storage]
     #[pallet::getter(fn ingestion_queue)]
 	pub(super) type IngestionQueue<T: Config> = StorageValue<
-        _,
-        Vec<DataCommand<
-            <T::Lookup as StaticLookup>::Source, 
-            T::AssetId,
-            T::Balance,
-            T::AccountId>
-        >,
-        ValueQuery,
+        _, Vec<IngestionCommand<T::AccountId, T::AssetId, Vec<u8>, T::Balance>>, ValueQuery,
     >;
 
 	#[pallet::storage]
@@ -250,7 +257,7 @@ pub mod pallet {
          fn on_initialize(block_number: T::BlockNumber) -> Weight {
             // needs to be synchronized with offchain_worker actitivies
             if block_number % 2u32.into() == 1u32.into() {
-                <IngestionQueue<T>>::kill();
+                // <IngestionQueue<T>>::kill();
                 <EjectionQueue<T>>::kill();
             }
 
@@ -279,26 +286,31 @@ pub mod pallet {
         pub fn create(
             origin: OriginFor<T>,
             admin: <T::Lookup as StaticLookup>::Source,
-            multiaddr: Vec<u8>,
-            cid: Vec<u8>,
             #[pallet::compact] dataspace_id: T::AssetId,
-            #[pallet::compact] id: T::AssetId,
-            #[pallet::compact] asset_balance: T::Balance,
+            #[pallet::compact] asset_id: T::AssetId,
+            occ_id: Vec<u8>,
+            #[pallet::compact] estimated_size_gb: u32,
+            #[pallet::compact] balance: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            // check that the caller has access to the dataspace
             let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
-            let balance_primitive = TryInto::<u64>::try_into(balance).ok();
+            let balance_primitive = TryInto::<u128>::try_into(balance).ok();
             ensure!(balance_primitive != Some(0), Error::<T>::DataSpaceNotAccessible);
-            <IngestionQueue<T>>::mutate(
-                |queue| queue.push(DataCommand::AddBytes(
-                    multiaddr,
-                    cid,
-                    admin.clone(),
-                    id.clone(),
-                    asset_balance.clone(),
-                    dataspace_id.clone(),
-                )));
-            Self::deposit_event(Event::QueuedDataToAdd(who.clone()));
+            // push a new command to the ingestion queue
+            <IngestionQueue<T>>::mutate(|q| {
+                q.push(
+                    IngestionCommand {
+                        owner: who.clone(),
+                        asset_id,
+                        dataspace_id,
+                        occ_id,
+                        estimated_size_gb,
+                        balance,
+                    }
+                );
+            });
+            Self::deposit_event(Event::AssetClassCreated(asset_id.clone()));
 			Ok(())
         }
 
@@ -410,6 +422,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             admin: <T::Lookup as StaticLookup>::Source,
             cid: Vec<u8>,
+            occ_id: Vec<u8>,
             dataspace_id: T::AssetId,
             #[pallet::compact] id: T::AssetId,
             #[pallet::compact] balance: T::Balance,
@@ -426,8 +439,9 @@ pub mod pallet {
             // insert into metadata for the asset class for the first time
             <Metadata<T>>::insert(id.clone(), AssetMetadata {
                 cid: cid.clone(),
-                // car_addresses: Vec::new(),
+                occ_id: occ_id.clone(),
             });
+            // TOOD: This should be its own queue
             // dispatch update dataspace metadata command
             <EjectionQueue<T>>::mutate(
                 |queue| queue.push(DataCommand::AddToDataSpace( 
@@ -442,53 +456,21 @@ pub mod pallet {
             
             Ok(())
         }
-
-        // /// Add a request to pin a cid to the IngestionQueue for your embedded IPFS node
-        // /// 
-        // /// * `asset_owner`: The owner of the asset class
-        // /// * `asset_id`: The asset id of some asset class
-        // ///
-        // #[pallet::weight(100)]
-        // pub fn insert_pin_request(
-        //     origin: OriginFor<T>,
-        //     asset_owner: T::AccountId,
-        //     #[pallet::compact] asset_id: T::AssetId,
-        // ) -> DispatchResult {
-        //     let who = ensure_signed(origin)?;
-
-        //     let asset_id_owner = <pallet_assets::Pallet<T>>::asset(asset_id.clone()).unwrap().owner;
-        //     ensure!(
-        //         asset_id_owner == asset_owner.clone(),
-        //         Error::<T>::NoSuchOwnedContent
-        //     );
-
-        //     let cid: Vec<u8> = <Metadata<T>>::get(asset_id.clone()).unwrap().cid;
-        //     <IngestionQueue<T>>::mutate(
-        //         |queue| queue.push(DataCommand::PinCID( 
-        //             who.clone(),
-        //             asset_id.clone(),
-        //             cid.clone(),
-        //         )));
-
-        //     Self::deposit_event(Event::QueuedDataToPin);
-            
-        //     Ok(())
-        // }
 	}
 }
 
 impl<T: Config> Pallet<T> {
-    /// implementation for RPC runtime API to retrieve bytes from the node's local storage
-    pub fn retrieve_bytes(
-		asset_id: u32,
-    ) -> Bytes
-		where <T as pallet_assets::pallet::Config>::AssetId: From<u32> {
-        let asset_id_type: T::AssetId = asset_id.try_into().unwrap();
-        // get CID and fetch from offchain storage
-        let cid = <Metadata::<T>>::get(asset_id_type).unwrap().cid.to_vec();
-        if let Some(data) = sp_io::offchain::local_storage_get(StorageKind::PERSISTENT, &cid) {
-            return Bytes(data.clone());
-        }
-		Bytes(Vec::new())
-    }
+    // /// implementation for RPC runtime API to retrieve bytes from the node's local storage
+    // pub fn retrieve_bytes(
+	// 	asset_id: u32,
+    // ) -> Bytes
+	// 	where <T as pallet_assets::pallet::Config>::AssetId: From<u32> {
+    //     let asset_id_type: T::AssetId = asset_id.try_into().unwrap();
+    //     // get CID and fetch from offchain storage
+    //     let cid = <Metadata::<T>>::get(asset_id_type).unwrap().cid.to_vec();
+    //     if let Some(data) = sp_io::offchain::local_storage_get(StorageKind::PERSISTENT, &cid) {
+    //         return Bytes(data.clone());
+    //     }
+	// 	Bytes(Vec::new())
+    // }
 }

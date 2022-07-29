@@ -73,7 +73,7 @@ use sp_runtime::{
 	traits::StaticLookup,
 };
 use codec::HasCompact;
-use pallet_data_assets::DataCommand;
+use pallet_data_assets::{DataCommand, IngestionCommand};
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
@@ -215,8 +215,8 @@ pub enum ProxyStatus {
 /// preferences for a proxy node
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, Default)]
 pub struct ProxyPrefs {
-	max_mbps: u32,
-	pub storage_max_gb: u32,
+	pub max_mbps: u32,
+	// pub storage_max_gb: u32,
 }
 
 /// Indicates the configuration phase of the proxy node
@@ -340,6 +340,16 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn ledger)]
 	pub type Ledger<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, StakingLedger<T>>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn ingestion_processing_queue)]
+	pub type IngestionProcessingQueue<T: Config> = StorageMap<
+		_, 
+		Blake2_128Concat,
+		T::AccountId,
+		Vec<IngestionCommand<T::AccountId, T::AssetId, Vec<u8>, T::Balance>>,
+		ValueQuery
+	>;
 
 	/// Number of eras to keep in history.
 	///
@@ -694,6 +704,34 @@ impl<T: Config> Pallet<T> {
 		<ProxyConfigStatus<T>>::insert(addr, new_status);
 		Ok(())
 	}
+
+		/// populates the ingestion processing queue
+	///
+	fn proxy_node_election(
+		mut ingestion_queue: Vec<IngestionCommand<T::AccountId, T::AssetId, Vec<u8>, T::Balance>>
+	) {
+		// do I need to flatmap proxies? how? can't query proxies here since that would be a circular dependency...
+		// basically... the idea is to create a mapping i -> p for each i in the ingestion queue
+		// TODO: a max 10 seconds for any upload?
+		// really this should be something that scales, like we guarantee
+		// X mb upload within at most Y secs
+		let max_wait_time_for_50gb: u32 = 10;
+		// 1. SORT ingestion queue by heaviest requests first
+		ingestion_queue.sort_by(|a, b| a.estimated_size_gb.cmp(&b.estimated_size_gb));
+		// Loop over ingestion 
+		for i in ingestion_queue.iter() {
+			// let proxy_addr = Self::choose_proxy(i);
+		}
+		// 2. Identify candidates
+		// 3. Choose a candidate
+		// 4. Update total candidate pool vals
+		// 5. Gossip selection to the network
+	}
+
+	// fn choose_proxy(i: IngestionCommand<T::AccountId, T::AssetId, Vec<u8>, T::Balance>) -> T::AccountId {
+	// 	// almost need to invert the proxies map... need prefs -> acct
+	// 	<Proxies<T>>::iter();
+	// }
 }
 
 // Offence reporting and unresponsiveness management.

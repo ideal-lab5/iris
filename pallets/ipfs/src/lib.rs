@@ -76,8 +76,10 @@ use sp_runtime::{
 	traits::StaticLookup,
 };
 use scale_info::prelude::format;
+use pallet_data_assets::DataCommand;
 use pallet_proxy::ProxyConfigState;
 use pallet_ipfs_primitives::{IpfsResult, IpfsError};
+use offchain_client::interface;
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";
 
@@ -132,6 +134,7 @@ pub mod pallet {
 	#[pallet::config]
 	pub trait Config: CreateSignedTransaction<Call<Self>> + frame_system::Config 
 														  + pallet_assets::Config
+														  + pallet_data_assets::Config
 														  + pallet_proxy::Config
 	{
 		/// The Event type.
@@ -159,7 +162,8 @@ pub mod pallet {
         _, Blake2_128Concat, Vec<u8>, Vec<OpaqueMultiaddr>, ValueQuery,
     >;
 
-	/// map substrate public key to ipfs public key
+	/// map ipfs public key to substrate account id
+	/// note: this will be the 'stash' account id, not the controller id
 	#[pallet::storage]
 	#[pallet::getter(fn substrate_ipfs_bridge)]
 	pub(super) type SubstrateIpfsBridge<T: Config> = StorageMap<
@@ -219,6 +223,10 @@ pub mod pallet {
 					} 
 					if let Err(e) = Self::ipfs_update_configs() {
 						log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
+					} else {
+						if let Err(e) = Self::handle_ingestion_queue() {
+							log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
+						}
 					}
 				}
 			}
@@ -238,7 +246,8 @@ pub mod pallet {
         #[pallet::weight(100)]
         pub fn submit_ipfs_add_results(
             origin: OriginFor<T>,
-			ipfs_pubkey: Vec<u8>,
+			// admin: <T::Lookup as StaticLookup>::Source,
+			admin: T::AccountId,
             cid: Vec<u8>,
             id: T::AssetId,
 			dataspace_id: T::AssetId,
@@ -261,7 +270,7 @@ pub mod pallet {
         /// Should only be callable by OCWs (TODO)
         /// Submit the results of an `ipfs identity` call to be stored on chain
         ///
-        /// * origin: a validator node
+        /// * origin: a validator node who is the controller for some stash
         /// * public_key: The IPFS node's public key
         /// * multiaddresses: A vector of multiaddresses associate with the public key
         ///
@@ -271,6 +280,7 @@ pub mod pallet {
             public_key: Vec<u8>,
             multiaddresses: Vec<OpaqueMultiaddr>,
         ) -> DispatchResult {
+			// we assume that this is the controller
             let who = ensure_signed(origin)?;
 			// check if the proxy node is marked for configuration
 			// if not, then do not proceed
@@ -368,26 +378,28 @@ impl<T: Config> Pallet<T> {
 		// get pubkey
 		let id = &id_json["ID"];
 		let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-		// 2. use id to get associated accountid
+		// 2. use id to get associated 
+		// TODO: cleanup these nested match statements: not very pretty
 		match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
-			Some(acct_id) => {
-				// 3. use accountid to get proxy prefs
-				match <pallet_proxy::Pallet<T>>::proxies(&acct_id) {
-					Some(preferences) => {
+			Some(controller_acct_id) => {
+
+				match <pallet_proxy::Pallet<T>>::ledger(&controller_acct_id) {
+					Some(staking_ledger) => {
+						let stake = staking_ledger.active;
+						let stake_primitive = TryInto::<u128>::try_into(stake).ok();
+						let val = format!("{}", stake_primitive.unwrap()).as_bytes().to_vec();
 						// 4. Make calls to update ipfs node config
-						// TODO: should create enum for the key: Datastore.StorageMax
 						let key = "Datastore.StorageMax".as_bytes().to_vec();
-						let val = format!("{}", preferences.storage_max_gb).as_bytes().to_vec();
 						let storage_size_config_item = ipfs::IpfsConfigRequest{
 							key: key.clone(),
 							value: val.clone(),
 							boolean: None,
 							json: None,
 						};
-						ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure);
-					},
+						ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure);		
+					}
 					None => {
-						log::info!("No preferences found!");
+						log::info!("No tokens staked: invalid proxy node");
 					}
 				}
 			},
@@ -409,6 +421,78 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+	/// process requests to ingest data from offchain clients
+	/// This function fetches data from offchain clients and ingests it into IPFS
+	/// it finally sends a signed tx to create an asset class on behalf of the caller
+	fn handle_ingestion_queue() -> Result<(), Error<T>> {
+		// get IPFS node id and from there get the associated substrate address
+		let id_json = Self::fetch_identity_json()?;
+		// get pubkey
+		let id = &id_json["ID"];
+		let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
+		// 2. use id to get associated accountid: This will be important later.. for now the pubkey is unused
+		match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
+			// When node elections implemented => acct id will be used to get assigned reqs
+			Some(acct_id) => {
+				// if there are no commands, then stop
+				let commands = <pallet_proxy::Pallet<T>>::ingestion_processing_queue(&acct_id);
+				let len = commands.len();
+				if len != 0 {
+					log::info!("IPFS: {} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });
+				}
+				// 1. loop over the commands that are assigned to that address (for now, just loop over all)
+				for cmd in commands.into_iter() {
+					// Fetch from OCC: TODO
+					// this should let you fetch from another node's OCC
+					// we will need to make an RPC call to fetch the data
+					let data: Vec<u8> = offchain_client::interface::read(cmd.occ_id);
+					// Add to IPFS
+					let ipfs_add_request = ipfs::IpfsAddRequest{ bytes: data };
+					match ipfs::add(ipfs_add_request) {
+						Ok(res) => {
+							// parse CID
+							let res_u8 = res.body().collect::<Vec<u8>>();
+							let body = sp_std::str::from_utf8(&res_u8).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+							let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+							let raw_cid = &json["Hash"];
+							let cid = raw_cid.clone().as_str().unwrap().as_bytes().to_vec();
+							// Report results on chain
+							let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+							if !signer.can_sign() {
+								log::error!(
+									"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+								);
+							}
+							let results = signer.send_signed_transaction(|_account| { 
+								Call::submit_ipfs_add_results{
+									admin: cmd.owner.clone(),
+									cid: cid.clone(),
+									id: cmd.asset_id.clone(),
+									dataspace_id: cmd.dataspace_id.clone(),
+									balance: cmd.balance.clone(),
+								}
+							});
+						
+							for (_, res) in &results {
+								match res {
+									Ok(()) => log::info!("Submitted results successfully"),
+									Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+								}
+							}
+						},
+						Err(e) => {
+							return Err(Error::<T>::IpfsError);
+						},
+					}
+				}
+			},
+			None => {
+				// do nothing for now
+			}
+		}
+		Ok(())
+	}
+
 	// RPC endpoint implementations for data ingestion and ejection
 	
 	/// Acts as a permissioned gateway to the proxy node's IPFS instance
@@ -418,7 +502,7 @@ impl<T: Config> Pallet<T> {
 	/// * signature: The signature of the caller
 	/// * signer: The account id of the caller
 	/// * message: A signed message
-	/// TODO: change response type to be able to encode errors
+	/// TODO: abstract this into smaller functions
 	pub fn handle_add_bytes(
 		byte_stream: Bytes,
 		asset_id: u32,
@@ -429,113 +513,19 @@ impl<T: Config> Pallet<T> {
 		message: Bytes,
 	) -> IpfsResult
 		where <T as pallet_assets::pallet::Config>::AssetId: From<u32> {
-		// if no bytes are provided, fail immediately
-		if byte_stream.is_empty() {
-			// TODO: replace with relevant error type after creating response obj
-			// return Bytes(Vec::new());
-			return IpfsResult {
-				response: Bytes(Vec::new()),
-				error: Some(vec![IpfsError::EmptyInput])
-			}
+		let bytes_vec: Vec<u8> = byte_stream.to_vec();
+		offchain_client::interface::write(bytes_vec);
+		IpfsResult{
+			response: Bytes(Vec::new()),
+			error: None,
 		}
-
-		let msg: Vec<u8> = message.to_vec();
-		let account_bytes: [u8; 32] = signer.to_vec().try_into()
-			.map_err(|e| Error::<T>::InvalidSigner).unwrap(); 
-		let pubkey = Public::from_raw(account_bytes);
-		// convert Bytes type to types needed for verification
-        match Signature::from_slice(signature.to_vec().as_ref()) {
-			Some(sig) => {
-				// signature verification
-				if sig.verify(msg.as_slice(), &pubkey) {
-					// add bytes to ipfs
-					let req = ipfs::IpfsAddRequest {
-						bytes: byte_stream.to_vec(),
-					};
-					match ipfs::add(req) {
-						Ok(res) => {
-							log::info!("IPFS ADD BYTES RESPONSE BODY: {:?}", res);
-							let res_u8 = res.body().collect::<Vec<u8>>();
-							let body = sp_std::str::from_utf8(&res_u8).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-							let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-							log::info!("{:?}", json["Size"]);
-							let raw_cid = &json["Hash"];
-							let cid = raw_cid.clone().as_str().unwrap().as_bytes().to_vec();
-							match Self::fetch_identity_json() {
-								Ok(id_json) => {
-									// get pubkey
-									let id = &id_json["ID"];
-									let ipfs_pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-									// submit signed tx to create asset class
-									let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-									if !signer.can_sign() {
-										log::error!(
-											"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-										);
-									}
-									let asset_id_type: T::AssetId = asset_id.clone().into();
-									let dataspace_id_type: T::AssetId = dataspace_id.clone().into();
-									let results = signer.send_signed_transaction(|_account| { 
-										Call::submit_ipfs_add_results{
-											ipfs_pubkey: ipfs_pubkey.clone(),
-											cid: cid.clone(),
-											id: asset_id_type.clone(),
-											dataspace_id: dataspace_id_type.clone(),
-											balance: balance.clone(),
-										}
-									});
-								
-									for (_, res) in &results {
-										match res {
-											Ok(()) => log::info!("Submitted results successfully"),
-											Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-										}
-									}
-								},
-								Err(e) => {
-									return IpfsResult {
-										response: Bytes(Vec::new()),
-										error: Some(vec![IpfsError::IpfsUnavailable])
-									}
-								}
-							}
-						},
-						Err(e) => {
-							return IpfsResult {
-								response: Bytes(Vec::new()),
-								error: Some(vec![IpfsError::IpfsFailedToAddBytes])
-							};
-						}
-					}
-					
-					// success scenario
-					return IpfsResult {
-						response: Bytes(Vec::new()),
-						error: None,
-					};
-				} else {
-					// success scenario
-					return IpfsResult {
-						response: Bytes(Vec::new()),
-						error: Some(vec![IpfsError::InvalidSignature]),
-					};
-				}
-			},
-			None => {
-				// success scenario
-				return IpfsResult {
-					response: Bytes(Vec::new()),
-					error: Some(vec![IpfsError::InvalidSignature]),
-				};
-			}
-		}
-		// should be unreachable
-		// Bytes(Vec::new())
 	}
 
 	/// Placeholder for now, to be called by RPC
 	pub fn handle_retrieve_bytes(asset_id: u32) -> Bytes 
-		where <T as pallet_assets::pallet::Config>::AssetId: From<u32>{
+		where <T as pallet_assets::pallet::Config>::AssetId: From<u32> {
+		// TODO: map asset id to occ id -> store in metadata
+		// let data: Vec<u8> = offchain_client::interface::read(occ_id);
 		Bytes(Vec::new())
 	}
 }
