@@ -55,22 +55,23 @@ use sp_std::{
 };
 
 use core::convert::TryInto;
+use iris_primitives::IngestionCommand;
 
-#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-pub struct IngestionCommand<AccountId, AssetId, OccId, Balance> {
-    pub owner: AccountId,
-    /// the desired asset id
-    pub asset_id: AssetId,
-    /// the dataspace id to associate the asset with
-    pub dataspace_id: AssetId,
-    /// the id of the data within the offchain client
-    pub occ_id: OccId,
-    /// a 'self-reported' estimated size of data to be transferred
-    /// the true data size can only be known after querying the OCC within the OCW
-    pub estimated_size_gb: u32,
-    /// the balance used to create an asset class and pay a proxy node
-    pub balance: Balance,
-}
+// #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+// pub struct IngestionCommand<AccountId, AssetId, OccId, Balance> {
+//     pub owner: AccountId,
+//     /// the desired asset id
+//     pub asset_id: AssetId,
+//     /// the dataspace id to associate the asset with
+//     pub dataspace_id: AssetId,
+//     /// the id of the data within the offchain client
+//     pub occ_id: OccId,
+//     /// a 'self-reported' estimated size of data to be transferred
+//     /// the true data size can only be known after querying the OCC within the OCW
+//     pub estimated_size_gb: u128,
+//     /// the balance used to create an asset class and pay a proxy node
+//     pub balance: Balance,
+// }
 
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 pub struct EjectionCommand {
@@ -289,7 +290,7 @@ pub mod pallet {
             #[pallet::compact] dataspace_id: T::AssetId,
             #[pallet::compact] asset_id: T::AssetId,
             occ_id: Vec<u8>,
-            #[pallet::compact] estimated_size_gb: u32,
+            #[pallet::compact] estimated_size_gb: u128,
             #[pallet::compact] balance: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;

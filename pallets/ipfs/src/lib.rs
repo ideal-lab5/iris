@@ -117,6 +117,25 @@ pub mod crypto {
 
 type BalanceOf<T> = <T as pallet_assets::Config>::Balance;
 
+/// keys that a proxy node is allowed to configure
+#[derive(Clone, PartialEq, Eq, RuntimeDebug)]
+pub enum IpfsConfigKey {
+	StorageMax,
+}
+
+impl AsRef<str> for IpfsConfigKey {
+	fn as_ref(&self) -> &str {
+		match *self {
+			IpfsConfigKey::StorageMax => "Datastore.StorageMax",
+		}
+	}
+}
+
+#[derive(Encode, Decode, RuntimeDebug, TypeInfo, Default)]
+pub struct Configuration {
+	pub storage_config: Vec<u8>,
+}
+
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
@@ -168,6 +187,13 @@ pub mod pallet {
 	#[pallet::getter(fn substrate_ipfs_bridge)]
 	pub(super) type SubstrateIpfsBridge<T: Config> = StorageMap<
 		_, Blake2_128Concat, Vec<u8>, T::AccountId,
+	>;
+
+	/// custom node configuration items for their local ipfs node
+	#[pallet::storage]
+	#[pallet::getter(fn node_configuration)]
+	pub(super) type NodeConfiguration<T: Config> = StorageMap<
+		_, Blake2_128Concat, T::AccountId, Configuration, ValueQuery,
 	>;
 
 	#[pallet::event]
@@ -236,6 +262,19 @@ pub mod pallet {
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 
+		#[pallet::weight(100)]
+		pub fn update_node_config(
+			origin: OriginFor<T>,
+			storage_max_gb: u128,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			let mut config = <NodeConfiguration<T>>::get(&who);
+			// TODO: should really add some verification on the value
+			let storage_max_as_vec = format!("{}", storage_max_gb).as_bytes().to_vec();
+			config.storage_config = storage_max_as_vec;
+			Ok(())
+		}
+
         /// submits IPFS results on chain and creates new ticket config in runtime storage
         ///
         /// * `admin`: The admin account
@@ -284,23 +323,27 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 			// check if the proxy node is marked for configuration
 			// if not, then do not proceed
-			match <pallet_proxy::Pallet<T>>::proxy_config_status(&who) {
-				Some(result) => {
-					if result == ProxyConfigState::Unconfigured {
-						if <SubstrateIpfsBridge::<T>>::contains_key(public_key.clone()) {
-							let existing_association = <SubstrateIpfsBridge::<T>>::get(public_key.clone()).unwrap();
-							ensure!(who == existing_association, Error::<T>::InvalidMultiaddress);
-						}
-						<BootstrapNodes::<T>>::insert(public_key.clone(), multiaddresses.clone());
-						<SubstrateIpfsBridge::<T>>::insert(public_key.clone(), who.clone());
-						<pallet_proxy::Pallet<T>>::update_proxy_state(who.clone(), ProxyConfigState::Identified);
-						Self::deposit_event(Event::IdentitySubmitted(who.clone()));
-					}
-				},
-				None => {
-					return Ok(())
-				}
-			}
+
+
+			// TODO: move this logic into proxy pallet
+
+			// match <pallet_proxy::Pallet<T>>::proxy_config_status(&who) {
+			// 	Some(result) => {
+			// 		if result == ProxyConfigState::Unconfigured {
+			// 			if <SubstrateIpfsBridge::<T>>::contains_key(public_key.clone()) {
+			// 				let existing_association = <SubstrateIpfsBridge::<T>>::get(public_key.clone()).unwrap();
+			// 				ensure!(who == existing_association, Error::<T>::InvalidMultiaddress);
+			// 			}
+			// 			<BootstrapNodes::<T>>::insert(public_key.clone(), multiaddresses.clone());
+			// 			<SubstrateIpfsBridge::<T>>::insert(public_key.clone(), who.clone());
+			// 			<pallet_proxy::Pallet<T>>::update_proxy_state(who.clone(), ProxyConfigState::Identified);
+			// 			Self::deposit_event(Event::IdentitySubmitted(who.clone()));
+			// 		}
+			// 	},
+			// 	None => {
+			// 		return Ok(())
+			// 	}
+			// }
             Ok(())
         }
 	}
@@ -382,12 +425,10 @@ impl<T: Config> Pallet<T> {
 		// TODO: cleanup these nested match statements: not very pretty
 		match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
 			Some(controller_acct_id) => {
-
-				match <pallet_proxy::Pallet<T>>::ledger(&controller_acct_id) {
-					Some(staking_ledger) => {
-						let stake = staking_ledger.active;
-						let stake_primitive = TryInto::<u128>::try_into(stake).ok();
-						let val = format!("{}", stake_primitive.unwrap()).as_bytes().to_vec();
+				// TODO: should the ipfs config items be moved to a storage map in the ipfs pallet itself?
+				match <pallet_proxy::Pallet<T>>::proxies(&controller_acct_id) {
+					Some(proxy_prefs) => {
+						let val = format!("{}", proxy_prefs.storage_max_gb).as_bytes().to_vec();
 						// 4. Make calls to update ipfs node config
 						let key = "Datastore.StorageMax".as_bytes().to_vec();
 						let storage_size_config_item = ipfs::IpfsConfigRequest{
@@ -397,6 +438,10 @@ impl<T: Config> Pallet<T> {
 							json: None,
 						};
 						ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure);		
+						// TODO: 
+						// 1. call to get https://docs.ipfs.tech/reference/kubo/rpc/#api-v0-repo-stat
+						// 2. get actual available storage space
+						// 3. report result on chain
 					}
 					None => {
 						log::info!("No tokens staked: invalid proxy node");

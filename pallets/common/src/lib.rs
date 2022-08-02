@@ -28,26 +28,18 @@ use sp_rpc::number::NumberOrHex;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 
-/// Used to track errors as a result of calls to IPFS
-#[derive(Eq, Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub enum IpfsError {
-    EmptyInput,
-    IpfsUnavailable,
-    IpfsFailedToAddBytes,
-    InvalidSignature,
-}
-
-/// The result of executing a request to IPFS
-#[derive(PartialEq, Eq, Encode, Decode, RuntimeDebug)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-#[cfg_attr(
-	feature = "std",
-	serde(
-		rename_all = "camelCase",
-	)
-)]
-pub struct IpfsResult {
-    pub response: Bytes,
-    pub error: Option<Vec<IpfsError>>,
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+pub struct IngestionCommand<AccountId, AssetId, OccId, Balance> {
+    pub owner: AccountId,
+    /// the desired asset id
+    pub asset_id: AssetId,
+    /// the dataspace id to associate the asset with
+    pub dataspace_id: AssetId,
+    /// the id of the data within the offchain client
+    pub occ_id: OccId,
+    /// a 'self-reported' estimated size of data to be transferred
+    /// the true data size can only be known after querying the OCC within the OCW
+    pub estimated_size_gb: u128,
+    /// the balance used to create an asset class and pay a proxy node
+    pub balance: Balance,
 }

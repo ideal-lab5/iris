@@ -2416,6 +2416,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "iris-primitives"
+version = "1.0.0"
+dependencies = [
+ "bitflags",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-rpc",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "iris-runtime"
 version = "1.0.0"
 dependencies = [
@@ -3980,7 +3994,9 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "iris-primitives",
  "log",
+ "pallet-assets",
  "pallet-balances",
  "pallet-im-online",
  "pallet-session",
@@ -4131,6 +4147,7 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "iris-primitives",
  "log",
  "pallet-assets",
  "pallet-balances",

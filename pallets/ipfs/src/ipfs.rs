@@ -89,7 +89,7 @@ impl AsRef<str> for Endpoint {
 /// Get the ipfs node identity
 /// 
 pub fn identity() -> Result<http::Response, http::Error> {
-    let mut endpoint = Endpoint::Identity.as_ref().to_owned();
+    let endpoint = Endpoint::Identity.as_ref().to_owned();
     let res = ipfs_post_request(&endpoint, None)?;
     Ok(res)
 }

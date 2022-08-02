@@ -84,6 +84,8 @@ use sp_runtime::{
 	traits::StaticLookup,
 };
 
+use iris_primitives::IngestionCommand;
+
 pub const LOG_TARGET: &'static str = "runtime::authorities";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
@@ -162,7 +164,8 @@ pub mod pallet {
 	#[pallet::config]
 	pub trait Config: CreateSignedTransaction<Call<Self>> + 
 					  frame_system::Config +
-					  pallet_session::Config
+					  pallet_session::Config +
+					  pallet_assets::Config
 	{
 		/// The Event type.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -236,6 +239,12 @@ pub mod pallet {
 	#[pallet::getter(fn unproductive_sessions)]
 	pub type UnproductiveSessions<T: Config> = StorageMap<
 		_, Blake2_128Concat, T::AccountId, u32, ValueQuery,
+	>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn do_run_election)]
+	pub type DoRunElection<T: Config> = StorageValue<
+		_, bool, ValueQuery,
 	>;
 
 	#[pallet::event]
@@ -469,6 +478,45 @@ impl<T: Config> Pallet<T> {
 			.build()
 	}
 
+	/// A proxy places votes on ingestion commands
+	///
+	fn proxy_node_election(
+		proxy_addr: T::AccountId,
+		total_available_storage_gb: u128,
+		total_active_stake: u128,
+		mut ingestion_queue: Vec<IngestionCommand<T::AccountId, T::AssetId, Vec<u8>, T::Balance>>
+	) {
+		let max_wait_time_for_50gb: u32 = 10;
+		// filter out items which are too large
+		let mut filtered_queue: Vec<IngestionCommand<T::AccountId, T::AssetId, Vec<u8>, T::Balance>> =
+			ingestion_queue.into_iter()
+				.filter(|i| i.estimated_size_gb < total_available_storage_gb)
+				.collect();
+		// sort by balance
+		filtered_queue.sort_by(|a, b| a.balance.cmp(&b.balance));
+		// Choose top k results s.t. max storage needed doesn't exceed total storage available
+		let mut total_gb: u128 = 0u128;
+		let mut candidate_commands: Vec<IngestionCommand<
+			T::AccountId, T::AssetId, Vec<u8>, T::Balance,
+		>> = Vec::new();
+		for f in filtered_queue.into_iter() {
+			let balance: T::Balance = f.balance;
+			let balance_primitive = TryInto::<u128>::try_into(balance).ok().unwrap();
+			total_gb = total_gb + balance_primitive;
+			if total_gb < total_available_storage_gb {
+				candidate_commands.push(f);
+			} else {
+				break
+			}
+		}
+
+		let weight_per_gb = total_active_stake / total_gb;
+		for c in candidate_commands.into_iter() {
+			let weight: u128 = weight_per_gb * c.estimated_size_gb;
+			// <IngestionCommandVotes<T>>::insert(c.asset_id, proxy_addr.clone(), weight);
+		}
+	}
+
 }	
 
 // Provides the new set of validators to the session module when session is
@@ -479,18 +527,21 @@ impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 		log::info!("Starting new session with index: {:?}", new_index);
 		CurrentEra::<T>::mutate(|s| *s = Some(new_index));
 		Self::remove_offline_validators();
+		// need to perform node elections... off chain
+		// at the beginning of each session, we will basically just set a boolean 'do elections' flag
+		// <DoRunElection<T>>::put(true);
 		log::debug!(target: LOG_TARGET, "New session called; updated validator set provided.");
 		Some(Self::validators())
-	}
-
-	fn end_session(end_index: u32) {
-		log::info!("Ending session with index: {:?}", end_index);
-		Self::mark_dead_validators(end_index);
 	}
 
 	fn start_session(start_index: u32) {
 		log::info!("Starting session with index: {:?}", start_index);
 		ActiveEra::<T>::mutate(|s| *s = Some(start_index)); 
+	}
+
+	fn end_session(end_index: u32) {
+		log::info!("Ending session with index: {:?}", end_index);
+		Self::mark_dead_validators(end_index);
 	}
 }
 
