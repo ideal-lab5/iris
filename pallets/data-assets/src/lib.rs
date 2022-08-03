@@ -267,11 +267,7 @@ pub mod pallet {
     }
 
 	#[pallet::call]
-	impl<T: Config> Pallet<T>
-    // where
-	// 	T::AccountId: UncheckedFrom<T::Hash>,
-	// 	T::AccountId: AsRef<[u8]>
-    {
+	impl<T: Config> Pallet<T> {
 
         /// submits an on-chain request to fetch data and add it to iris 
         /// 

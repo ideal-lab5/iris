@@ -76,8 +76,7 @@ use sp_runtime::{
 	traits::StaticLookup,
 };
 use scale_info::prelude::format;
-use pallet_data_assets::DataCommand;
-use pallet_proxy::ProxyConfigState;
+use iris_primitives::IngestionCommand;
 use pallet_ipfs_primitives::{IpfsResult, IpfsError};
 use offchain_client::interface;
 
@@ -133,7 +132,8 @@ impl AsRef<str> for IpfsConfigKey {
 
 #[derive(Encode, Decode, RuntimeDebug, TypeInfo, Default)]
 pub struct Configuration {
-	pub storage_config: Vec<u8>,
+	pub storage_config: u128,
+	pub ready: bool,
 }
 
 #[frame_support::pallet]
@@ -154,7 +154,6 @@ pub mod pallet {
 	pub trait Config: CreateSignedTransaction<Call<Self>> + frame_system::Config 
 														  + pallet_assets::Config
 														  + pallet_data_assets::Config
-														  + pallet_proxy::Config
 	{
 		/// The Event type.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -195,6 +194,20 @@ pub mod pallet {
 	pub(super) type NodeConfiguration<T: Config> = StorageMap<
 		_, Blake2_128Concat, T::AccountId, Configuration, ValueQuery,
 	>;
+
+	/// track ipfs repo stats onchain
+	/// for now, we just map accountid to actual storage size
+	#[pallet::storage]
+	#[pallet::getter(fn stats)]
+	pub(super) type Stats<T: Config> = StorageMap<
+		_, Blake2_128Concat, T::AccountId, u128, ValueQuery,
+	>;
+
+	// #[pallet::storage]
+	// #[pallet::getter(fn ingestion_processing_queue)]
+	// pub(super) type IngestionProcessingQueue<T: Config> = StorageMap<
+	// 	_, Blake2_128Concat, T::AccountId, Vec<IngestionCommand<T::AccountId, T::AssetId, Vec<u8>, T::Balance>>, ValueQuery
+	// >;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -270,8 +283,9 @@ pub mod pallet {
 			let who = ensure_signed(origin)?;
 			let mut config = <NodeConfiguration<T>>::get(&who);
 			// TODO: should really add some verification on the value
-			let storage_max_as_vec = format!("{}", storage_max_gb).as_bytes().to_vec();
-			config.storage_config = storage_max_as_vec;
+			// let storage_max_as_vec = format!("{}", storage_max_gb).as_bytes().to_vec();
+			config.storage_config = storage_max_gb;
+			config.ready = true;
 			Ok(())
 		}
 
@@ -346,6 +360,18 @@ pub mod pallet {
 			// }
             Ok(())
         }
+
+		#[pallet::weight(100)]
+		pub fn submit_config_complete(
+			origin: OriginFor<T>,
+			actual_storage_size: u128,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			// update stats
+			<Stats<T>>::insert(who, actual_storage_size);
+			// TODO: Emit event
+			Ok(())
+		}
 	}
 }
 
@@ -360,7 +386,7 @@ impl<T: Config> Pallet<T> {
 
 	/// Fetch the identity of a locally running ipfs node and convert it to json
 	/// TODO: could potentially move this into the ipfs.rs file
-	fn fetch_identity_json() -> Result<serde_json::Value, Error<T>> {
+	pub fn fetch_identity_json() -> Result<serde_json::Value, Error<T>> {
 		let id_res = match ipfs::identity() {
 			Ok(res) => {
 				log::info!("{:?}", res);
@@ -421,31 +447,48 @@ impl<T: Config> Pallet<T> {
 		// get pubkey
 		let id = &id_json["ID"];
 		let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-		// 2. use id to get associated 
+		// 2. use id to get associated addr
 		// TODO: cleanup these nested match statements: not very pretty
 		match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
-			Some(controller_acct_id) => {
-				// TODO: should the ipfs config items be moved to a storage map in the ipfs pallet itself?
-				match <pallet_proxy::Pallet<T>>::proxies(&controller_acct_id) {
-					Some(proxy_prefs) => {
-						let val = format!("{}", proxy_prefs.storage_max_gb).as_bytes().to_vec();
-						// 4. Make calls to update ipfs node config
-						let key = "Datastore.StorageMax".as_bytes().to_vec();
-						let storage_size_config_item = ipfs::IpfsConfigRequest{
-							key: key.clone(),
-							value: val.clone(),
-							boolean: None,
-							json: None,
-						};
-						ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure);		
-						// TODO: 
-						// 1. call to get https://docs.ipfs.tech/reference/kubo/rpc/#api-v0-repo-stat
-						// 2. get actual available storage space
-						// 3. report result on chain
+			Some(addr) => {
+				let config = <NodeConfiguration<T>>::get(&addr);
+				if config.ready {
+					let val = format!("{}", config.storage_config).as_bytes().to_vec();
+					// 4. Make calls to update ipfs node config
+					let key = IpfsConfigKey::StorageMax.as_ref().as_bytes().to_vec();
+					let storage_size_config_item = ipfs::IpfsConfigRequest{
+						key: key.clone(),
+						value: val.clone(),
+						boolean: None,
+						json: None,
+					};
+					ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure);
+					let stat_response = ipfs::repo_stat().map_err(|_| Error::<T>::IpfsNotAvailable).unwrap();
+					// 2. get actual available storage space
+					let actual_storage: u128 = stat_response["SizeStat.StorageMax"].clone().as_u64().unwrap().into();
+					// 3. report result on chain
+					
+					let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+					if !signer.can_sign() {
+						log::error!(
+							"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+						);
 					}
-					None => {
-						log::info!("No tokens staked: invalid proxy node");
+					let results = signer.send_signed_transaction(|_account| { 
+						Call::submit_config_complete{
+							actual_storage_size: actual_storage,
+						}
+					});
+
+					for (_, res) in &results {
+						match res {
+							Ok(()) => log::info!("Submitted results successfully"),
+							Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+						}
 					}
+
+				} else {
+					log::info!("The node's configuration is incomplete or invalid.");	
 				}
 			},
 			None => {
@@ -475,61 +518,60 @@ impl<T: Config> Pallet<T> {
 		// get pubkey
 		let id = &id_json["ID"];
 		let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-		// 2. use id to get associated accountid: This will be important later.. for now the pubkey is unused
 		match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
 			// When node elections implemented => acct id will be used to get assigned reqs
 			Some(acct_id) => {
 				// if there are no commands, then stop
-				let commands = <pallet_proxy::Pallet<T>>::ingestion_processing_queue(&acct_id);
-				let len = commands.len();
-				if len != 0 {
-					log::info!("IPFS: {} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });
-				}
-				// 1. loop over the commands that are assigned to that address (for now, just loop over all)
-				for cmd in commands.into_iter() {
-					// Fetch from OCC: TODO
-					// this should let you fetch from another node's OCC
-					// we will need to make an RPC call to fetch the data
-					let data: Vec<u8> = offchain_client::interface::read(cmd.occ_id);
-					// Add to IPFS
-					let ipfs_add_request = ipfs::IpfsAddRequest{ bytes: data };
-					match ipfs::add(ipfs_add_request) {
-						Ok(res) => {
-							// parse CID
-							let res_u8 = res.body().collect::<Vec<u8>>();
-							let body = sp_std::str::from_utf8(&res_u8).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-							let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-							let raw_cid = &json["Hash"];
-							let cid = raw_cid.clone().as_str().unwrap().as_bytes().to_vec();
-							// Report results on chain
-							let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-							if !signer.can_sign() {
-								log::error!(
-									"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-								);
-							}
-							let results = signer.send_signed_transaction(|_account| { 
-								Call::submit_ipfs_add_results{
-									admin: cmd.owner.clone(),
-									cid: cid.clone(),
-									id: cmd.asset_id.clone(),
-									dataspace_id: cmd.dataspace_id.clone(),
-									balance: cmd.balance.clone(),
-								}
-							});
+				// let commands = <IngestionProcessingQueue<T>>::get(&acct_id);
+				// let len = commands.len();
+				// if len != 0 {
+				// 	log::info!("IPFS: {} entr{} in the ingestion processing queue", len, if len == 1 { "y" } else { "ies" });
+				// }
+				// // // 1. loop over the commands that are assigned to that address (for now, just loop over all)
+				// for cmd in commands.into_iter() {
+				// 	// Fetch from OCC: TODO
+				// 	// this should let you fetch from another node's OCC
+				// 	// we will need to make an RPC call to fetch the data
+				// 	let data: Vec<u8> = offchain_client::interface::read(cmd.occ_id);
+				// 	// Add to IPFS
+				// 	let ipfs_add_request = ipfs::IpfsAddRequest{ bytes: data };
+				// 	match ipfs::add(ipfs_add_request) {
+				// 		Ok(res) => {
+				// 			// parse CID
+				// 			let res_u8 = res.body().collect::<Vec<u8>>();
+				// 			let body = sp_std::str::from_utf8(&res_u8).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+				// 			let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+				// 			let raw_cid = &json["Hash"];
+				// 			let cid = raw_cid.clone().as_str().unwrap().as_bytes().to_vec();
+				// 			// Report results on chain
+				// 			let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+				// 			if !signer.can_sign() {
+				// 				log::error!(
+				// 					"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+				// 				);
+				// 			}
+				// 			let results = signer.send_signed_transaction(|_account| { 
+				// 				Call::submit_ipfs_add_results{
+				// 					admin: cmd.owner.clone(),
+				// 					cid: cid.clone(),
+				// 					id: cmd.asset_id.clone(),
+				// 					dataspace_id: cmd.dataspace_id.clone(),
+				// 					balance: cmd.balance.clone(),
+				// 				}
+				// 			});
 						
-							for (_, res) in &results {
-								match res {
-									Ok(()) => log::info!("Submitted results successfully"),
-									Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-								}
-							}
-						},
-						Err(e) => {
-							return Err(Error::<T>::IpfsError);
-						},
-					}
-				}
+				// 			for (_, res) in &results {
+				// 				match res {
+				// 					Ok(()) => log::info!("Submitted results successfully"),
+				// 					Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+				// 				}
+				// 			}
+				// 		},
+				// 		Err(e) => {
+				// 			return Err(Error::<T>::IpfsError);
+				// 		},
+				// 	}
+				// }
 			},
 			None => {
 				// do nothing for now
@@ -537,6 +579,26 @@ impl<T: Config> Pallet<T> {
 		}
 		Ok(())
 	}
+
+	// fn handle_send_signed(call: Call<T>) {
+	// 	// Report results on chain
+	// 	let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+	// 	if !signer.can_sign() {
+	// 		log::error!(
+	// 			"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+	// 		);
+	// 	}
+	// 	let results = signer.send_signed_transaction(|_account| { 
+	// 		call
+	// 	});
+	
+	// 	for (_, res) in &results {
+	// 		match res {
+	// 			Ok(()) => log::info!("Submitted results successfully"),
+	// 			Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+	// 		}
+	// 	}
+	// }
 
 	// RPC endpoint implementations for data ingestion and ejection
 	

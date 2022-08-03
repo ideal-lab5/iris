@@ -66,6 +66,7 @@ pub enum Endpoint {
     Disconnect, 
     Get,
     Identity,
+    Stat,
 	Other(&'static str),
 }
 
@@ -81,6 +82,7 @@ impl AsRef<str> for Endpoint {
             Endpoint::Disconnect => "http://127.0.0.1:5001/api/v0/swarm/disconnect?",
             Endpoint::Get => "http://127.0.0.1:5001/api/v0/get",
             Endpoint::Identity => "http://127.0.0.1:5001/api/v0/id",
+            Endpoint::Stat => "http://127.0.0.1:5001/api/v0/repo/stat",
 			Endpoint::Other(m) => m,
 		}
 	}
@@ -117,6 +119,16 @@ pub fn config_show() -> Result<http::Response, http::Error> {
     Ok(res)
 }
 
+/// Get the ipfs repo stats
+///
+pub fn repo_stat() -> Result<serde_json::Value, http::Error> {
+    let endpoint = Endpoint::Stat.as_ref().to_owned();
+    let res = ipfs_post_request(&endpoint, None)?;
+    let res_u8 = res.body().collect::<Vec<u8>>();
+    let body = sp_std::str::from_utf8(&res_u8).map_err(|_| http::Error::Unknown).unwrap();
+    let json = parse(body).map_err(|_| http::Error::Unknown).unwrap();
+    Ok(json)
+}
 
 /// Connect to the given multiaddress
 /// 

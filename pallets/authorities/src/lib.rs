@@ -162,10 +162,10 @@ pub mod pallet {
 	/// TODO: reafactor? lots of tightly coupled pallets here, there must  
 	/// be a better way to go about this
 	#[pallet::config]
-	pub trait Config: CreateSignedTransaction<Call<Self>> + 
-					  frame_system::Config +
-					  pallet_session::Config +
-					  pallet_assets::Config
+	pub trait Config: CreateSignedTransaction<Call<Self>> 
+						+ frame_system::Config 
+						+ pallet_session::Config 
+						+ pallet_elections::Config
 	{
 		/// The Event type.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -241,10 +241,17 @@ pub mod pallet {
 		_, Blake2_128Concat, T::AccountId, u32, ValueQuery,
 	>;
 
+	
 	#[pallet::storage]
-	#[pallet::getter(fn do_run_election)]
-	pub type DoRunElection<T: Config> = StorageValue<
-		_, bool, ValueQuery,
+	#[pallet::getter(fn votes)]
+	pub type Votes<T: Config> = StorageDoubleMap<
+		_,
+		Blake2_128Concat,
+		T::AccountId,
+		Blake2_128Concat,
+		T::AssetId,
+		u128,
+		ValueQuery,
 	>;
 
 	#[pallet::event]
@@ -477,66 +484,29 @@ impl<T: Config> Pallet<T> {
 			.propagate(true)
 			.build()
 	}
-
-	/// A proxy places votes on ingestion commands
-	///
-	fn proxy_node_election(
-		proxy_addr: T::AccountId,
-		total_available_storage_gb: u128,
-		total_active_stake: u128,
-		mut ingestion_queue: Vec<IngestionCommand<T::AccountId, T::AssetId, Vec<u8>, T::Balance>>
-	) {
-		let max_wait_time_for_50gb: u32 = 10;
-		// filter out items which are too large
-		let mut filtered_queue: Vec<IngestionCommand<T::AccountId, T::AssetId, Vec<u8>, T::Balance>> =
-			ingestion_queue.into_iter()
-				.filter(|i| i.estimated_size_gb < total_available_storage_gb)
-				.collect();
-		// sort by balance
-		filtered_queue.sort_by(|a, b| a.balance.cmp(&b.balance));
-		// Choose top k results s.t. max storage needed doesn't exceed total storage available
-		let mut total_gb: u128 = 0u128;
-		let mut candidate_commands: Vec<IngestionCommand<
-			T::AccountId, T::AssetId, Vec<u8>, T::Balance,
-		>> = Vec::new();
-		for f in filtered_queue.into_iter() {
-			let balance: T::Balance = f.balance;
-			let balance_primitive = TryInto::<u128>::try_into(balance).ok().unwrap();
-			total_gb = total_gb + balance_primitive;
-			if total_gb < total_available_storage_gb {
-				candidate_commands.push(f);
-			} else {
-				break
-			}
-		}
-
-		let weight_per_gb = total_active_stake / total_gb;
-		for c in candidate_commands.into_iter() {
-			let weight: u128 = weight_per_gb * c.estimated_size_gb;
-			// <IngestionCommandVotes<T>>::insert(c.asset_id, proxy_addr.clone(), weight);
-		}
-	}
-
 }	
 
 // Provides the new set of validators to the session module when session is
 // being rotated.
+// additionally, the session manager is also responsible for triggering the proxy node election mechanism
+//
 impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 	// Plan a new session and provide new validator set.
 	fn new_session(new_index: u32) -> Option<Vec<T::AccountId>> {
 		log::info!("Starting new session with index: {:?}", new_index);
 		CurrentEra::<T>::mutate(|s| *s = Some(new_index));
 		Self::remove_offline_validators();
-		// need to perform node elections... off chain
-		// at the beginning of each session, we will basically just set a boolean 'do elections' flag
 		// <DoRunElection<T>>::put(true);
-		log::debug!(target: LOG_TARGET, "New session called; updated validator set provided.");
+		let current_session_validators = <Validators<T>>::get();
+		<pallet_elections::Pallet<T>>::run_proxy_node_election(current_session_validators);
+		log::debug!(target: LOG_TARGET, "New session called; updated validator set provided, proxy node elections started.");
 		Some(Self::validators())
 	}
 
 	fn start_session(start_index: u32) {
 		log::info!("Starting session with index: {:?}", start_index);
-		ActiveEra::<T>::mutate(|s| *s = Some(start_index)); 
+		ActiveEra::<T>::mutate(|s| *s = Some(start_index));
+		// TODO: Node elections tie breaker
 	}
 
 	fn end_session(end_index: u32) {

@@ -82,6 +82,7 @@ pub use pallet_data_spaces;
 pub use pallet_authorities;
 pub use pallet_proxy;
 pub use pallet_ipfs;
+pub use pallet_elections;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -523,6 +524,11 @@ impl pallet_ipfs::Config for Runtime {
 	type NodeConfigBlockDuration = NodeConfigBlockDuration;
 }
 
+impl pallet_elections::Config for Runtime {
+	type Event = Event;
+	type Call = Call;
+}
+
 use codec::Encode;
 use sp_runtime::traits::StaticLookup;
 
@@ -611,6 +617,7 @@ construct_runtime!(
 		Contracts: pallet_contracts,
 		Proxy: pallet_proxy,
 		Ipfs: pallet_ipfs,
+		Elections: pallet_elections,
 	}
 );
 
