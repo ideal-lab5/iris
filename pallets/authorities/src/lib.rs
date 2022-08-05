@@ -84,8 +84,6 @@ use sp_runtime::{
 	traits::StaticLookup,
 };
 
-use iris_primitives::IngestionCommand;
-
 pub const LOG_TARGET: &'static str = "runtime::authorities";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
@@ -164,8 +162,7 @@ pub mod pallet {
 	#[pallet::config]
 	pub trait Config: CreateSignedTransaction<Call<Self>> 
 						+ frame_system::Config 
-						+ pallet_session::Config 
-						+ pallet_elections::Config
+						+ pallet_session::Config
 	{
 		/// The Event type.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -193,9 +190,7 @@ pub mod pallet {
 	/// set, it might be active or not.
 	#[pallet::storage]
 	#[pallet::getter(fn current_era)]
-	pub type CurrentEra<T> = StorageValue<
-		_, EraIndex
-	>;
+	pub type CurrentEra<T> = StorageValue<_, EraIndex>;
 
 	/// The active era information, it holds index and start.
 	///
@@ -204,55 +199,38 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn active_era)]
 	// TODO: Do I need the ActiveEraInfo?
-	pub type ActiveEra<T> = StorageValue<
-		_, EraIndex
-	>;
+	pub type ActiveEra<T> = StorageValue<_, EraIndex>;
 
 	///
 	/// 
 	#[pallet::storage]
 	#[pallet::getter(fn validators)]
-	pub type Validators<T: Config> = StorageValue<
-		_, Vec<T::AccountId>, ValueQuery>;
+	pub type Validators<T: Config> = StorageValue<_, Vec<T::AccountId>, ValueQuery>;
 
 	///
 	/// 
 	#[pallet::storage]
 	#[pallet::getter(fn approved_validators)]
-	pub type ApprovedValidators<T: Config> = StorageValue<
-		_, Vec<T::AccountId>, ValueQuery>;
+	pub type ApprovedValidators<T: Config> = StorageValue<_, Vec<T::AccountId>, ValueQuery>;
 
 	///
 	/// 
 	#[pallet::storage]
 	#[pallet::getter(fn validators_to_remove)]
-	pub type OfflineValidators<T: Config> = StorageValue<
-		_, Vec<T::AccountId>, ValueQuery>;
+	pub type OfflineValidators<T: Config> = StorageValue<_, Vec<T::AccountId>, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn total_session_rewards)]
-	pub type SessionParticipation<T: Config> = StorageMap<
-		_, Blake2_128Concat, EraIndex, Vec<T::AccountId>, ValueQuery,
-	>;
+	pub type SessionParticipation<T: Config> = StorageMap<_, Blake2_128Concat, EraIndex, Vec<T::AccountId>, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn unproductive_sessions)]
-	pub type UnproductiveSessions<T: Config> = StorageMap<
-		_, Blake2_128Concat, T::AccountId, u32, ValueQuery,
-	>;
+	pub type UnproductiveSessions<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
 	
 	#[pallet::storage]
-	#[pallet::getter(fn votes)]
-	pub type Votes<T: Config> = StorageDoubleMap<
-		_,
-		Blake2_128Concat,
-		T::AccountId,
-		Blake2_128Concat,
-		T::AssetId,
-		u128,
-		ValueQuery,
-	>;
+	#[pallet::getter(fn do_run_election)]
+	pub type DoRunElection<T: Config> = StorageValue<_, bool, ValueQuery>;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -484,7 +462,17 @@ impl<T: Config> Pallet<T> {
 			.propagate(true)
 			.build()
 	}
-}	
+}
+
+/// the Era Provider allows us to share current era information with other pallets
+pub trait EraProvider {
+	fn get_current_era() -> Option<u32>;
+}
+impl<T: Config> EraProvider for Pallet<T> {
+	fn get_current_era() -> Option<u32> {
+		CurrentEra::<T>::get()
+	}
+}
 
 // Provides the new set of validators to the session module when session is
 // being rotated.
@@ -493,12 +481,10 @@ impl<T: Config> Pallet<T> {
 impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 	// Plan a new session and provide new validator set.
 	fn new_session(new_index: u32) -> Option<Vec<T::AccountId>> {
-		log::info!("Starting new session with index: {:?}", new_index);
+		log:: info!("Starting new session with index: {:?}", new_index);
 		CurrentEra::<T>::mutate(|s| *s = Some(new_index));
 		Self::remove_offline_validators();
-		// <DoRunElection<T>>::put(true);
-		let current_session_validators = <Validators<T>>::get();
-		<pallet_elections::Pallet<T>>::run_proxy_node_election(current_session_validators);
+		<DoRunElection<T>>::put(true);
 		log::debug!(target: LOG_TARGET, "New session called; updated validator set provided, proxy node elections started.");
 		Some(Self::validators())
 	}

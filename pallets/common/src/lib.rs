@@ -28,18 +28,34 @@ use sp_rpc::number::NumberOrHex;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-pub struct IngestionCommand<AccountId, AssetId, OccId, Balance> {
+#[derive(Eq, Ord, PartialOrd, Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Clone)]
+pub struct IngestionCommand<AccountId, Balance> {
+    /// the owner of the data to be ingested (i.e. the caller)
     pub owner: AccountId,
-    /// the desired asset id
-    pub asset_id: AssetId,
-    /// the dataspace id to associate the asset with
-    pub dataspace_id: AssetId,
-    /// the id of the data within the offchain client
-    pub occ_id: OccId,
     /// a 'self-reported' estimated size of data to be transferred
     /// the true data size can only be known after querying the OCC within the OCW
     pub estimated_size_gb: u128,
     /// the balance used to create an asset class and pay a proxy node
     pub balance: Balance,
 }
+
+// /// Reward points for storage providers of some specific assest id during an era.
+// #[derive(PartialEq, Encode, Decode, Default, RuntimeDebug, TypeInfo)]
+// pub struct EraRewardPoints<AccountId> {
+// 	/// the total number of points
+// 	total: RewardPoint,
+// 	/// the reward points for individual validators, sum(i.rewardPoint in individual) = total
+// 	individual: BTreeMap<AccountId, RewardPoint>,
+// }
+
+// /// Information regarding the active era (era in used in session).
+// #[derive(Encode, Decode, RuntimeDebug, TypeInfo)]
+// pub struct ActiveEraInfo<EraIndex> {
+// 	/// Index of era.
+// 	pub index: EraIndex,
+// 	/// Moment of start expressed as millisecond from `$UNIX_EPOCH`.
+// 	///
+// 	/// Start can be none if start hasn't been set for the era yet,
+// 	/// Start is set on the first on_finalize of the era to guarantee usage of `Time`.
+// 	start: Option<u64>,
+// }

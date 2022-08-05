@@ -201,6 +201,8 @@ fn testnet_genesis(
 			initial_proxies: vec![],
 			min_proxy_bond: 50,
 			max_proxy_count: Some(256),
+			stake_redistribution_interval: 10,
+			election_interval: 20,
 		},
 	}
 }

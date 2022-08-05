@@ -203,11 +203,9 @@ pub mod pallet {
 		_, Blake2_128Concat, T::AccountId, u128, ValueQuery,
 	>;
 
-	// #[pallet::storage]
-	// #[pallet::getter(fn ingestion_processing_queue)]
-	// pub(super) type IngestionProcessingQueue<T: Config> = StorageMap<
-	// 	_, Blake2_128Concat, T::AccountId, Vec<IngestionCommand<T::AccountId, T::AssetId, Vec<u8>, T::Balance>>, ValueQuery
-	// >;
+	/// map an authorized node to the set of gateways that will allow it to make calls
+	#[pallet::storage]
+	pub type RequestAuthorization<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, Vec<T::AccountId>, ValueQuery>;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -282,8 +280,8 @@ pub mod pallet {
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			let mut config = <NodeConfiguration<T>>::get(&who);
-			// TODO: should really add some verification on the value
-			// let storage_max_as_vec = format!("{}", storage_max_gb).as_bytes().to_vec();
+			// TODO: add min storage size as configurable storage value 
+			// can set this using the root node for now, governance later on
 			config.storage_config = storage_max_gb;
 			config.ready = true;
 			Ok(())
@@ -306,7 +304,9 @@ pub mod pallet {
 			dataspace_id: T::AssetId,
             balance: T::Balance,
         ) -> DispatchResult {
-			// let who = ensure_signed(origin)?;
+			let who = ensure_signed(origin)?;
+			// TODO: Now we can check if the results being submitted
+			// are being submitted by the proper node, the winner of the election for this asset id
 			// let new_origin = system::RawOrigin::Signed(who.clone()).into();
 			// creates the asset class
             // <pallet_data_assets::Pallet<T>>::submit_ipfs_add_results(
@@ -467,7 +467,6 @@ impl<T: Config> Pallet<T> {
 					// 2. get actual available storage space
 					let actual_storage: u128 = stat_response["SizeStat.StorageMax"].clone().as_u64().unwrap().into();
 					// 3. report result on chain
-					
 					let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
 					if !signer.can_sign() {
 						log::error!(

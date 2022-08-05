@@ -82,7 +82,6 @@ pub use pallet_data_spaces;
 pub use pallet_authorities;
 pub use pallet_proxy;
 pub use pallet_ipfs;
-pub use pallet_elections;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -498,8 +497,6 @@ impl pallet_im_online::Config for Runtime {
 
 parameter_types! {
 	pub const BondingDuration: EraIndex = 3;
-	pub const MinimumMbps: u32 = 50;
-	pub const MinimumStorageSize: u32 = 50;
 }
 
 impl pallet_proxy::Config for Runtime {
@@ -508,8 +505,8 @@ impl pallet_proxy::Config for Runtime {
 	type Currency = Balances;
 	type CurrencyBalance = <Self as pallet_balances::Config>::Balance ;
 	type BondingDuration = BondingDuration;
-	type MinimumMbps = MinimumMbps;
-	type MinimumStorageSize = MinimumStorageSize;
+	type EraProvider = Authorities;
+	type QueueProvider = DataAssets;
 }
 
 parameter_types! {
@@ -522,11 +519,6 @@ impl pallet_ipfs::Config for Runtime {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type Currency = Balances;
 	type NodeConfigBlockDuration = NodeConfigBlockDuration;
-}
-
-impl pallet_elections::Config for Runtime {
-	type Event = Event;
-	type Call = Call;
 }
 
 use codec::Encode;
@@ -617,7 +609,6 @@ construct_runtime!(
 		Contracts: pallet_contracts,
 		Proxy: pallet_proxy,
 		Ipfs: pallet_ipfs,
-		Elections: pallet_elections,
 	}
 );
 

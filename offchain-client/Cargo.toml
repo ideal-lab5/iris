@@ -2,7 +2,7 @@
 name = "offchain-client"
 version = "1.0.0"
 description = "The iris offchain client stand-in"
-authors = ["Ideal Labs Developers <https://github.com/ideal-lab5>"]
+authors = ["Ideal Labs <https://github.com/ideal-lab5>"]
 homepage = "https://idealabs.networks/"
 edition = "2021"
 license = "GPL-3.0-or-later"

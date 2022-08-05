@@ -51,9 +51,8 @@ use sp_runtime::{
 };
 use sp_staking::offence::{Offence, OffenceError, ReportOffence};
 use sp_std::{
-	collections::{btree_set::BTreeSet, btree_map::BTreeMap},
+	collections::btree_map::BTreeMap,
 	str,
-	vec::Vec,
 	prelude::*
 };
 use sp_core::{
@@ -77,6 +76,8 @@ use sp_runtime::{
 };
 use codec::HasCompact;
 use iris_primitives::IngestionCommand;
+use pallet_authorities::EraProvider;
+use pallet_data_assets::QueueProvider;
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
@@ -97,8 +98,8 @@ const STAKING_ID: LockIdentifier = *b"staking ";
 
 type BalanceOf<T> =
 	<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
-
 /// Counter for the number of eras that have passed.
+
 pub type EraIndex = u32;
 /// counter for the number of "reward" points earned by a given storage provider
 pub type RewardPoint = u32;
@@ -106,27 +107,6 @@ pub type RewardPoint = u32;
 
 parameter_types! {
 	pub MaxUnlockingChunks: u32 = 32;
-}
-
-/// Reward points for storage providers of some specific assest id during an era.
-#[derive(PartialEq, Encode, Decode, Default, RuntimeDebug, TypeInfo)]
-pub struct EraRewardPoints<AccountId> {
-	/// the total number of points
-	total: RewardPoint,
-	/// the reward points for individual validators, sum(i.rewardPoint in individual) = total
-	individual: BTreeMap<AccountId, RewardPoint>,
-}
-
-/// Information regarding the active era (era in used in session).
-#[derive(Encode, Decode, RuntimeDebug, TypeInfo)]
-pub struct ActiveEraInfo {
-	/// Index of era.
-	pub index: EraIndex,
-	/// Moment of start expressed as millisecond from `$UNIX_EPOCH`.
-	///
-	/// Start can be none if start hasn't been set for the era yet,
-	/// Start is set on the first on_finalize of the era to guarantee usage of `Time`.
-	start: Option<u64>,
 }
 
 /// Just a Balance/BlockNumber tuple to encode when a chunk of funds will be unlocked.
@@ -161,6 +141,15 @@ pub struct StakingLedger<T: Config> {
 	// / List of eras for which the stakers behind a validator have claimed rewards. Only updated
 	// / for validators.
 	// pub claimed_rewards: Vec<EraIndex>,
+}
+
+/// The vote to track weighted votes
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
+pub struct Vote<AccountId> {
+	/// the weight of the voter
+	pub weight: u128,
+	/// the voter
+	pub voter: AccountId,
 }
 
 impl<T: Config> StakingLedger<T> {
@@ -247,7 +236,8 @@ pub mod pallet {
 	#[pallet::config]
 	pub trait Config: frame_system::Config + 
 					  pallet_data_assets::Config +
-					  pallet_ipfs::Config
+					  pallet_ipfs::Config +
+					  pallet_authorities::Config
 	{
 		/// The Event type.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -272,13 +262,11 @@ pub mod pallet {
 			+ From<u64>
 			+ TypeInfo
 			+ MaxEncodedLen;
+		type QueueProvider: pallet_data_assets::QueueProvider<Self::AccountId, Self::Balance>;
+		type EraProvider: pallet_authorities::EraProvider;
 		/// Number of eras that staked funds must remain bonded for.
 		#[pallet::constant]
 		type BondingDuration: Get<EraIndex>;
-		#[pallet::constant]
-		type MinimumStorageSize: Get<u32>;
-		#[pallet::constant]
-		type MinimumMbps: Get<u32>;
 	}
 
 	#[pallet::type_value]
@@ -290,25 +278,6 @@ pub mod pallet {
 	#[pallet::generate_store(pub(super) trait Store)]
 	#[pallet::without_storage_info]
 	pub struct Pallet<T>(_);
-
-	/// The current era index.
-	///
-	/// This is the latest planned era, depending on how the Session pallet queues the validator
-	/// set, it might be active or not.
-	#[pallet::storage]
-	#[pallet::getter(fn current_era)]
-	pub type CurrentEra<T> = StorageValue<
-		_, EraIndex
-	>;
-
-	/// The active era information, it holds index and start.
-	///
-	/// The active era is the era being currently rewarded. Validator set of this era must be
-	/// equal to [`SessionInterface::validators`].
-	#[pallet::storage]
-	#[pallet::getter(fn active_era)]
-	// TODO: Do I need the ActiveEraInfo?
-	pub type ActiveEra<T> = StorageValue<_, EraIndex>;
 
 	/// The map from (wannabe) validator stash key to the preferences of that validator.
 	#[pallet::storage]
@@ -343,6 +312,21 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn ledger)]
 	pub type Ledger<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, StakingLedger<T>>;
+		
+	#[pallet::storage]
+	pub type WeightedVote<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		IngestionCommand<T::AccountId, T::Balance>,
+		Vec<Vote<T::AccountId>>,
+		OptionQuery,
+	>;
+
+	#[pallet::storage]
+	pub type StakeRestributionInterval<T: Config> = StorageValue<_, u32, ValueQuery>;
+
+	#[pallet::storage]
+	pub type ElectionInterval<T: Config> = StorageValue<_, u32, ValueQuery>;
 
 	/// Number of eras to keep in history.
 	///
@@ -397,6 +381,8 @@ pub mod pallet {
 			Vec<(T::AccountId, T::AccountId, BalanceOf<T>, ProxyStatus)>,
 		pub min_proxy_bond: BalanceOf<T>,
 		pub max_proxy_count: Option<u32>,
+		pub stake_redistribution_interval: u32,
+		pub election_interval: u32,
 		// pub history_depth: u32,
 	}
 
@@ -407,6 +393,8 @@ pub mod pallet {
 				initial_proxies: Default::default(),
 				min_proxy_bond: Default::default(),
 				max_proxy_count: None,
+				stake_redistribution_interval: 10,
+				election_interval: 50,
 				// history_depth: 4u32,
 			}
 		}
@@ -421,15 +409,22 @@ pub mod pallet {
 			if let Some(x) = self.max_proxy_count {
 				MaxProxyCount::<T>::put(x);
 			}
+			StakeRestributionInterval::<T>::put(self.stake_redistribution_interval);
+			ElectionInterval::<T>::put(self.election_interval);
 		}
 	}
 
 	#[pallet::hooks]
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
 		fn offchain_worker(block_number: T::BlockNumber) {
-			// if <pallet_authorities::Pallet<T>>::do_run_election() {
-			// 	Self::run_proxy_node_election();
-			// }
+			// if I move this into an on-chain context, then we can remove the dependency on IPFS...
+			if block_number % <StakeRestributionInterval::<T>>::get().into() == 0u32.into() {
+				Self::run_offchain_stake_redistribution();
+			}
+
+			if block_number % <ElectionInterval::<T>>::get().into() == 0u32.into() {
+				Self::lock_winners();
+			}
 		}
 	}
 
@@ -467,11 +462,10 @@ pub mod pallet {
 
 			let controller = T::Lookup::lookup(controller)?;
 
-			// NOTE: Any node can bond + declare proxy, BUT, only validators can be selected in the node elections
 			// ensure that the proxy controller is a validator
-			// if !<pallet_authorities::Pallet<T>>::validators().contains(&controller) {
-			// 	return Err(Error::<T>::NotValidator.into());
-			// }
+			if !<pallet_authorities::Pallet<T>>::validators().contains(&controller) {
+				return Err(Error::<T>::NotValidator.into());
+			}
 
 			if <Ledger<T>>::contains_key(&controller) {
 				return Err(Error::<T>::AlreadyPaired.into())
@@ -489,7 +483,7 @@ pub mod pallet {
 			<Bonded<T>>::insert(&stash, &controller);
 			// <Payee<T>>::insert(&stash, payee);
 
-			let current_era = CurrentEra::<T>::get().unwrap_or(0);
+			let current_era = T::EraProvider::get_current_era();
 			// let history_depth = Self::history_depth();
 			// let last_reward_era = current_era.saturating_sub(history_depth);
 
@@ -580,7 +574,8 @@ pub mod pallet {
 				ensure!(ledger.active >= min_active_bond, Error::<T>::InsufficientBond);
 
 				// Note: in case there is no current era it is fine to bond one era more.
-				let era = Self::current_era().unwrap_or(0) + T::BondingDuration::get();
+				let era = T::EraProvider::get_current_era().unwrap_or(0) + T::BondingDuration::get();
+				// let era = Self::current_era().unwrap_or(0) + T::BondingDuration::get();
 				if let Some(mut chunk) =
 					ledger.unlocking.last_mut().filter(|chunk| chunk.era == era)
 				{
@@ -643,6 +638,22 @@ pub mod pallet {
 
 			Ok(())
 		}
+
+		#[pallet::weight(100)]
+		pub fn submit_election_results(
+			origin: OriginFor<T>,
+			results: BTreeMap<IngestionCommand<T::AccountId, T::Balance>, Vec<T::AccountId>>,
+		) ->DispatchResult {
+			Ok(())
+		}
+
+		#[pallet::weight(100)]
+		pub fn redistribute_stake(
+			origin: OriginFor<T>,
+			distribution: BTreeMap<IngestionCommand<T::AccountId, T::Balance>, u128>
+		) -> DispatchResult {
+			Ok(())
+		}
 	}
 }
 
@@ -692,7 +703,6 @@ impl<T: Config> Pallet<T> {
 		// mark all new proxy nodes as requiring configuration
 		ProxyConfigStatus::<T>::insert(who, ProxyConfigState::Unconfigured);
 		Proxies::<T>::insert(who, prefs.clone());
-
 		let new_origin = system::RawOrigin::Signed(who.clone()).into();
 		<pallet_ipfs::Pallet<T>>::update_node_config(new_origin, prefs.clone().storage_max_gb);
 	}
@@ -713,26 +723,118 @@ impl<T: Config> Pallet<T> {
 		<ProxyConfigStatus<T>>::insert(addr, new_status);
 		Ok(())
 	}
-}
 
-// Offence reporting and unresponsiveness management.
-impl<T: Config, O: Offence<(T::AccountId, T::AccountId)>>
-	ReportOffence<T::AccountId, (T::AccountId, T::AccountId), O> for Pallet<T>
-{
-	fn report_offence(_reporters: Vec<T::AccountId>, offence: O) -> Result<(), OffenceError> {
-		let offenders = offence.offenders();
-
-		for (v, _) in offenders.into_iter() {
-			// Self::mark_for_removal(v);
+	
+	fn lock_winners() {
+		let ingestion_queue = T::QueueProvider::ingestion_queue().clone();
+		// <IngestionCommand<T::AccountId, T::Balance>, Vec<T::AccountId>>
+		let mut results_map = BTreeMap::new();
+		for i in ingestion_queue.into_iter() {
+			match <WeightedVote<T>>::get(i.clone()) {
+				Some(mut votes) => {
+					// sort votes by decreasing weight
+					votes.sort_by(|u, v| u.weight.cmp(&v.weight));
+					let max_weight = votes[0].weight;
+					let votes = votes.into_iter().filter(|v| v.weight >= max_weight);
+					let candidates: Vec<T::AccountId> = votes.map(|vote| vote.voter).collect();
+					results_map.insert(i.clone(), candidates);
+				},
+				None => {
+					log::info!("No votes were placed for this ingestion request.");
+				},
+			}
 		}
 
+		// // after collecting all votes, submit results on chain
+		// let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+		// if !signer.can_sign() {
+		// 	log::error!(
+		// 		"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+		// 	);
+		// }
+		// let results = signer.send_signed_transaction(|_account| { 
+		// 	Call::submit_election_results{
+				// results_map,
+		// 	}
+		// });
+
+		// for (_, res) in &results {
+		// 	match res {
+		// 		Ok(()) => log::info!("Submitted results successfully"),
+		// 		Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+		// 	}
+		// }
+
+	}
+
+	fn run_offchain_stake_redistribution() -> Result<(), Error<T>> {
+		let mut ingestion_queue = T::QueueProvider::ingestion_queue();
+		let len = ingestion_queue.len();
+		if len > 0 {
+			// get ipfs id by reading from ipfs pallet
+			let id_json = <pallet_ipfs::Pallet<T>>::fetch_identity_json().map_err(|_| Error::<T>::ElectionError).unwrap();
+			// get pubkey
+			let id = &id_json["ID"];
+			let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
+			// get associated addr
+			match <pallet_ipfs::Pallet<T>>::substrate_ipfs_bridge(&pubkey) {
+				Some(addr) => {
+					// get available storage in gb
+					let real_storage_size_gb = <pallet_ipfs::Pallet<T>>::stats(&addr);
+					// get active stake
+					let active_stake: T::CurrencyBalance = <Ledger<T>>::get(&addr).unwrap().active;
+					let active_stake_primitive: u128 = active_stake.saturated_into::<u128>();
+					Self::offchain_redistribute_stake(addr.clone(), real_storage_size_gb.clone(), active_stake_primitive.clone(), ingestion_queue);
+				},
+				None => {
+					// do nothing
+				}
+			}
+		}
 		Ok(())
 	}
 
-	fn is_known_offence(
-		_offenders: &[(T::AccountId, T::AccountId)],
-		_time_slot: &O::TimeSlot,
-	) -> bool {
-		false
+	/// A proxy places votes on ingestion commands
+	///
+	/// TODO: ALSO NEEDS TO SEND SIGNED TX TO REPORT THIS REDISTRIBUTION!!!!!
+	fn offchain_redistribute_stake(
+		proxy_addr: T::AccountId,
+		total_available_storage_gb: u128,
+		total_active_stake: u128,
+		mut ingestion_queue: Vec<IngestionCommand<T::AccountId, T::Balance>>
+	) {
+		let max_wait_time_for_50gb: u32 = 10;
+		// filter out items which are too large
+		let mut filtered_queue: Vec<IngestionCommand<T::AccountId, T::Balance>> =
+			ingestion_queue.into_iter()
+				.filter(|i| i.estimated_size_gb < total_available_storage_gb)
+				.collect();
+		// sort by balance
+		filtered_queue.sort_by(|a, b| a.balance.cmp(&b.balance));
+		// Choose top k results s.t. max storage needed doesn't exceed total storage available
+		let mut total_gb: u128 = 0u128;
+		let mut candidate_commands: Vec<IngestionCommand<T::AccountId, T::Balance>> = Vec::new();
+		for f in filtered_queue.into_iter() {
+			let balance: T::Balance = f.balance;
+			let balance_primitive = TryInto::<u128>::try_into(balance).ok().unwrap();
+			total_gb = total_gb + balance_primitive;
+			if total_gb < total_available_storage_gb {
+				candidate_commands.push(f);
+			} else {
+				break
+			}
+		}
+		let weight_per_gb = total_active_stake / total_gb;
+		let mut results = BTreeMap::new();
+		for c in candidate_commands.into_iter() {
+			let weight: u128 = weight_per_gb * c.estimated_size_gb;
+			results.insert(c.clone(), weight);
+			// let mut votes = <WeightedVote<T>>::get(c).unwrap();
+			// votes.push(Vote {
+			// 	weight: weight,
+			// 	voter: proxy_addr.clone(),
+			// });
+		}
+		// TODO: submit signed tx
 	}
 }

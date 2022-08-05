@@ -2,7 +2,7 @@
 name = "iris-runtime"
 version = "1.0.0"
 description = "The iris runtime"
-authors = ["Ideal Labs Developers <https://github.com/ideal-lab5>"]
+authors = ["Ideal Labs <https://github.com/ideal-lab5>"]
 homepage = "https://idealabs.networks/"
 edition = "2021"
 license = "GPL-3.0-or-later"
@@ -54,7 +54,6 @@ pallet-authorities = { version = "1.0.0", default-features = false, path = "../p
 pallet-ledger = { version = "1.0.0", default-features = false, path = "../pallets/ledger" }
 pallet-data-spaces = { version = "1.0.0", default-features = false, path = "../pallets/data-spaces" }
 pallet-authorization = { version = "1.0.0", default-features = false, path = "../pallets/authorization" }
-pallet-elections = { version = "1.0.0", default-features = false, path = "../pallets/elections" }
 pallet-proxy = { version = "1.0.0", default-features = false, path = "../pallets/proxy" }
 pallet-ipfs = { version = "1.0.0", default-features = false, path = "../pallets/ipfs" }
 pallet-ipfs-primitives = { version = "1.0.0", default-features = false, path = "../pallets/ipfs/common" }
@@ -99,7 +98,6 @@ std = [
 	"pallet-ledger/std",
 	"pallet-proxy/std",
 	"pallet-ipfs/std",
-	"pallet-elections/std",
 	"pallet-timestamp/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",

@@ -50,7 +50,6 @@ use sp_runtime::{
     traits::StaticLookup,
 };
 use sp_std::{
-    // vec::Vec,
     prelude::*,
 };
 
@@ -124,9 +123,6 @@ pub mod pallet {
 	#[pallet::config]
     /// the module configuration trait
 	pub trait Config: frame_system::Config + pallet_assets::Config
-    // where
-    //     <Self as SysConfig>::AccountId: AsRef<[u8]>,
-    //     <Self as SysConfig>::AccountId: Wraps,
     {
         /// The overarching event type
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -144,7 +140,7 @@ pub mod pallet {
 	#[pallet::storage]
     #[pallet::getter(fn ingestion_queue)]
 	pub(super) type IngestionQueue<T: Config> = StorageValue<
-        _, Vec<IngestionCommand<T::AccountId, T::AssetId, Vec<u8>, T::Balance>>, ValueQuery,
+        _, Vec<IngestionCommand<T::AccountId, T::Balance>>, ValueQuery,
     >;
 
 	#[pallet::storage]
@@ -211,7 +207,7 @@ pub mod pallet {
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
         /// A request to add bytes was queued
-        QueuedDataToAdd(T::AccountId),
+        CreatedIngestionRequest(T::AssetId),
         /// A request to retrieve bytes was queued
         QueuedDataToCat(T::AccountId),
         /// A new asset class was created (add bytes command processed)
@@ -299,15 +295,12 @@ pub mod pallet {
                 q.push(
                     IngestionCommand {
                         owner: who.clone(),
-                        asset_id,
-                        dataspace_id,
-                        occ_id,
                         estimated_size_gb,
                         balance,
                     }
                 );
             });
-            Self::deposit_event(Event::AssetClassCreated(asset_id.clone()));
+            Self::deposit_event(Event::CreatedIngestionRequest(asset_id.clone()));
 			Ok(())
         }
 
@@ -457,17 +450,16 @@ pub mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    // /// implementation for RPC runtime API to retrieve bytes from the node's local storage
-    // pub fn retrieve_bytes(
-	// 	asset_id: u32,
-    // ) -> Bytes
-	// 	where <T as pallet_assets::pallet::Config>::AssetId: From<u32> {
-    //     let asset_id_type: T::AssetId = asset_id.try_into().unwrap();
-    //     // get CID and fetch from offchain storage
-    //     let cid = <Metadata::<T>>::get(asset_id_type).unwrap().cid.to_vec();
-    //     if let Some(data) = sp_io::offchain::local_storage_get(StorageKind::PERSISTENT, &cid) {
-    //         return Bytes(data.clone());
-    //     }
-	// 	Bytes(Vec::new())
-    // }
+
+}
+
+/// a trait to provide the ingestion queue to other modules
+pub trait QueueProvider<AccountId, Balance> {
+    fn ingestion_queue() -> Vec<IngestionCommand<AccountId, Balance>>;
+}
+
+impl<T: Config> QueueProvider<T::AccountId, T::Balance> for Pallet<T> {
+    fn ingestion_queue() -> Vec<IngestionCommand<T::AccountId, T::Balance>> {
+        IngestionQueue::<T>::get()
+    }
 }
