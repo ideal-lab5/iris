@@ -82,6 +82,7 @@ pub use pallet_data_spaces;
 pub use pallet_authorities;
 pub use pallet_proxy;
 pub use pallet_ipfs;
+pub use pallet_elections;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -503,10 +504,9 @@ impl pallet_proxy::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 	type Currency = Balances;
-	type CurrencyBalance = <Self as pallet_balances::Config>::Balance ;
+	type Balance = <Self as pallet_balances::Config>::Balance ;
 	type BondingDuration = BondingDuration;
 	type EraProvider = Authorities;
-	type QueueProvider = DataAssets;
 }
 
 parameter_types! {
@@ -519,6 +519,18 @@ impl pallet_ipfs::Config for Runtime {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type Currency = Balances;
 	type NodeConfigBlockDuration = NodeConfigBlockDuration;
+	type ProxyProvider = Proxy;
+	type ElectionProvider = Elections;
+}
+
+impl pallet_elections::Config for Runtime {
+	type Event = Event;
+	type Call = Call;
+	type AssetId = u32;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type Balance = Balance;
+	type ProxyProvider = Proxy;
+	type QueueProvider = DataAssets;
 }
 
 use codec::Encode;
@@ -609,6 +621,7 @@ construct_runtime!(
 		Contracts: pallet_contracts,
 		Proxy: pallet_proxy,
 		Ipfs: pallet_ipfs,
+		Elections: pallet_elections,
 	}
 );
 

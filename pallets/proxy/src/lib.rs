@@ -134,6 +134,10 @@ pub struct StakingLedger<T: Config> {
 	/// rounds.
 	#[codec(compact)]
 	pub active: BalanceOf<T>,
+	/// The total amount that the node has reserved for the duration of the 
+	/// election session
+	#[codec(compact)]
+	pub reserved: BalanceOf<T>,
 	/// Any balance that is becoming free, which may eventually be transferred out of the stash
 	/// (assuming it doesn't get slashed first). It is assumed that this will be treated as a first
 	/// in, first out queue where the new (higher value) eras get pushed on the back.
@@ -143,15 +147,6 @@ pub struct StakingLedger<T: Config> {
 	// pub claimed_rewards: Vec<EraIndex>,
 }
 
-/// The vote to track weighted votes
-#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
-pub struct Vote<AccountId> {
-	/// the weight of the voter
-	pub weight: u128,
-	/// the voter
-	pub voter: AccountId,
-}
-
 impl<T: Config> StakingLedger<T> {
 	/// Initializes the default object using the given `validator`.
 	pub fn default_from(stash: T::AccountId) -> Self {
@@ -159,6 +154,7 @@ impl<T: Config> StakingLedger<T> {
 			stash,
 			total: Zero::zero(),
 			active: Zero::zero(),
+			reserved: Zero::zero(),
 			unlocking: Default::default(),
 		}
 	}
@@ -234,9 +230,7 @@ pub mod pallet {
 	/// depends.
 	/// TODO: probably don't need to tightly coupole the data assets pallet
 	#[pallet::config]
-	pub trait Config: frame_system::Config + 
-					  pallet_data_assets::Config +
-					  pallet_ipfs::Config +
+	pub trait Config: frame_system::Config +
 					  pallet_authorities::Config
 	{
 		/// The Event type.
@@ -249,11 +243,11 @@ pub mod pallet {
 		type Currency: LockableCurrency<
 			Self::AccountId,
 			Moment = Self::BlockNumber,
-			Balance = Self::CurrencyBalance,
+			Balance = Self::Balance,
 		>;
 		/// Just the `Currency::Balance` type; we have this item to allow us to constrain it to
 		/// `From<u64>`.
-		type CurrencyBalance: sp_runtime::traits::AtLeast32BitUnsigned
+		type Balance: sp_runtime::traits::AtLeast32BitUnsigned
 			+ codec::FullCodec
 			+ Copy
 			+ MaybeSerializeDeserialize
@@ -262,7 +256,6 @@ pub mod pallet {
 			+ From<u64>
 			+ TypeInfo
 			+ MaxEncodedLen;
-		type QueueProvider: pallet_data_assets::QueueProvider<Self::AccountId, Self::Balance>;
 		type EraProvider: pallet_authorities::EraProvider;
 		/// Number of eras that staked funds must remain bonded for.
 		#[pallet::constant]
@@ -312,21 +305,6 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn ledger)]
 	pub type Ledger<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, StakingLedger<T>>;
-		
-	#[pallet::storage]
-	pub type WeightedVote<T: Config> = StorageMap<
-		_,
-		Blake2_128Concat,
-		IngestionCommand<T::AccountId, T::Balance>,
-		Vec<Vote<T::AccountId>>,
-		OptionQuery,
-	>;
-
-	#[pallet::storage]
-	pub type StakeRestributionInterval<T: Config> = StorageValue<_, u32, ValueQuery>;
-
-	#[pallet::storage]
-	pub type ElectionInterval<T: Config> = StorageValue<_, u32, ValueQuery>;
 
 	/// Number of eras to keep in history.
 	///
@@ -381,8 +359,6 @@ pub mod pallet {
 			Vec<(T::AccountId, T::AccountId, BalanceOf<T>, ProxyStatus)>,
 		pub min_proxy_bond: BalanceOf<T>,
 		pub max_proxy_count: Option<u32>,
-		pub stake_redistribution_interval: u32,
-		pub election_interval: u32,
 		// pub history_depth: u32,
 	}
 
@@ -393,8 +369,6 @@ pub mod pallet {
 				initial_proxies: Default::default(),
 				min_proxy_bond: Default::default(),
 				max_proxy_count: None,
-				stake_redistribution_interval: 10,
-				election_interval: 50,
 				// history_depth: 4u32,
 			}
 		}
@@ -409,24 +383,8 @@ pub mod pallet {
 			if let Some(x) = self.max_proxy_count {
 				MaxProxyCount::<T>::put(x);
 			}
-			StakeRestributionInterval::<T>::put(self.stake_redistribution_interval);
-			ElectionInterval::<T>::put(self.election_interval);
 		}
-	}
-
-	#[pallet::hooks]
-	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-		fn offchain_worker(block_number: T::BlockNumber) {
-			// if I move this into an on-chain context, then we can remove the dependency on IPFS...
-			if block_number % <StakeRestributionInterval::<T>>::get().into() == 0u32.into() {
-				Self::run_offchain_stake_redistribution();
-			}
-
-			if block_number % <ElectionInterval::<T>>::get().into() == 0u32.into() {
-				Self::lock_winners();
-			}
-		}
-	}
+	} 
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
@@ -494,6 +452,7 @@ pub mod pallet {
 				stash,
 				total: value,
 				active: value,
+				reserved: Zero::zero(),
 				unlocking: Default::default(),
 				// claimed_rewards: (last_reward_era..current_era).collect(),
 			};
@@ -639,21 +598,15 @@ pub mod pallet {
 			Ok(())
 		}
 
-		#[pallet::weight(100)]
-		pub fn submit_election_results(
-			origin: OriginFor<T>,
-			results: BTreeMap<IngestionCommand<T::AccountId, T::Balance>, Vec<T::AccountId>>,
-		) ->DispatchResult {
-			Ok(())
-		}
+		// #[pallet::weight(100)]
+		// pub fn redistribute_stake(
+		// 	origin: OriginFor<T>,
+		// 	distribution: BTreeMap<IngestionCommand<T::AccountId, T::AssetId, T::Balance>, u128>
+		// ) -> DispatchResult {
+		// 	let who = ensure_signed(origin)?;
 
-		#[pallet::weight(100)]
-		pub fn redistribute_stake(
-			origin: OriginFor<T>,
-			distribution: BTreeMap<IngestionCommand<T::AccountId, T::Balance>, u128>
-		) -> DispatchResult {
-			Ok(())
-		}
+		// 	Ok(())
+		// }
 	}
 }
 
@@ -703,8 +656,8 @@ impl<T: Config> Pallet<T> {
 		// mark all new proxy nodes as requiring configuration
 		ProxyConfigStatus::<T>::insert(who, ProxyConfigState::Unconfigured);
 		Proxies::<T>::insert(who, prefs.clone());
-		let new_origin = system::RawOrigin::Signed(who.clone()).into();
-		<pallet_ipfs::Pallet<T>>::update_node_config(new_origin, prefs.clone().storage_max_gb);
+		// let new_origin = system::RawOrigin::Signed(who.clone()).into();
+		// <pallet_ipfs::Pallet<T>>::update_node_config(new_origin, prefs.clone().storage_max_gb);
 	}
 
 	/// Update the ledger for a controller.
@@ -722,119 +675,62 @@ impl<T: Config> Pallet<T> {
 	) -> DispatchResult {
 		<ProxyConfigStatus<T>>::insert(addr, new_status);
 		Ok(())
-	}
+	}	
+}
 
-	
-	fn lock_winners() {
-		let ingestion_queue = T::QueueProvider::ingestion_queue().clone();
-		// <IngestionCommand<T::AccountId, T::Balance>, Vec<T::AccountId>>
-		let mut results_map = BTreeMap::new();
-		for i in ingestion_queue.into_iter() {
-			match <WeightedVote<T>>::get(i.clone()) {
-				Some(mut votes) => {
-					// sort votes by decreasing weight
-					votes.sort_by(|u, v| u.weight.cmp(&v.weight));
-					let max_weight = votes[0].weight;
-					let votes = votes.into_iter().filter(|v| v.weight >= max_weight);
-					let candidates: Vec<T::AccountId> = votes.map(|vote| vote.voter).collect();
-					results_map.insert(i.clone(), candidates);
-				},
-				None => {
-					log::info!("No votes were placed for this ingestion request.");
-				},
+/// A trait to expose information about bonded accounts and staked amounts
+pub trait ProxyProvider<AccountId, Balance> {
+	/// get the active balance in the staking ledger
+	fn active(acct: AccountId) -> Option<Balance>;
+	/// get the slash account bonded to the controller
+    fn bonded(acct: AccountId) -> Option<AccountId>;
+	///get the preferences specified by some stash account
+	fn prefs(acct: AccountId) -> Option<ProxyPrefs>;
+	/// most some active tokens to reserved
+	fn reserve(acct: AccountId, balance: Balance);
+	// fn unreserve(acct: AccountId, balance: Option<Balance>) -> Result<(), Error<T>>;
+}
+
+impl<T: Config> ProxyProvider<T::AccountId, T::Balance> for Pallet<T> {
+
+	fn active(acct: T::AccountId) -> Option<T::Balance> {
+		match Ledger::<T>::get(acct) {
+			Some(ledger) => {
+				Some(ledger.active)
+			},
+			None => {
+				None
 			}
 		}
-
-		// // after collecting all votes, submit results on chain
-		// let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-		// if !signer.can_sign() {
-		// 	log::error!(
-		// 		"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-		// 	);
-		// }
-		// let results = signer.send_signed_transaction(|_account| { 
-		// 	Call::submit_election_results{
-				// results_map,
-		// 	}
-		// });
-
-		// for (_, res) in &results {
-		// 	match res {
-		// 		Ok(()) => log::info!("Submitted results successfully"),
-		// 		Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-		// 	}
-		// }
-
 	}
 
-	fn run_offchain_stake_redistribution() -> Result<(), Error<T>> {
-		let mut ingestion_queue = T::QueueProvider::ingestion_queue();
-		let len = ingestion_queue.len();
-		if len > 0 {
-			// get ipfs id by reading from ipfs pallet
-			let id_json = <pallet_ipfs::Pallet<T>>::fetch_identity_json().map_err(|_| Error::<T>::ElectionError).unwrap();
-			// get pubkey
-			let id = &id_json["ID"];
-			let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-			// get associated addr
-			match <pallet_ipfs::Pallet<T>>::substrate_ipfs_bridge(&pubkey) {
-				Some(addr) => {
-					// get available storage in gb
-					let real_storage_size_gb = <pallet_ipfs::Pallet<T>>::stats(&addr);
-					// get active stake
-					let active_stake: T::CurrencyBalance = <Ledger<T>>::get(&addr).unwrap().active;
-					let active_stake_primitive: u128 = active_stake.saturated_into::<u128>();
-					Self::offchain_redistribute_stake(addr.clone(), real_storage_size_gb.clone(), active_stake_primitive.clone(), ingestion_queue);
-				},
-				None => {
-					// do nothing
+    fn bonded(acct: T::AccountId) -> Option<T::AccountId> {
+        Bonded::<T>::get(acct)
+    }
+
+	fn prefs(acct: T::AccountId) -> Option<ProxyPrefs> {
+		Proxies::<T>::get(acct)
+	}
+
+	fn reserve(acct: T::AccountId, balance: T::Balance) {
+		match <Ledger<T>>::get(acct.clone()) {
+			Some(mut ledger) => {
+				let new_active_amount = ledger.active - balance;
+				// Q: should it be >= instead?
+				if new_active_amount > Zero::zero() {
+					ledger.active = new_active_amount;
+					ledger.reserved = balance;
+					<Ledger<T>>::insert(acct.clone(), ledger);
+				} else {
+					// should we do anything?
 				}
+			},
+			None => {
+				// invalid accountid
 			}
 		}
-		Ok(())
 	}
-
-	/// A proxy places votes on ingestion commands
-	///
-	/// TODO: ALSO NEEDS TO SEND SIGNED TX TO REPORT THIS REDISTRIBUTION!!!!!
-	fn offchain_redistribute_stake(
-		proxy_addr: T::AccountId,
-		total_available_storage_gb: u128,
-		total_active_stake: u128,
-		mut ingestion_queue: Vec<IngestionCommand<T::AccountId, T::Balance>>
-	) {
-		let max_wait_time_for_50gb: u32 = 10;
-		// filter out items which are too large
-		let mut filtered_queue: Vec<IngestionCommand<T::AccountId, T::Balance>> =
-			ingestion_queue.into_iter()
-				.filter(|i| i.estimated_size_gb < total_available_storage_gb)
-				.collect();
-		// sort by balance
-		filtered_queue.sort_by(|a, b| a.balance.cmp(&b.balance));
-		// Choose top k results s.t. max storage needed doesn't exceed total storage available
-		let mut total_gb: u128 = 0u128;
-		let mut candidate_commands: Vec<IngestionCommand<T::AccountId, T::Balance>> = Vec::new();
-		for f in filtered_queue.into_iter() {
-			let balance: T::Balance = f.balance;
-			let balance_primitive = TryInto::<u128>::try_into(balance).ok().unwrap();
-			total_gb = total_gb + balance_primitive;
-			if total_gb < total_available_storage_gb {
-				candidate_commands.push(f);
-			} else {
-				break
-			}
-		}
-		let weight_per_gb = total_active_stake / total_gb;
-		let mut results = BTreeMap::new();
-		for c in candidate_commands.into_iter() {
-			let weight: u128 = weight_per_gb * c.estimated_size_gb;
-			results.insert(c.clone(), weight);
-			// let mut votes = <WeightedVote<T>>::get(c).unwrap();
-			// votes.push(Vote {
-			// 	weight: weight,
-			// 	voter: proxy_addr.clone(),
-			// });
-		}
-		// TODO: submit signed tx
-	}
+	// fn unreserve(acct: T::AccountId, balance: Option<T::Balance>) -> Result<(), Error<T>> {
+	// 	Ok(())
+	// }
 }

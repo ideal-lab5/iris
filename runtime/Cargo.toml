@@ -55,6 +55,7 @@ pallet-ledger = { version = "1.0.0", default-features = false, path = "../pallet
 pallet-data-spaces = { version = "1.0.0", default-features = false, path = "../pallets/data-spaces" }
 pallet-authorization = { version = "1.0.0", default-features = false, path = "../pallets/authorization" }
 pallet-proxy = { version = "1.0.0", default-features = false, path = "../pallets/proxy" }
+pallet-elections = { version = "1.0.0", default-features = false, path = "../pallets/elections" }
 pallet-ipfs = { version = "1.0.0", default-features = false, path = "../pallets/ipfs" }
 pallet-ipfs-primitives = { version = "1.0.0", default-features = false, path = "../pallets/ipfs/common" }
 
@@ -98,6 +99,7 @@ std = [
 	"pallet-ledger/std",
 	"pallet-proxy/std",
 	"pallet-ipfs/std",
+	"pallet-elections/std",
 	"pallet-timestamp/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",

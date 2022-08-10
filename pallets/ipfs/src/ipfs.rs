@@ -88,6 +88,10 @@ impl AsRef<str> for Endpoint {
 	}
 }
 
+
+/// could be useful:
+///  ipfs routing findpeer <peerID>...   - Find the multiaddresses associated with a Peer ID.
+
 /// Get the ipfs node identity
 /// 
 pub fn identity() -> Result<http::Response, http::Error> {
@@ -194,12 +198,12 @@ pub fn add(ipfs_add_request: IpfsAddRequest) -> Result<http::Response, http::Err
 /// * cid: The CID to fetch.
 /// 
 /// 
-pub fn get(cid: &Vec<u8>) -> Result<(), http::Error> {
+pub fn get(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
     let mut endpoint = Endpoint::Get.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
         .map_err(|_| http::Error::Unknown).ok().unwrap();
-    ipfs_post_request(&endpoint, None).unwrap();
-    Ok(())
+    let res = ipfs_post_request(&endpoint, None).unwrap();
+    Ok(res)
 }
 
 /// retrieve data from IPFS and return it

@@ -18,7 +18,7 @@ use iris_runtime::{
 	AccountId, AssetsConfig, AuraConfig, BalancesConfig, 
 	GenesisConfig, GrandpaConfig, Signature, 
 	SudoConfig, SessionConfig, AuthoritiesConfig, ImOnlineConfig,
-	ProxyConfig, SystemConfig, WASM_BINARY,
+	ProxyConfig, SystemConfig, ElectionsConfig, WASM_BINARY,
 	opaque::SessionKeys,
 };
 use sc_service::ChainType;
@@ -180,6 +180,10 @@ fn testnet_genesis(
 		authorities: AuthoritiesConfig {
 			initial_validators: initial_authorities.iter().map(|x| x.0.clone()).collect::<Vec<_>>(),
 		},
+		elections: ElectionsConfig {
+			stake_redistribution_interval: 7,
+			election_interval: 11,
+		},
 		session: SessionConfig {
 			keys: initial_authorities.iter().map(|x| {
 				(x.0.clone(), x.0.clone(), session_keys(x.1.clone(), x.2.clone(), x.3.clone()))
@@ -201,8 +205,11 @@ fn testnet_genesis(
 			initial_proxies: vec![],
 			min_proxy_bond: 50,
 			max_proxy_count: Some(256),
-			stake_redistribution_interval: 10,
-			election_interval: 20,
 		},
 	}
 }
+
+
+
+// stake_redistribution_interval: 10,
+// election_interval: 20,

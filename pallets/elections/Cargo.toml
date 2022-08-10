@@ -37,7 +37,6 @@ pallet-balances = { version = "4.0.0-dev", default-features = false, git = "http
 pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = false }
 pallet-authorities = { version = "1.0.0", path = "../authorities", default-features = false }
 pallet-data-assets = { version = "1.0.0", path = "../data-assets", default-features = false }
-pallet-ipfs = { version = "1.0.0", path = "../ipfs", default-features = false }
 pallet-proxy = { version = "1.0.0", path = "../proxy", default-features = false }
 
 [dev-dependencies]
@@ -62,7 +61,6 @@ std = [
 	'pallet-balances/std',
 	'pallet-assets/std',
 	'pallet-data-assets/std',
-	'pallet-ipfs/std',
 	'pallet-proxy/std',
 ]
 

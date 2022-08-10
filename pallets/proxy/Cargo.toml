@@ -37,7 +37,6 @@ pallet-session = { version = "4.0.0-dev", default-features = false, git = "https
 pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = false }
 pallet-data-assets = { version = "1.0.0", default-features = false, path = "../data-assets" }
 pallet-authorities = { version = "1.0.0", default-features = false, path = "../authorities" }
-pallet-ipfs = { version = "1.0.0", default-features = false, path = "../ipfs" }
 iris-primitives = { version = "1.0.0", default-features = false, path = "../common" }
 
 [dev-dependencies]
@@ -64,7 +63,6 @@ std = [
 	'pallet-assets/std',
 	'pallet-authorities/std',
 	'pallet-data-assets/std',
-	'pallet-ipfs/std',
 	'iris-primitives/std',
 ]
 

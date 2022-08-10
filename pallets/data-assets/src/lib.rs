@@ -56,22 +56,6 @@ use sp_std::{
 use core::convert::TryInto;
 use iris_primitives::IngestionCommand;
 
-// #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-// pub struct IngestionCommand<AccountId, AssetId, OccId, Balance> {
-//     pub owner: AccountId,
-//     /// the desired asset id
-//     pub asset_id: AssetId,
-//     /// the dataspace id to associate the asset with
-//     pub dataspace_id: AssetId,
-//     /// the id of the data within the offchain client
-//     pub occ_id: OccId,
-//     /// a 'self-reported' estimated size of data to be transferred
-//     /// the true data size can only be known after querying the OCC within the OCW
-//     pub estimated_size_gb: u128,
-//     /// the balance used to create an asset class and pay a proxy node
-//     pub balance: Balance,
-// }
-
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 pub struct EjectionCommand {
 
@@ -140,7 +124,7 @@ pub mod pallet {
 	#[pallet::storage]
     #[pallet::getter(fn ingestion_queue)]
 	pub(super) type IngestionQueue<T: Config> = StorageValue<
-        _, Vec<IngestionCommand<T::AccountId, T::Balance>>, ValueQuery,
+        _, Vec<IngestionCommand<T::AccountId, T::AssetId, T::Balance>>, ValueQuery,
     >;
 
 	#[pallet::storage]
@@ -207,7 +191,7 @@ pub mod pallet {
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
         /// A request to add bytes was queued
-        CreatedIngestionRequest(T::AssetId),
+        CreatedIngestionRequest,
         /// A request to retrieve bytes was queued
         QueuedDataToCat(T::AccountId),
         /// A new asset class was created (add bytes command processed)
@@ -267,7 +251,7 @@ pub mod pallet {
 
         /// submits an on-chain request to fetch data and add it to iris 
         /// 
-        /// * `addr`: the multiaddress where the data exists
+        /// * `multiaddress`: the multiaddress where the data exists
         ///       example: /ip4/192.168.1.170/tcp/4001/p2p/12D3KooWMvyvKxYcy9mjbFbXcogFSCvENzQ62ogRxHKZaksFCkAp
         /// * `cid`: the cid to fetch from the multiaddress
         ///       example: QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9
@@ -279,10 +263,10 @@ pub mod pallet {
         pub fn create(
             origin: OriginFor<T>,
             admin: <T::Lookup as StaticLookup>::Source,
+            cid: Vec<u8>,
+            multiaddress: Vec<u8>,
+            estimated_size_gb: u128,
             #[pallet::compact] dataspace_id: T::AssetId,
-            #[pallet::compact] asset_id: T::AssetId,
-            occ_id: Vec<u8>,
-            #[pallet::compact] estimated_size_gb: u128,
             #[pallet::compact] balance: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -295,12 +279,15 @@ pub mod pallet {
                 q.push(
                     IngestionCommand {
                         owner: who.clone(),
-                        estimated_size_gb,
+                        cid: cid,
+                        multiaddress: multiaddress,
+                        estimated_size_gb: estimated_size_gb,
+                        dataspace_id: dataspace_id,
                         balance,
                     }
                 );
             });
-            Self::deposit_event(Event::CreatedIngestionRequest(asset_id.clone()));
+            Self::deposit_event(Event::CreatedIngestionRequest);
 			Ok(())
         }
 
@@ -454,12 +441,16 @@ impl<T: Config> Pallet<T> {
 }
 
 /// a trait to provide the ingestion queue to other modules
-pub trait QueueProvider<AccountId, Balance> {
-    fn ingestion_queue() -> Vec<IngestionCommand<AccountId, Balance>>;
+pub trait QueueProvider<AccountId, AssetId, Balance> {
+    fn ingestion_queue() -> Vec<IngestionCommand<AccountId, AssetId, Balance>>;
+    fn kill_ingestion_queue();
 }
 
-impl<T: Config> QueueProvider<T::AccountId, T::Balance> for Pallet<T> {
-    fn ingestion_queue() -> Vec<IngestionCommand<T::AccountId, T::Balance>> {
+impl<T: Config> QueueProvider<T::AccountId, T::AssetId, T::Balance> for Pallet<T> {
+    fn ingestion_queue() -> Vec<IngestionCommand<T::AccountId, T::AssetId, T::Balance>> {
         IngestionQueue::<T>::get()
+    }
+    fn kill_ingestion_queue() {
+        IngestionQueue::<T>::kill();
     }
 }
