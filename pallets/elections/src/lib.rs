@@ -131,6 +131,15 @@ pub struct Vote<AccountId, Balance> {
 	pub voter: AccountId,
 }
 
+/// stores information about the election winners and if they have executed the command
+#[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
+pub struct CommandExecution<AccountId> {
+	/// the account id of the winner
+	pub account: AccountId,
+	/// the status to check if the account submitted proof of execution
+	pub execution_status: bool,
+}
+
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
@@ -203,13 +212,11 @@ pub mod pallet {
 		_, Vec<IngestionCommand<T::AccountId, T::AssetId, T::Balance>>, ValueQuery
 	>;
 
-	/// map (owner -> cid) -> election winners
-	/// in this context, owner/cid consistutes a unique key
-	// TODO: we will need some type of verification so that cid's submitted by an owner during a session
-	// are unique
-	// -> to avoid that, we could potentially use (multiaddress/cid). This ensures uniqueness but requires some more work.
+	/// map (owner -> cid) -> (election winners, execution status)
+	/// TODO: this will be important when we actually reward the gateway nodes
+	/// we need to make sure they have actually submitted results
 	#[pallet::storage]
-	pub type Results<T: Config> = StorageDoubleMap<
+	pub type Nominees<T: Config> = StorageDoubleMap<
 		_,
 		Blake2_128Concat,
 		T::AccountId,
@@ -220,10 +227,23 @@ pub mod pallet {
 	>;
 
 	#[pallet::storage]
+	pub type CommandExecutionResults<T: Config> = StorageNMap<
+		_,
+		(storage::Key<Blake2_128Concat, T::AccountId>,
+		storage::Key<Blake2_128Concat, Vec<u8>>,
+		storage::Key<Blake2_128Concat, T::AccountId>),
+		bool,
+		OptionQuery,
+	>;
+
+	#[pallet::storage]
 	pub type StakeRestributionInterval<T: Config> = StorageValue<_, u32, ValueQuery>;
 
 	#[pallet::storage]
 	pub type ElectionInterval<T: Config> = StorageValue<_, u32, ValueQuery>;
+
+	#[pallet::storage]
+	pub type ExecutionResultInterval<T: Config> = StorageValue<_, u32, ValueQuery>;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -244,6 +264,7 @@ pub mod pallet {
 	pub struct GenesisConfig {
 		pub stake_redistribution_interval: u32,
 		pub election_interval: u32,
+		pub execution_result_interval: u32,
 	}
 
 	#[cfg(feature = "std")]
@@ -253,6 +274,7 @@ pub mod pallet {
 				// should at least be coprime
 				stake_redistribution_interval: 7,
 				election_interval: 11,
+				execution_result_interval: 17,
 			}
 		}
 	}
@@ -262,6 +284,7 @@ pub mod pallet {
 		fn build(&self) {
 			StakeRestributionInterval::<T>::put(self.stake_redistribution_interval);
 			ElectionInterval::<T>::put(self.election_interval);
+			ExecutionResultInterval::<T>::put(self.execution_result_interval);
 		}
 	}
 
@@ -276,16 +299,24 @@ pub mod pallet {
 				// now we report the results to the ipfs pallet
 				Self::tally_and_report_results();
 			}
+			if block_number % ExecutionResultInterval::<T>::get().into() == 0u32.into() {
+				// cleanup activities => reward + slashes
+			}
 		}
 	}
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
+
+		// TODO: should this take blocknumber as a parameter?
 		#[pallet::weight(100)]
 		pub fn lock_ingestion_queue(
 			origin: OriginFor<T>,
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
+			// should have strict conditions that allow this execution to happen
+			// - expected blocknumber
+			// - can only be executed once 
 			match T::ProxyProvider::bonded(who.clone()) {
 				Some(proxy) => {
 					let mut queue_clone = T::QueueProvider::ingestion_queue().clone();
@@ -308,6 +339,7 @@ pub mod pallet {
 			results: BTreeMap<u32, Vec<T::AccountId>>,
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
+			// TODO: need similar validations as lock queue extrinsic
 			match T::ProxyProvider::bonded(who.clone()) {
 				Some(proxy) => {
 					let mut no_votes = Vec::new();
@@ -315,7 +347,20 @@ pub mod pallet {
 						let p = pos as u32;
 						match results.get(&p) {
 							Some(winners) => {
-								Results::<T>::insert(a.owner.clone(), a.cid.clone(), winners);
+
+								// let mut nominees: Vec<Nominee<T::AccountId>> = Vec::new();
+								// for w in winners.iter() {
+								// 	nominees.push(Nominee{
+								// 		account: w.clone(),
+								// 		execution_status: false,
+								// 	});
+								// }	
+									
+								Nominees::<T>::insert(
+									a.owner.clone(), 
+									a.cid.clone(), 
+									winners,
+								);
 								Active::<T>::mutate(|active| {active.push(a)})
 							},
 							None => {
@@ -479,8 +524,10 @@ impl<T: Config> Pallet<T> {
 pub trait ElectionProvider<AccountId, AssetId, Balance> {
 	/// returns the collection of active commands
 	fn active() -> Vec<IngestionCommand<AccountId, AssetId, Balance>>;
-	/// returns the election results of the active commands
-	fn results(owner: AccountId, cid: Vec<u8>) -> Vec<AccountId>;
+	/// returns the election winners nominated to process the command
+	fn nominees(owner: AccountId, cid: Vec<u8>) -> Vec<AccountId>;
+	// report that an assigned command has been completed
+	fn report_execution(assignee: AccountId, owner: AccountId, cid: Vec<u8>);
 }
 
 impl<T: Config> ElectionProvider<T::AccountId, T::AssetId, T::Balance> for Pallet<T> {
@@ -488,7 +535,15 @@ impl<T: Config> ElectionProvider<T::AccountId, T::AssetId, T::Balance> for Palle
 		Active::<T>::get()
 	}
 
-	fn results(owner: T::AccountId, cid: Vec<u8>) -> Vec<T::AccountId> {
-		Results::<T>::get(owner, cid)
+	fn nominees(owner: T::AccountId, cid: Vec<u8>) -> Vec<T::AccountId> {
+		Nominees::<T>::get(owner, cid)
 	}
+
+	fn report_execution(assignee: T::AccountId, owner: T::AccountId, cid: Vec<u8>) {
+		// verify that the item is assigned to the assignee
+		if Nominees::<T>::get(owner, cid).contains(&assignee) {
+			// CommandExecutionResults
+		}
+	}
+
 }

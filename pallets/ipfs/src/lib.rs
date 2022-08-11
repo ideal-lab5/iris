@@ -245,6 +245,7 @@ pub mod pallet {
 		/// failure when calling the /config endpoint to update config
 		ConfigUpdateFailure,
 		InvalidSigner,
+		NotAuthorized,
 	}
 
 	#[pallet::hooks]
@@ -281,16 +282,21 @@ pub mod pallet {
         /// * `balance`: The balance (passed through from the create_storage_asset call)
         ///
         #[pallet::weight(100)]
-        pub fn submit_ipfs_add_results(
+        pub fn submit_ingestion_completed(
             origin: OriginFor<T>,
-			// admin: <T::Lookup as StaticLookup>::Source,
-			admin: T::AccountId,
-            cid: Vec<u8>,
-            id: T::AssetId,
-			dataspace_id: T::AssetId,
-            balance: T::Balance,
+			owner: T::AccountId,
+			cid: Vec<u8>,
         ) -> DispatchResult {
 			let who = ensure_signed(origin)?;
+			// verify that the origin of the tx is the winner for this ingestion cmd
+			ensure!(
+				T::ElectionProvider::nominees(owner.clone(), cid.clone()).contains(&who),
+				Error::<T>::NotAuthorized,
+			);
+			// now need to remove the item from the active queue
+			// T::ElectionProvider::complete();
+
+			// let asset_id = T::DataAssetCreator::create(owner, cid);
 			// TODO: Now we can check if the results being submitted
 			// are being submitted by the proper node, the winner of the election for this asset id
 			// let new_origin = system::RawOrigin::Signed(who.clone()).into();
@@ -496,71 +502,41 @@ impl<T: Config> Pallet<T> {
 				let active_cmds = T::ElectionProvider::active();
 				let len = active_cmds.len();
 				for cmd in active_cmds {
-					let winners = T::ElectionProvider::results(cmd.owner, cmd.cid.clone());
+					let owner = cmd.owner;
+					let cid = cmd.cid;
+					let winners = T::ElectionProvider::nominees(owner.clone(), cid.clone());
 					if winners.contains(&acct_id) {
 						// must disconnect from all current peers and makes oneself undiscoverable
 						// connect to multiaddress from request
 						ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
 						// ipfs get cid 
-						let response = ipfs::get(&cmd.cid.clone()).map_err(|_| Error::<T>::InvalidCID);
-						log::info!("Fetched data with CID {:?} from multiaddress {:?}", cmd.cid.clone(), cmd.multiaddress.clone());
+						let response = ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID);
+						log::info!("Fetched data with CID {:?} from multiaddress {:?}", cid.clone(), cmd.multiaddress.clone());
 						log::info!("{:?}", response);
 						// disconnect from multiaddress
 						ipfs::disconnect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
-						// reconnect to bootstrap node
+						// Q: is there some way we can verify that the data we received is from the correct maddr? is that needed?
+						let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+						if !signer.can_sign() {
+							log::error!(
+								"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+							);
+						}
+						let results = signer.send_signed_transaction(|_acct| { 
+							Call::submit_ingestion_completed{ 
+								owner: owner.clone(),
+								cid: cid.clone(),
+							}
+						});
+					
+						for (_, res) in &results {
+							match res {
+								Ok(()) => log::info!("Submitted results successfully"),
+								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+							}
+						}
 					}
 				}
-				// if there are no commands, then stop
-				// let commands = <IngestionProcessingQueue<T>>::get(&acct_id);
-				// let len = commands.len();
-				// if len != 0 {
-				// 	log::info!("IPFS: {} entr{} in the ingestion processing queue", len, if len == 1 { "y" } else { "ies" });
-				// }
-				// // // 1. loop over the commands that are assigned to that address (for now, just loop over all)
-				// for cmd in commands.into_iter() {
-				// 	// Fetch from OCC: TODO
-				// 	// this should let you fetch from another node's OCC
-				// 	// we will need to make an RPC call to fetch the data
-				// 	let data: Vec<u8> = offchain_client::interface::read(cmd.occ_id);
-				// 	// Add to IPFS
-				// 	let ipfs_add_request = ipfs::IpfsAddRequest{ bytes: data };
-				// 	match ipfs::add(ipfs_add_request) {
-				// 		Ok(res) => {
-				// 			// parse CID
-				// 			let res_u8 = res.body().collect::<Vec<u8>>();
-				// 			let body = sp_std::str::from_utf8(&res_u8).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-				// 			let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-				// 			let raw_cid = &json["Hash"];
-				// 			let cid = raw_cid.clone().as_str().unwrap().as_bytes().to_vec();
-				// 			// Report results on chain
-				// 			let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-				// 			if !signer.can_sign() {
-				// 				log::error!(
-				// 					"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-				// 				);
-				// 			}
-				// 			let results = signer.send_signed_transaction(|_account| { 
-				// 				Call::submit_ipfs_add_results{
-				// 					admin: cmd.owner.clone(),
-				// 					cid: cid.clone(),
-				// 					id: cmd.asset_id.clone(),
-				// 					dataspace_id: cmd.dataspace_id.clone(),
-				// 					balance: cmd.balance.clone(),
-				// 				}
-				// 			});
-						
-				// 			for (_, res) in &results {
-				// 				match res {
-				// 					Ok(()) => log::info!("Submitted results successfully"),
-				// 					Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-				// 				}
-				// 			}
-				// 		},
-				// 		Err(e) => {
-				// 			return Err(Error::<T>::IpfsError);
-				// 		},
-				// 	}
-				// }
 			},
 			None => {
 				// do nothing for now

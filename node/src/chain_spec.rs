@@ -183,6 +183,7 @@ fn testnet_genesis(
 		elections: ElectionsConfig {
 			stake_redistribution_interval: 7,
 			election_interval: 11,
+			execution_result_interval: 17,
 		},
 		session: SessionConfig {
 			keys: initial_authorities.iter().map(|x| {
