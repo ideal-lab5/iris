@@ -78,8 +78,6 @@ pub enum DataCommand<LookupSource, AssetId, Balance, AccountId> {
 pub struct AssetMetadata {
     /// the cid of some data
     pub cid: Vec<u8>,
-    /// the occ id of the data
-    pub occ_id: Vec<u8>,
 }
 
 pub use pallet::*;
@@ -151,18 +149,6 @@ pub mod pallet {
         ValueQuery,
     >;
 
-    // TODO: Combine the following maps into one using a custom struct
-    /// map asset id to admin account
-    #[pallet::storage]
-    #[pallet::getter(fn asset_class_ownership)]
-    pub(super) type AssetClassOwnership<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        Vec<T::AssetId>,
-        ValueQuery,
-    >;
-
     // map asset id to (cid, dataspaces)
     #[pallet::storage]
     #[pallet::getter(fn metadata)]
@@ -171,20 +157,6 @@ pub mod pallet {
         Blake2_128Concat,
         T::AssetId,
         AssetMetadata,
-    >;
-
-    /// Store the map associating a node with the assets to which they have access
-    ///
-    /// asset_owner_accountid -> CID -> asset_class_owner_accountid
-    /// 
-    #[pallet::storage]
-    #[pallet::getter(fn asset_access)]
-    pub(super) type AssetAccess<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        Vec<T::AssetId>,
-        ValueQuery,
     >;
 
 	#[pallet::event]
@@ -260,20 +232,26 @@ pub mod pallet {
         /// * `balance`: the balance the owner is willing to use to back the asset class which will be created
         ///
         #[pallet::weight(100)]
-        pub fn create(
+        pub fn request_ingestion(
             origin: OriginFor<T>,
             admin: <T::Lookup as StaticLookup>::Source,
             cid: Vec<u8>,
             multiaddress: Vec<u8>,
             estimated_size_gb: u128,
             #[pallet::compact] dataspace_id: T::AssetId,
-            #[pallet::compact] balance: T::Balance,
+            #[pallet::compact] reserve_balance: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // check that the caller has access to the dataspace
             let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
             let balance_primitive = TryInto::<u128>::try_into(balance).ok();
             ensure!(balance_primitive != Some(0), Error::<T>::DataSpaceNotAccessible);
+            // TODO: Generate a unique asset id
+            // let staking_id = b"12345678";
+            // TODO: I need to figure out how to make this unlockable given 
+            // a condition... basically unlockable by consensus? idk... 
+            // if the command is processed, this should be unlocked + distributed to gateways
+            // T::Currency::set_lock(STAKING_ID, &who, reserve_balance, WithdrawReasons::all());
             // push a new command to the ingestion queue
             <IngestionQueue<T>>::mutate(|q| {
                 q.push(
@@ -283,100 +261,12 @@ pub mod pallet {
                         multiaddress: multiaddress,
                         estimated_size_gb: estimated_size_gb,
                         dataspace_id: dataspace_id,
-                        balance,
+                        balance: reserve_balance,
                     }
                 );
             });
             Self::deposit_event(Event::CreatedIngestionRequest);
 			Ok(())
-        }
-
-        /// Only callable by the owner of the asset class 
-        /// mint a static number of assets (tickets) for some asset class
-        ///
-        /// * origin: should be the owner of the asset class
-        /// * beneficiary: the address to which the newly minted assets are assigned
-        /// * cid: a cid owned by the origin, for which an asset class exists
-        /// * amount: the number of tickets to mint
-        ///
-        #[pallet::weight(100)]
-        pub fn mint(
-            origin: OriginFor<T>,
-            beneficiary: <T::Lookup as StaticLookup>::Source,
-            #[pallet::compact] asset_id: T::AssetId,
-            #[pallet::compact] amount: T::Balance,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-
-            let new_origin = system::RawOrigin::Signed(who.clone()).into();
-            let beneficiary_accountid = T::Lookup::lookup(beneficiary.clone())?;
-            <pallet_assets::Pallet<T>>::mint(
-                new_origin, 
-                asset_id.clone(), 
-                beneficiary.clone(), 
-                amount
-            )?;
-            
-            <AssetAccess<T>>::mutate(beneficiary_accountid.clone(), |ids| { ids.push(asset_id.clone()) });
-        
-            Self::deposit_event(Event::AssetCreated(asset_id.clone()));
-            Ok(())
-        }
-
-        /// transfer an amount of owned assets to another address
-        /// 
-        /// * `target`: The target node to receive the assets
-        /// * `asset_id`: The asset id of the asset to be transferred
-        /// * `amount`: The amount of the asset to transfer
-        /// 
-        #[pallet::weight(100)]
-        pub fn transfer_asset(
-            origin: OriginFor<T>,
-            target: <T::Lookup as StaticLookup>::Source,
-            #[pallet::compact] asset_id: T::AssetId,
-            #[pallet::compact] amount: T::Balance,
-        ) -> DispatchResult {
-            let current_owner = ensure_signed(origin)?;
-
-            let new_origin = system::RawOrigin::Signed(current_owner.clone()).into();
-            <pallet_assets::Pallet<T>>::transfer(
-                new_origin,
-                asset_id.clone(),
-                target.clone(),
-                amount.clone(),
-            )?;
-            
-            let target_account = T::Lookup::lookup(target)?;
-            <AssetAccess<T>>::mutate(target_account.clone(), |ids| { ids.push(asset_id.clone()) });
-
-            Ok(())
-        }
-
-        /// Burns the amount of assets
-        /// 
-        /// * `target`: the target account to burn assets from
-        /// * `asset_id`: The asset id to burn
-        /// * `amount`: The amount of assets to burn
-        /// 
-        #[pallet::weight(100)]
-        pub fn burn(
-            origin: OriginFor<T>,
-            target: <T::Lookup as StaticLookup>::Source,
-            #[pallet::compact] asset_id: T::AssetId,
-            #[pallet::compact] amount: T::Balance,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            let new_origin = system::RawOrigin::Signed(who.clone()).into();
-            <pallet_assets::Pallet<T>>::burn(
-                new_origin,
-                asset_id.clone(),
-                target,
-                amount.clone(),
-            )?;
-
-            Self::deposit_event(Event::AssetBurned(asset_id.clone()));
-
-            Ok(())
         }
     
         /// Create a new asset class on behalf of an admin node
@@ -416,7 +306,6 @@ pub mod pallet {
             // insert into metadata for the asset class for the first time
             <Metadata<T>>::insert(id.clone(), AssetMetadata {
                 cid: cid.clone(),
-                occ_id: occ_id.clone(),
             });
             // TOOD: This should be its own queue
             // dispatch update dataspace metadata command
@@ -425,8 +314,6 @@ pub mod pallet {
                     id.clone(),
                     dataspace_id.clone(),
                 )));
-
-            <AssetClassOwnership<T>>::mutate(which_admin, |ids| { ids.push(id) });
             <AssetIds<T>>::mutate(|ids| ids.push(id.clone()));
             
             Self::deposit_event(Event::AssetClassCreated(id.clone()));
@@ -437,6 +324,12 @@ pub mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
+
+    // must be 8 characters
+    // fn generate_lock_identifier(id: u32) -> LockIdentifier {
+    //     let id_str = 
+    //     *b"";
+    // }
 
 }
 
@@ -453,4 +346,8 @@ impl<T: Config> QueueProvider<T::AccountId, T::AssetId, T::Balance> for Pallet<T
     fn kill_ingestion_queue() {
         IngestionQueue::<T>::kill();
     }
+}
+
+pub trait ExecutionResultHandler {
+
 }

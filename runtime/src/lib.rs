@@ -103,6 +103,11 @@ pub type Index = u32;
 /// A hash of some data used by the chain.
 pub type Hash = sp_core::H256;
 
+/// The asset unique asset id as a function of account id and cid
+/// keep in mind this implies there's a one-to-one relationship between
+/// account and cid ownership
+pub type AssetId = (AccountId, Vec<u8>);
+
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
 /// of data like extrinsics, allowing for them to continue syncing the network through upgrades
@@ -438,7 +443,7 @@ parameter_types! {
 impl pallet_assets::Config for Runtime {
 	type Event = Event;
 	type Balance = Balance;
-	type AssetId = u32;
+	type AssetId = AssetId;
 	type Currency = Balances;
 	type ForceOrigin = EnsureRoot<AccountId>;
 	type AssetDeposit = AssetDeposit;
@@ -526,7 +531,7 @@ impl pallet_ipfs::Config for Runtime {
 impl pallet_elections::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
-	type AssetId = u32;
+	type AssetId = AssetId;
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type Balance = Balance;
 	type ProxyProvider = Proxy;
@@ -992,8 +997,8 @@ impl ChainExtension<Runtime> for IrisExtension {
 				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u128) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-                crate::DataAssets::transfer_asset(
-					origin, sp_runtime::MultiAddress::Id(target), asset_id, amount,
+                crate::Assets::transfer(
+					origin, asset_id, sp_runtime::MultiAddress::Id(target), amount,
 				)?;
 				Ok(RetVal::Converging(func_id))
             },
@@ -1003,8 +1008,8 @@ impl ChainExtension<Runtime> for IrisExtension {
 				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u128) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-                crate::DataAssets::mint(
-					origin, sp_runtime::MultiAddress::Id(target), asset_id, amount,
+                crate::Assets::mint(
+					origin, asset_id, sp_runtime::MultiAddress::Id(target), amount,
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},
@@ -1014,8 +1019,8 @@ impl ChainExtension<Runtime> for IrisExtension {
 				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u128) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-                crate::DataAssets::burn(
-					origin, sp_runtime::MultiAddress::Id(target), asset_id, amount,
+                crate::Assets::burn(
+					origin, asset_id, sp_runtime::MultiAddress::Id(target), amount,
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},
