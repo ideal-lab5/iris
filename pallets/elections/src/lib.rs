@@ -73,7 +73,7 @@ use sp_runtime::{
 	traits::StaticLookup,
 };
 
-use pallet_data_assets::QueueProvider;
+use pallet_data_assets::{QueueProvider, ResultHandler};
 use pallet_proxy::ProxyProvider;
 use iris_primitives::IngestionCommand;
 
@@ -152,8 +152,7 @@ pub mod pallet {
 	};
 
 	#[pallet::config]
-	pub trait Config: CreateSignedTransaction<Call<Self>> + frame_system::Config
-	{
+	pub trait Config: CreateSignedTransaction<Call<Self>> + frame_system::Config {
 		/// The Event type.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 		/// the overarching call type
@@ -180,6 +179,9 @@ pub mod pallet {
 			+ TypeInfo;
 		/// provide queued requests to vote on
 		type QueueProvider: pallet_data_assets::QueueProvider<Self::AccountId, Self::AssetId, Self::Balance>;
+		/// handle submission of results to create a new asset class
+		type ResultHandler: pallet_data_assets::ResultHandler<Self, Self::AssetId, Self::Balance>;
+		/// information on gateway nodes
 		type ProxyProvider: pallet_proxy::ProxyProvider<Self::AccountId, Self::Balance>;
 	}
 
@@ -233,7 +235,7 @@ pub mod pallet {
 		storage::Key<Blake2_128Concat, Vec<u8>>,
 		storage::Key<Blake2_128Concat, T::AccountId>),
 		bool,
-		OptionQuery,
+		ValueQuery,
 	>;
 
 	#[pallet::storage]
@@ -301,6 +303,7 @@ pub mod pallet {
 			}
 			if block_number % ExecutionResultInterval::<T>::get().into() == 0u32.into() {
 				// cleanup activities => reward + slashes
+				Self::cleanup();
 			}
 		}
 	}
@@ -346,16 +349,7 @@ pub mod pallet {
 					for (pos, a) in Pending::<T>::get().into_iter().enumerate() {
 						let p = pos as u32;
 						match results.get(&p) {
-							Some(winners) => {
-
-								// let mut nominees: Vec<Nominee<T::AccountId>> = Vec::new();
-								// for w in winners.iter() {
-								// 	nominees.push(Nominee{
-								// 		account: w.clone(),
-								// 		execution_status: false,
-								// 	});
-								// }	
-									
+							Some(winners) => {	
 								Nominees::<T>::insert(
 									a.owner.clone(), 
 									a.cid.clone(), 
@@ -368,13 +362,11 @@ pub mod pallet {
 							}
 						};
 					}
-					// set active to only contains elements with no votes
-					// wait.. this isn't quite right...
 					Pending::<T>::kill();
 					Pending::<T>::mutate(|pending| {
 						pending.append(&mut no_votes)
 					});
-					// emit event
+					// emit event?
 					return Ok(());
 				},
 				// emit event or error?
@@ -482,6 +474,17 @@ impl<T: Config> Pallet<T> {
 		}
 	}
 
+	fn cleanup() {
+		// loop over CommandExecutionResults and remove any commands
+		// that have already been processed from the 'Active' queue
+		// further, for processed commands, execute the executionresulthandler
+		// in our case, we want to trigger the creation of an asset class
+		// assuming all nodes agree on size and order of the active queue
+		// we can just deterministically create asset ids based on its size! 
+		// that's actually pretty neat
+		//
+	}
+
 	/// Allocate a portion of active stake to a reserved pool and associate it with some
 	/// ingestion request in the Active queue.
 	/// 
@@ -520,17 +523,26 @@ impl<T: Config> Pallet<T> {
 	}
 }	
 
+use frame_system::{
+    pallet_prelude::*,
+};
+
 /// a trait to share election information with other modules
-pub trait ElectionProvider<AccountId, AssetId, Balance> {
+pub trait ElectionProvider<T: frame_system::Config, AccountId, AssetId, Balance> {
 	/// returns the collection of active commands
 	fn active() -> Vec<IngestionCommand<AccountId, AssetId, Balance>>;
 	/// returns the election winners nominated to process the command
 	fn nominees(owner: AccountId, cid: Vec<u8>) -> Vec<AccountId>;
 	// report that an assigned command has been completed
-	fn report_execution(assignee: AccountId, owner: AccountId, cid: Vec<u8>);
+	fn report_execution(
+		origin: OriginFor<T>, 
+		owner: AccountId, 
+		cid: Vec<u8>, 
+		asset_class_min_balance: Balance
+	) -> DispatchResult;
 }
 
-impl<T: Config> ElectionProvider<T::AccountId, T::AssetId, T::Balance> for Pallet<T> {
+impl<T: Config> ElectionProvider<T, T::AccountId, T::AssetId, T::Balance> for Pallet<T> {
 	fn active() -> Vec<IngestionCommand<T::AccountId, T::AssetId, T::Balance>> {
 		Active::<T>::get()
 	}
@@ -539,11 +551,31 @@ impl<T: Config> ElectionProvider<T::AccountId, T::AssetId, T::Balance> for Palle
 		Nominees::<T>::get(owner, cid)
 	}
 
-	fn report_execution(assignee: T::AccountId, owner: T::AccountId, cid: Vec<u8>) {
+	fn report_execution(
+		origin: OriginFor<T>,
+		owner: T::AccountId, 
+		cid: Vec<u8>,
+		asset_class_min_balance: T::Balance,
+	) -> DispatchResult {
+		let who = ensure_signed(origin)?;
 		// verify that the item is assigned to the assignee
-		if Nominees::<T>::get(owner, cid).contains(&assignee) {
-			// CommandExecutionResults
+		if Nominees::<T>::get(owner.clone(), cid.clone()).contains(&who) {
+			// want to: remove from Active... or should that be in another loop? 
+			// A cleanup loop
+			CommandExecutionResults::<T>::insert(
+				(owner.clone(), cid.clone(), who.clone()), true
+			);
+			let new_origin = system::RawOrigin::Signed(who.clone()).into();
+			let source = T::Lookup::unlookup(owner.clone());
+
+			T::ResultHandler::create_asset_class(
+				new_origin,
+				source,
+				cid.clone(),
+				Zero::zero(),
+			);
 		}
+		Ok(())
 	}
 
 }

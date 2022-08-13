@@ -198,7 +198,8 @@ pub mod pallet {
 			+ HasCompact
 			+ MaybeSerializeDeserialize
 			+ MaxEncodedLen
-			+ TypeInfo;
+			+ TypeInfo
+			+ AtLeast32BitUnsigned;
 
 		/// The currency mechanism.
 		type Currency: ReservableCurrency<Self::AccountId>;

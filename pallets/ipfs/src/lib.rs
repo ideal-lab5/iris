@@ -166,7 +166,7 @@ pub mod pallet {
 		/// the currency used by the pallet
 		type Currency: LockableCurrency<Self::AccountId>;
 		type ProxyProvider: pallet_proxy::ProxyProvider<Self::AccountId, Self::Balance>;
-		type ElectionProvider: pallet_elections::ElectionProvider<Self::AccountId, Self::AssetId, Self::Balance>;
+		type ElectionProvider: pallet_elections::ElectionProvider<Self, Self::AccountId, Self::AssetId, Self::Balance>;
 		// TODO: this should be read from runtime storage instead
 		#[pallet::constant]
 		type NodeConfigBlockDuration: Get<u32>;
@@ -286,6 +286,7 @@ pub mod pallet {
             origin: OriginFor<T>,
 			owner: T::AccountId,
 			cid: Vec<u8>,
+			asset_class_min_balance: T::Balance,
         ) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			// verify that the origin of the tx is the winner for this ingestion cmd
@@ -293,22 +294,9 @@ pub mod pallet {
 				T::ElectionProvider::nominees(owner.clone(), cid.clone()).contains(&who),
 				Error::<T>::NotAuthorized,
 			);
+			let new_origin = system::RawOrigin::Signed(who.clone()).into();
 			// now need to remove the item from the active queue
-			// T::ElectionProvider::complete();
-
-			// let asset_id = T::DataAssetCreator::create(owner, cid);
-			// TODO: Now we can check if the results being submitted
-			// are being submitted by the proper node, the winner of the election for this asset id
-			// let new_origin = system::RawOrigin::Signed(who.clone()).into();
-			// creates the asset class
-            // <pallet_data_assets::Pallet<T>>::submit_ipfs_add_results(
-			// 	new_origin,
-			// 	admin,
-			// 	cid,
-			// 	dataspace_id,
-			// 	id,
-			// 	balance,
-			// )?;
+			T::ElectionProvider::report_execution(new_origin, owner.clone(), cid.clone(), asset_class_min_balance);
             Ok(())
         }
 
@@ -439,24 +427,30 @@ impl<T: Config> Pallet<T> {
 						ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure);
 						let stat_response = ipfs::repo_stat().map_err(|_| Error::<T>::IpfsNotAvailable).unwrap();
 						// 2. get actual available storage space
-						let actual_storage: u128 = stat_response["SizeStat.StorageMax"].clone().as_u64().unwrap().into();
-						// 3. report result on chain
-						let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-						if !signer.can_sign() {
-							log::error!(
-								"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-							);
-						}
-						let results = signer.send_signed_transaction(|_account| { 
-							Call::submit_config_complete{
-								reported_storage_size: actual_storage,
-							}
-						});
+						match stat_response["SizeStat.StorageMax"].clone().as_u64() {
+							Some(actual_storage) => {
+								// 3. report result on chain
+								let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+								if !signer.can_sign() {
+									log::error!(
+										"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+									);
+								}
+								let results = signer.send_signed_transaction(|_account| { 
+									Call::submit_config_complete{
+										reported_storage_size: actual_storage.into(),
+									}
+								});
 
-						for (_, res) in &results {
-							match res {
-								Ok(()) => log::info!("Submitted results successfully"),
-								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+								for (_, res) in &results {
+									match res {
+										Ok(()) => log::info!("Submitted results successfully"),
+										Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+									}
+								}
+							},
+							None => {
+								// do nothing for now
 							}
 						}
 					},
@@ -526,6 +520,7 @@ impl<T: Config> Pallet<T> {
 							Call::submit_ingestion_completed{ 
 								owner: owner.clone(),
 								cid: cid.clone(),
+								asset_class_min_balance: cmd.balance,
 							}
 						});
 					

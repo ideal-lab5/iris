@@ -2420,6 +2420,7 @@ name = "iris-primitives"
 version = "1.0.0"
 dependencies = [
  "bitflags",
+ "frame-support",
  "parity-scale-codec",
  "scale-info",
  "serde",
@@ -2441,6 +2442,7 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "frame-try-runtime",
  "hex-literal",
+ "iris-primitives",
  "log",
  "pallet-assets",
  "pallet-aura",

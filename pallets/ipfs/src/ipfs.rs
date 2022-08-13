@@ -80,7 +80,7 @@ impl AsRef<str> for Endpoint {
             Endpoint::ConfigUpdate => "http://127.0.0.1:5001/api/v0/config?",
             Endpoint::Connect => "http://127.0.0.1:5001/api/v0/swarm/connect?",
             Endpoint::Disconnect => "http://127.0.0.1:5001/api/v0/swarm/disconnect?",
-            Endpoint::Get => "http://127.0.0.1:5001/api/v0/get",
+            Endpoint::Get => "http://127.0.0.1:5001/api/v0/get?",
             Endpoint::Identity => "http://127.0.0.1:5001/api/v0/id",
             Endpoint::Stat => "http://127.0.0.1:5001/api/v0/repo/stat",
 			Endpoint::Other(m) => m,

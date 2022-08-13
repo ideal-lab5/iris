@@ -34,10 +34,11 @@
 //!
 
 use scale_info::TypeInfo;
-use codec::{Encode, Decode};
+use codec::{Encode, Decode, HasCompact};
 use frame_support::ensure;
+use frame_support::pallet_prelude::*;
 use frame_system::{
-    self as system, ensure_signed,
+    self as system, ensure_signed, pallet_prelude::*,
 };
 
 use sp_core::{
@@ -47,7 +48,7 @@ use sp_core::{
 
 use sp_runtime::{
     RuntimeDebug,
-    traits::StaticLookup,
+    traits::{AtLeast32BitUnsigned, StaticLookup, One},
 };
 use sp_std::{
     prelude::*,
@@ -120,10 +121,12 @@ pub mod pallet {
     /// A queue of data to publish or obtain on IPFS.
     /// Commands are processed by offchain workers (of validators) in the iris-session pallet
 	#[pallet::storage]
-    #[pallet::getter(fn ingestion_queue)]
 	pub(super) type IngestionQueue<T: Config> = StorageValue<
         _, Vec<IngestionCommand<T::AccountId, T::AssetId, T::Balance>>, ValueQuery,
     >;
+
+    #[pallet::storage]
+    pub(super) type NextAssetId<T: Config> = StorageValue<_, T::AssetId, ValueQuery>;
 
 	#[pallet::storage]
     #[pallet::getter(fn ejection_queue)]
@@ -205,6 +208,28 @@ pub mod pallet {
         DataSpaceNotAccessible,
 	}
 
+    #[pallet::genesis_config]
+    pub struct GenesisConfig {
+        pub initial_asset_id: u32,
+    }
+
+    #[cfg(feature = "std")]
+    impl Default for GenesisConfig {
+        fn default() -> Self {
+            GenesisConfig {
+                initial_asset_id: 2,
+            }
+        }
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig {
+        fn build(&self) {
+            let asset_id = TryInto::<T::AssetId>::try_into(self.initial_asset_id).ok().unwrap();
+            NextAssetId::<T>::put(asset_id);
+        }
+    }
+
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
          fn on_initialize(block_number: T::BlockNumber) -> Weight {
@@ -243,9 +268,9 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // check that the caller has access to the dataspace
-            let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
-            let balance_primitive = TryInto::<u128>::try_into(balance).ok();
-            ensure!(balance_primitive != Some(0), Error::<T>::DataSpaceNotAccessible);
+            // let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
+            // let balance_primitive = TryInto::<u128>::try_into(balance).ok();
+            // ensure!(balance_primitive != Some(0), Error::<T>::DataSpaceNotAccessible);
             // TODO: Generate a unique asset id
             // let staking_id = b"12345678";
             // TODO: I need to figure out how to make this unlockable given 
@@ -296,13 +321,13 @@ pub mod pallet {
         ) -> DispatchResult {
             ensure_signed(origin)?;
             let which_admin = T::Lookup::lookup(admin.clone())?;
-            let new_origin = system::RawOrigin::Signed(which_admin.clone()).into();
+            // let new_origin = system::RawOrigin::Signed(which_admin.clone()).into();
 
-            <pallet_assets::Pallet<T>>::create(new_origin, id.clone(), admin.clone(), balance)
-                .map_err(|_| Error::<T>::CantCreateAssetClass)?;
+            // <pallet_assets::Pallet<T>>::create(new_origin, id.clone(), admin.clone(), balance)
+            //     .map_err(|_| Error::<T>::CantCreateAssetClass)?;
 
-            let mut pending_dataspace_vec = Vec::new();
-            pending_dataspace_vec.push(dataspace_id.clone());
+            // let mut pending_dataspace_vec = Vec::new();
+            // pending_dataspace_vec.push(dataspace_id.clone());
             // insert into metadata for the asset class for the first time
             <Metadata<T>>::insert(id.clone(), AssetMetadata {
                 cid: cid.clone(),
@@ -314,7 +339,7 @@ pub mod pallet {
                     id.clone(),
                     dataspace_id.clone(),
                 )));
-            <AssetIds<T>>::mutate(|ids| ids.push(id.clone()));
+            // <AssetIds<T>>::mutate(|ids| ids.push(id.clone()));
             
             Self::deposit_event(Event::AssetClassCreated(id.clone()));
             
@@ -324,12 +349,31 @@ pub mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
+    fn create_asset_class(
+        origin: OriginFor<T>,
+        admin: <T::Lookup as StaticLookup>::Source,
+        asset_id: T::AssetId,
+        cid: Vec<u8>,
+        balance: T::Balance,
+    ) -> DispatchResult {
+        // <pallet_assets::Pallet<T>>::create(origin, asset_id.clone(), admin.clone(), balance)
+        //         .map_err(|_| Error::<T>::CantCreateAssetClass)?;
+        <Metadata<T>>::insert(asset_id.clone(), AssetMetadata {
+            cid: cid.clone(),
+        });
+        Ok(())
+    }
 
-    // must be 8 characters
-    // fn generate_lock_identifier(id: u32) -> LockIdentifier {
-    //     let id_str = 
-    //     *b"";
-    // }
+    // a super simple asset id generator and mutator
+    // needs to be modified so we don't have duplicate asset ids
+    fn next_asset_id() -> T::AssetId {
+        let mut next = NextAssetId::<T>::get();
+        let primitive = TryInto::<u32>::try_into(next).ok().unwrap();
+        let new_id = primitive + 1u32;
+        let new_next_asset_id = TryInto::<T::AssetId>::try_into(primitive).ok().unwrap();
+        NextAssetId::<T>::mutate(|id| *id = new_next_asset_id);
+        next
+    }
 
 }
 
@@ -348,6 +392,44 @@ impl<T: Config> QueueProvider<T::AccountId, T::AssetId, T::Balance> for Pallet<T
     }
 }
 
-pub trait ExecutionResultHandler {
+use frame_system::Origin;
+use frame_system::{
+    pallet_prelude::*,
+};
 
+/// The result handler allows other modules to submit "execution"
+/// of commands added to the queue
+/// honestly at this point... it almost seems like it'd make more sense to bake all this
+/// into the consensus mechanism itself, i.e. babe/aura
+/// basically I'm implementing a parallel consensus mechanism to determine who gets to proxy requests
+pub trait ResultHandler<T: frame_system::Config, AssetId, Balance> {
+    fn create_asset_class(
+        origin: OriginFor<T>,
+        admin: <T::Lookup as StaticLookup>::Source,
+        cid: Vec<u8>,
+        balance: Balance,
+    ) -> DispatchResult;
+}
+
+impl<T: Config> ResultHandler<T, T::AssetId, T::Balance> for Pallet<T> {
+    // this is just an extrinsic...
+    fn create_asset_class(
+        origin: OriginFor<T>,
+        admin: <T::Lookup as StaticLookup>::Source,
+        cid: Vec<u8>,
+        balance: T::Balance,
+    ) -> DispatchResult {
+        let asset_id = Self::next_asset_id();
+        log::info!("CREATING NEW ASSET CLASS WITH ID: {:?}", asset_id);
+        <pallet_assets::Pallet<T>>::create(origin, asset_id.clone(), admin.clone(), balance)
+            .map_err(|e| {
+                log::info!("Failed to create asset class due to error: {:?}", e);
+                return Error::<T>::CantCreateAssetClass;
+            })?;
+        log::info!("Writing to Metadata");
+        <Metadata<T>>::insert(asset_id.clone(), AssetMetadata {
+            cid: cid.clone(),
+        });
+        Ok(())
+    }
 }

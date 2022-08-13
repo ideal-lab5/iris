@@ -43,6 +43,8 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use pallet_contracts::{weights::WeightInfo, DefaultContractAccessWeight};
+use codec::{Encode, Decode};
+use sp_runtime::traits::StaticLookup;
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
@@ -103,10 +105,8 @@ pub type Index = u32;
 /// A hash of some data used by the chain.
 pub type Hash = sp_core::H256;
 
-/// The asset unique asset id as a function of account id and cid
-/// keep in mind this implies there's a one-to-one relationship between
-/// account and cid ownership
-pub type AssetId = (AccountId, Vec<u8>);
+/// The unique asset id
+pub type AssetId = u32;
 
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
@@ -137,8 +137,8 @@ pub mod opaque {
 //   https://docs.substrate.io/v3/runtime/upgrades#runtime-versioning
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-	spec_name: create_runtime_str!("node-template"),
-	impl_name: create_runtime_str!("node-template"),
+	spec_name: create_runtime_str!("iris-node"),
+	impl_name: create_runtime_str!("iris-node"),
 	authoring_version: 1,
 	// The version of the runtime specification. A full node will not attempt to use its native
 	//   runtime in substitute for the on-chain Wasm runtime unless all of `spec_name`,
@@ -536,10 +536,8 @@ impl pallet_elections::Config for Runtime {
 	type Balance = Balance;
 	type ProxyProvider = Proxy;
 	type QueueProvider = DataAssets;
+	type ResultHandler = DataAssets;
 }
-
-use codec::Encode;
-use sp_runtime::traits::StaticLookup;
 
 impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Runtime
 where
