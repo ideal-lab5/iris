@@ -533,6 +533,9 @@ pub trait ElectionProvider<T: frame_system::Config, AccountId, AssetId, Balance>
 	fn active() -> Vec<IngestionCommand<AccountId, AssetId, Balance>>;
 	/// returns the election winners nominated to process the command
 	fn nominees(owner: AccountId, cid: Vec<u8>) -> Vec<AccountId>;
+	/// returns if a node has submitted execution results
+	/// for some specific ingestion command
+	fn execution_results(owner: AccountId, cid: Vec<u8>, executor: AccountId) -> bool;
 	// report that an assigned command has been completed
 	fn report_execution(
 		origin: OriginFor<T>, 
@@ -551,6 +554,10 @@ impl<T: Config> ElectionProvider<T, T::AccountId, T::AssetId, T::Balance> for Pa
 		Nominees::<T>::get(owner, cid)
 	}
 
+	fn execution_results(owner: T::AccountId, cid: Vec<u8>, executor: T::AccountId) -> bool {
+		CommandExecutionResults::<T>::get((owner, cid, executor))
+	}
+
 	fn report_execution(
 		origin: OriginFor<T>,
 		owner: T::AccountId, 
@@ -560,19 +567,18 @@ impl<T: Config> ElectionProvider<T, T::AccountId, T::AssetId, T::Balance> for Pa
 		let who = ensure_signed(origin)?;
 		// verify that the item is assigned to the assignee
 		if Nominees::<T>::get(owner.clone(), cid.clone()).contains(&who) {
-			// want to: remove from Active... or should that be in another loop? 
-			// A cleanup loop
 			CommandExecutionResults::<T>::insert(
 				(owner.clone(), cid.clone(), who.clone()), true
 			);
+			// remove command from active
+			// clear weighted vote
 			let new_origin = system::RawOrigin::Signed(who.clone()).into();
 			let source = T::Lookup::unlookup(owner.clone());
-
 			T::ResultHandler::create_asset_class(
 				new_origin,
 				source,
 				cid.clone(),
-				Zero::zero(),
+				asset_class_min_balance,
 			);
 		}
 		Ok(())

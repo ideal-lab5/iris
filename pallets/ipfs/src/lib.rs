@@ -500,34 +500,38 @@ impl<T: Config> Pallet<T> {
 					let cid = cmd.cid;
 					let winners = T::ElectionProvider::nominees(owner.clone(), cid.clone());
 					if winners.contains(&acct_id) {
-						// must disconnect from all current peers and makes oneself undiscoverable
-						// connect to multiaddress from request
-						ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
-						// ipfs get cid 
-						let response = ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID);
-						log::info!("Fetched data with CID {:?} from multiaddress {:?}", cid.clone(), cmd.multiaddress.clone());
-						log::info!("{:?}", response);
-						// disconnect from multiaddress
-						ipfs::disconnect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
-						// Q: is there some way we can verify that the data we received is from the correct maddr? is that needed?
-						let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-						if !signer.can_sign() {
-							log::error!(
-								"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-							);
-						}
-						let results = signer.send_signed_transaction(|_acct| { 
-							Call::submit_ingestion_completed{ 
-								owner: owner.clone(),
-								cid: cid.clone(),
-								asset_class_min_balance: cmd.balance,
+						// check if it's already been processed
+						// only execute if results not already submitted
+						if T::ElectionProvider::execution_results(owner.clone(), cid.clone(), acct_id.clone()) == false {
+							// must disconnect from all current peers and makes oneself undiscoverable
+							// connect to multiaddress from request
+							ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
+							// ipfs get cid 
+							let response = ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID);
+							log::info!("Fetched data with CID {:?} from multiaddress {:?}", cid.clone(), cmd.multiaddress.clone());
+							log::info!("{:?}", response);
+							// disconnect from multiaddress
+							ipfs::disconnect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
+							// Q: is there some way we can verify that the data we received is from the correct maddr? is that needed?
+							let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+							if !signer.can_sign() {
+								log::error!(
+									"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+								);
 							}
-						});
-					
-						for (_, res) in &results {
-							match res {
-								Ok(()) => log::info!("Submitted results successfully"),
-								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+							let results = signer.send_signed_transaction(|_acct| { 
+								Call::submit_ingestion_completed{ 
+									owner: owner.clone(),
+									cid: cid.clone(),
+									asset_class_min_balance: cmd.balance,
+								}
+							});
+						
+							for (_, res) in &results {
+								match res {
+									Ok(()) => log::info!("Submitted results successfully"),
+									Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+								}
 							}
 						}
 					}

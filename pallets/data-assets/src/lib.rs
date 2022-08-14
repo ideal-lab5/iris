@@ -370,7 +370,7 @@ impl<T: Config> Pallet<T> {
         let mut next = NextAssetId::<T>::get();
         let primitive = TryInto::<u32>::try_into(next).ok().unwrap();
         let new_id = primitive + 1u32;
-        let new_next_asset_id = TryInto::<T::AssetId>::try_into(primitive).ok().unwrap();
+        let new_next_asset_id = TryInto::<T::AssetId>::try_into(new_id).ok().unwrap();
         NextAssetId::<T>::mutate(|id| *id = new_next_asset_id);
         next
     }
