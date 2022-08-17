@@ -34,9 +34,8 @@
 //!
 
 use scale_info::TypeInfo;
-use codec::{Encode, Decode, HasCompact};
+use codec::{Encode, Decode};
 use frame_support::{
-    ensure,
     pallet_prelude::*,
     traits::{Currency, LockableCurrency},
 };
@@ -44,14 +43,9 @@ use frame_system::{
     self as system, ensure_signed, pallet_prelude::*,
 };
 
-use sp_core::{
-    offchain::{StorageKind},
-    Bytes,
-};
-
 use sp_runtime::{
     RuntimeDebug,
-    traits::{AtLeast32BitUnsigned, StaticLookup, One},
+    traits::StaticLookup,
 };
 use sp_std::{
     prelude::*,
@@ -102,10 +96,7 @@ mod benchmarking;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-	use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
-	use frame_system::{
-        pallet_prelude::*,
-    };
+	use frame_support::dispatch::DispatchResult;
 	use sp_std::{
         str,
     };
@@ -263,7 +254,6 @@ pub mod pallet {
         #[pallet::weight(100)]
         pub fn request_ingestion(
             origin: OriginFor<T>,
-            admin: <T::Lookup as StaticLookup>::Source,
             gateway: <T::Lookup as StaticLookup>::Source,
             gateway_reserve: BalanceOf<T>,
             cid: Vec<u8>,
@@ -304,7 +294,7 @@ impl<T: Config> Pallet<T> {
     // a super simple asset id generator and mutator
     // needs to be modified so we don't have duplicate asset ids
     fn next_asset_id() -> T::AssetId {
-        let mut next = NextAssetId::<T>::get();
+        let next = NextAssetId::<T>::get();
         let primitive = TryInto::<u32>::try_into(next).ok().unwrap();
         let new_id = primitive + 1u32;
         let new_next_asset_id = TryInto::<T::AssetId>::try_into(new_id).ok().unwrap();
@@ -323,11 +313,6 @@ impl<T: Config> QueueProvider<T::AccountId, T::Balance> for Pallet<T> {
         IngestionCommands::<T>::get(gateway)
     }
 }
-
-use frame_system::Origin;
-use frame_system::{
-    pallet_prelude::*,
-};
 
 /// The result handler allows other modules to submit "execution"
 /// of commands added to the queue
