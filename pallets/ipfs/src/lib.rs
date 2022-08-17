@@ -78,7 +78,7 @@ use sp_runtime::{
 use scale_info::prelude::format;
 use iris_primitives::IngestionCommand;
 use pallet_proxy::ProxyProvider;
-use pallet_elections::ElectionProvider;
+use pallet_data_assets::{ResultsHandler, QueueProvider};
 use pallet_ipfs_primitives::{IpfsResult, IpfsError};
 use offchain_client::interface;
 
@@ -165,8 +165,12 @@ pub mod pallet {
 		/// Number of blocks between checks for ipfs daemon availability and configuration
 		/// the currency used by the pallet
 		type Currency: LockableCurrency<Self::AccountId>;
+		/// provides proxy nodes
 		type ProxyProvider: pallet_proxy::ProxyProvider<Self::AccountId, Self::Balance>;
-		type ElectionProvider: pallet_elections::ElectionProvider<Self, Self::AccountId, Self::AssetId, Self::Balance>;
+		/// provide queued requests to vote on
+		type QueueProvider: pallet_data_assets::QueueProvider<Self::AccountId, Self::Balance>;
+		/// handle results after executing a command
+		type ResultsHandler: pallet_data_assets::ResultsHandler<Self, Self::AccountId, Self::Balance>;
 		// TODO: this should be read from runtime storage instead
 		#[pallet::constant]
 		type NodeConfigBlockDuration: Get<u32>;
@@ -199,10 +203,6 @@ pub mod pallet {
 	pub(super) type Stats<T: Config> = StorageMap<
 		_, Blake2_128Concat, T::AccountId, u128, ValueQuery,
 	>;
-
-	/// map an authorized node to the set of gateways that will allow it to make calls
-	#[pallet::storage]
-	pub type IngestionProcessingQueue<T: Config> = StorageMap<_, Blake2_128Concat, IngestionCommand<T::AccountId, T::AssetId, T::Balance>, Vec<T::AccountId>, ValueQuery>;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -284,19 +284,14 @@ pub mod pallet {
         #[pallet::weight(100)]
         pub fn submit_ingestion_completed(
             origin: OriginFor<T>,
-			owner: T::AccountId,
-			cid: Vec<u8>,
-			asset_class_min_balance: T::Balance,
+			cmd: IngestionCommand<T::AccountId, T::Balance>,
         ) -> DispatchResult {
 			let who = ensure_signed(origin)?;
-			// verify that the origin of the tx is the winner for this ingestion cmd
-			ensure!(
-				T::ElectionProvider::nominees(owner.clone(), cid.clone()).contains(&who),
-				Error::<T>::NotAuthorized,
-			);
+			let queued_commands = T::QueueProvider::ingestion_requests(who.clone());
+			ensure!(queued_commands.contains(&cmd), Error::<T>::NotAuthorized);
 			let new_origin = system::RawOrigin::Signed(who.clone()).into();
-			// now need to remove the item from the active queue
-			T::ElectionProvider::report_execution(new_origin, owner.clone(), cid.clone(), asset_class_min_balance);
+			T::ResultsHandler::create_asset_class(new_origin, cmd)?;
+			// emit event
             Ok(())
         }
 
@@ -484,6 +479,7 @@ impl<T: Config> Pallet<T> {
 	/// it finally sends a signed tx to create an asset class on behalf of the caller
 	fn handle_ingestion_queue() -> Result<(), Error<T>> {
 		// get IPFS node id and from there get the associated substrate address
+		// TODO: we can store this value in local storage
 		let id_json = Self::fetch_identity_json()?;
 		// get pubkey
 		let id = &id_json["ID"];
@@ -491,48 +487,38 @@ impl<T: Config> Pallet<T> {
 		match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
 			// When node elections implemented => acct id will be used to get assigned reqs
 			Some(acct_id) => {
-				// fetch results from electionprovider and iterate over results
-				// process commands assigned to me
-				let active_cmds = T::ElectionProvider::active();
-				let len = active_cmds.len();
-				for cmd in active_cmds {
-					let owner = cmd.owner;
-					let cid = cmd.cid;
-					let winners = T::ElectionProvider::nominees(owner.clone(), cid.clone());
-					if winners.contains(&acct_id) {
-						// check if it's already been processed
-						// only execute if results not already submitted
-						if T::ElectionProvider::execution_results(owner.clone(), cid.clone(), acct_id.clone()) == false {
-							// must disconnect from all current peers and makes oneself undiscoverable
-							// connect to multiaddress from request
-							ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
-							// ipfs get cid 
-							let response = ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID);
-							log::info!("Fetched data with CID {:?} from multiaddress {:?}", cid.clone(), cmd.multiaddress.clone());
-							log::info!("{:?}", response);
-							// disconnect from multiaddress
-							ipfs::disconnect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
-							// Q: is there some way we can verify that the data we received is from the correct maddr? is that needed?
-							let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-							if !signer.can_sign() {
-								log::error!(
-									"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-								);
-							}
-							let results = signer.send_signed_transaction(|_acct| { 
-								Call::submit_ingestion_completed{ 
-									owner: owner.clone(),
-									cid: cid.clone(),
-									asset_class_min_balance: cmd.balance,
-								}
-							});
-						
-							for (_, res) in &results {
-								match res {
-									Ok(()) => log::info!("Submitted results successfully"),
-									Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-								}
-							}
+				let queued_commands = T::QueueProvider::ingestion_requests(acct_id);
+				for cmd in queued_commands.iter() {
+					let owner = cmd.owner.clone();
+					let cid = cmd.cid.clone();
+					// must disconnect from all current peers and makes oneself undiscoverable
+					// but since we aren't connected to anyone else... this is fine.
+					// connect to multiaddress from request
+					ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
+					// ipfs get cid 
+					let response = ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID);
+					// TODO: remove these logs
+					log::info!("Fetched data with CID {:?} from multiaddress {:?}", cid.clone(), cmd.multiaddress.clone());
+					log::info!("{:?}", response);
+					// disconnect from multiaddress
+					ipfs::disconnect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
+					// Q: is there some way we can verify that the data we received is from the correct maddr? is that needed?
+					let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+					if !signer.can_sign() {
+						log::error!(
+							"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+						);
+					}
+					let results = signer.send_signed_transaction(|_acct| { 
+						Call::submit_ingestion_completed{
+							cmd: cmd.clone(),
+						}
+					});
+				
+					for (_, res) in &results {
+						match res {
+							Ok(()) => log::info!("Submitted results successfully"),
+							Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
 						}
 					}
 				}

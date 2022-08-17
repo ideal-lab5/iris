@@ -35,8 +35,11 @@
 
 use scale_info::TypeInfo;
 use codec::{Encode, Decode, HasCompact};
-use frame_support::ensure;
-use frame_support::pallet_prelude::*;
+use frame_support::{
+    ensure,
+    pallet_prelude::*,
+    traits::{Currency, LockableCurrency},
+};
 use frame_system::{
     self as system, ensure_signed, pallet_prelude::*,
 };
@@ -55,6 +58,7 @@ use sp_std::{
 };
 
 use core::convert::TryInto;
+use pallet_vesting::VestingInfo;
 use iris_primitives::IngestionCommand;
 
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
@@ -81,6 +85,9 @@ pub struct AssetMetadata {
     pub cid: Vec<u8>,
 }
 
+type BalanceOf<T> =
+	<<T as pallet_vesting::Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
 pub use pallet::*;
 
 #[cfg(test)]
@@ -104,13 +111,14 @@ pub mod pallet {
     };
 
 	#[pallet::config]
-    /// the module configuration trait
-	pub trait Config: frame_system::Config + pallet_assets::Config
+	pub trait Config: frame_system::Config + pallet_assets::Config + pallet_vesting::Config
     {
         /// The overarching event type
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
         /// the overarching call type
 	    type Call: From<Call<Self>>;
+        /// The currency trait.
+		type Currency: LockableCurrency<Self::AccountId>;
 	}
 
 	#[pallet::pallet]
@@ -118,11 +126,13 @@ pub mod pallet {
     #[pallet::without_storage_info]
 	pub struct Pallet<T>(_);
 
-    /// A queue of data to publish or obtain on IPFS.
-    /// Commands are processed by offchain workers (of validators) in the iris-session pallet
-	#[pallet::storage]
-	pub(super) type IngestionQueue<T: Config> = StorageValue<
-        _, Vec<IngestionCommand<T::AccountId, T::AssetId, T::Balance>>, ValueQuery,
+    #[pallet::storage]
+    pub(super) type IngestionCommands<T: Config> = StorageMap<
+        _, 
+        Blake2_128Concat,
+        T::AccountId, 
+        Vec<IngestionCommand<T::AccountId, T::Balance>>, 
+        ValueQuery,
     >;
 
     #[pallet::storage]
@@ -141,17 +151,6 @@ pub mod pallet {
         ValueQuery,
     >;
 
-    /// A collection of asset ids
-    /// TODO: currently allows customized asset ids but in the future
-    /// we can use this to dynamically generate unique asset ids for content
-    #[pallet::storage]
-    #[pallet::getter(fn asset_ids)]
-    pub(super) type AssetIds<T: Config> = StorageValue<
-        _,
-        Vec<T::AssetId>,
-        ValueQuery,
-    >;
-
     // map asset id to (cid, dataspaces)
     #[pallet::storage]
     #[pallet::getter(fn metadata)]
@@ -161,6 +160,9 @@ pub mod pallet {
         T::AssetId,
         AssetMetadata,
     >;
+
+    #[pallet::storage]
+    pub type Delay<T: Config> = StorageValue<_, u32, ValueQuery>;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -211,6 +213,7 @@ pub mod pallet {
     #[pallet::genesis_config]
     pub struct GenesisConfig {
         pub initial_asset_id: u32,
+        pub delay: u32,
     }
 
     #[cfg(feature = "std")]
@@ -218,6 +221,7 @@ pub mod pallet {
         fn default() -> Self {
             GenesisConfig {
                 initial_asset_id: 2,
+                delay: 10,
             }
         }
     }
@@ -227,6 +231,7 @@ pub mod pallet {
         fn build(&self) {
             let asset_id = TryInto::<T::AssetId>::try_into(self.initial_asset_id).ok().unwrap();
             NextAssetId::<T>::put(asset_id);
+            Delay::<T>::put(self.delay);
         }
     }
 
@@ -235,7 +240,6 @@ pub mod pallet {
          fn on_initialize(block_number: T::BlockNumber) -> Weight {
             // needs to be synchronized with offchain_worker actitivies
             if block_number % 2u32.into() == 1u32.into() {
-                // <IngestionQueue<T>>::kill();
                 <EjectionQueue<T>>::kill();
             }
 
@@ -260,110 +264,43 @@ pub mod pallet {
         pub fn request_ingestion(
             origin: OriginFor<T>,
             admin: <T::Lookup as StaticLookup>::Source,
+            gateway: <T::Lookup as StaticLookup>::Source,
+            gateway_reserve: BalanceOf<T>,
             cid: Vec<u8>,
             multiaddress: Vec<u8>,
             estimated_size_gb: u128,
-            #[pallet::compact] dataspace_id: T::AssetId,
-            #[pallet::compact] reserve_balance: T::Balance,
+            #[pallet::compact] min_asset_balance: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // check that the caller has access to the dataspace
-            // let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
-            // let balance_primitive = TryInto::<u128>::try_into(balance).ok();
-            // ensure!(balance_primitive != Some(0), Error::<T>::DataSpaceNotAccessible);
-            // TODO: Generate a unique asset id
-            // let staking_id = b"12345678";
-            // TODO: I need to figure out how to make this unlockable given 
-            // a condition... basically unlockable by consensus? idk... 
-            // if the command is processed, this should be unlocked + distributed to gateways
-            // T::Currency::set_lock(STAKING_ID, &who, reserve_balance, WithdrawReasons::all());
-            // push a new command to the ingestion queue
-            <IngestionQueue<T>>::mutate(|q| {
-                q.push(
-                    IngestionCommand {
-                        owner: who.clone(),
-                        cid: cid,
-                        multiaddress: multiaddress,
-                        estimated_size_gb: estimated_size_gb,
-                        dataspace_id: dataspace_id,
-                        balance: reserve_balance,
-                    }
-                );
-            });
+            let g = T::Lookup::lookup(gateway.clone())?;
+            let mut commands = IngestionCommands::<T>::get(g);
+            let cmd = IngestionCommand {
+                owner: who.clone(),
+                cid: cid,
+                multiaddress: multiaddress,
+                estimated_size_gb: estimated_size_gb,
+                balance: min_asset_balance,
+            };
+            commands.push(cmd.clone());
+            let current_block_number = <frame_system::Pallet<T>>::block_number();
+            let target_block = current_block_number + Delay::<T>::get().into();
+            // we need to store this info somewhere...
+            // then in the OCW, check which commands are associated with (the block prior to??)the target block
+            // if not executed, then we need to undo the vesting/destroy the vesting schedule
+
+            let new_origin = system::RawOrigin::Signed(who.clone()).into();
+            // vest currency
+            <pallet_vesting::Pallet<T>>::vested_transfer(
+                new_origin, gateway, 
+                VestingInfo::new(gateway_reserve, gateway_reserve, target_block),
+            )?;
             Self::deposit_event(Event::CreatedIngestionRequest);
 			Ok(())
-        }
-    
-        /// Create a new asset class on behalf of an admin node
-        /// and submit a request to associate it with the specified dataspace
-        /// 
-        /// TODO: this is obviously insecure at the moment, as it is callable by
-        /// any node. We will resolve this issue at a later date (once we have zk snarks)
-        /// Technically, this function allows anyone to freely create 
-        /// a new asset on someone's behalf
-        ///
-        /// * `admin`: The admin account
-        /// * `cid`: The cid generated by the OCW
-        /// * `dataspace_id`: The dataspace that the newly created asset class should be 
-        ///                   associated with
-        /// * `id`: The AssetId (passed through from the create_storage_asset call)
-        /// * `balance`: The balance (passed through from the create_storage_asset call)
-        ///
-        #[pallet::weight(100)]
-        pub fn submit_ipfs_add_results(
-            origin: OriginFor<T>,
-            admin: <T::Lookup as StaticLookup>::Source,
-            cid: Vec<u8>,
-            occ_id: Vec<u8>,
-            dataspace_id: T::AssetId,
-            #[pallet::compact] id: T::AssetId,
-            #[pallet::compact] balance: T::Balance,
-        ) -> DispatchResult {
-            ensure_signed(origin)?;
-            let which_admin = T::Lookup::lookup(admin.clone())?;
-            // let new_origin = system::RawOrigin::Signed(which_admin.clone()).into();
-
-            // <pallet_assets::Pallet<T>>::create(new_origin, id.clone(), admin.clone(), balance)
-            //     .map_err(|_| Error::<T>::CantCreateAssetClass)?;
-
-            // let mut pending_dataspace_vec = Vec::new();
-            // pending_dataspace_vec.push(dataspace_id.clone());
-            // insert into metadata for the asset class for the first time
-            <Metadata<T>>::insert(id.clone(), AssetMetadata {
-                cid: cid.clone(),
-            });
-            // TOOD: This should be its own queue
-            // dispatch update dataspace metadata command
-            <EjectionQueue<T>>::mutate(
-                |queue| queue.push(DataCommand::AddToDataSpace( 
-                    id.clone(),
-                    dataspace_id.clone(),
-                )));
-            // <AssetIds<T>>::mutate(|ids| ids.push(id.clone()));
-            
-            Self::deposit_event(Event::AssetClassCreated(id.clone()));
-            
-            Ok(())
         }
 	}
 }
 
 impl<T: Config> Pallet<T> {
-    fn create_asset_class(
-        origin: OriginFor<T>,
-        admin: <T::Lookup as StaticLookup>::Source,
-        asset_id: T::AssetId,
-        cid: Vec<u8>,
-        balance: T::Balance,
-    ) -> DispatchResult {
-        // <pallet_assets::Pallet<T>>::create(origin, asset_id.clone(), admin.clone(), balance)
-        //         .map_err(|_| Error::<T>::CantCreateAssetClass)?;
-        <Metadata<T>>::insert(asset_id.clone(), AssetMetadata {
-            cid: cid.clone(),
-        });
-        Ok(())
-    }
-
     // a super simple asset id generator and mutator
     // needs to be modified so we don't have duplicate asset ids
     fn next_asset_id() -> T::AssetId {
@@ -374,21 +311,16 @@ impl<T: Config> Pallet<T> {
         NextAssetId::<T>::mutate(|id| *id = new_next_asset_id);
         next
     }
-
 }
 
 /// a trait to provide the ingestion queue to other modules
-pub trait QueueProvider<AccountId, AssetId, Balance> {
-    fn ingestion_queue() -> Vec<IngestionCommand<AccountId, AssetId, Balance>>;
-    fn kill_ingestion_queue();
+pub trait QueueProvider<AccountId, Balance> {
+    fn ingestion_requests(gateway: AccountId) -> Vec<IngestionCommand<AccountId, Balance>>;
 }
 
-impl<T: Config> QueueProvider<T::AccountId, T::AssetId, T::Balance> for Pallet<T> {
-    fn ingestion_queue() -> Vec<IngestionCommand<T::AccountId, T::AssetId, T::Balance>> {
-        IngestionQueue::<T>::get()
-    }
-    fn kill_ingestion_queue() {
-        IngestionQueue::<T>::kill();
+impl<T: Config> QueueProvider<T::AccountId, T::Balance> for Pallet<T> {
+    fn ingestion_requests(gateway: T::AccountId) -> Vec<IngestionCommand<T::AccountId, T::Balance>> {
+        IngestionCommands::<T>::get(gateway)
     }
 }
 
@@ -402,34 +334,36 @@ use frame_system::{
 /// honestly at this point... it almost seems like it'd make more sense to bake all this
 /// into the consensus mechanism itself, i.e. babe/aura
 /// basically I'm implementing a parallel consensus mechanism to determine who gets to proxy requests
-pub trait ResultHandler<T: frame_system::Config, AssetId, Balance> {
+pub trait ResultsHandler<T: frame_system::Config, AccountId, Balance> {
     fn create_asset_class(
         origin: OriginFor<T>,
-        admin: <T::Lookup as StaticLookup>::Source,
-        cid: Vec<u8>,
-        balance: Balance,
+        cmd: IngestionCommand<AccountId, Balance>
     ) -> DispatchResult;
 }
 
-impl<T: Config> ResultHandler<T, T::AssetId, T::Balance> for Pallet<T> {
+impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
     // this is just an extrinsic...
     fn create_asset_class(
         origin: OriginFor<T>,
-        admin: <T::Lookup as StaticLookup>::Source,
-        cid: Vec<u8>,
-        balance: T::Balance,
+        cmd: IngestionCommand<T::AccountId, T::Balance>,
     ) -> DispatchResult {
+        let who = ensure_signed(origin)?;
         let asset_id = Self::next_asset_id();
-        log::info!("CREATING NEW ASSET CLASS WITH ID: {:?}", asset_id);
-        <pallet_assets::Pallet<T>>::create(origin, asset_id.clone(), admin.clone(), balance)
+        let admin = T::Lookup::unlookup(cmd.clone().owner);
+        let new_origin = system::RawOrigin::Signed(who.clone()).into();
+        <pallet_assets::Pallet<T>>::create(new_origin, asset_id.clone(), admin.clone(), cmd.balance.clone())
             .map_err(|e| {
                 log::info!("Failed to create asset class due to error: {:?}", e);
                 return Error::<T>::CantCreateAssetClass;
             })?;
-        log::info!("Writing to Metadata");
-        <Metadata<T>>::insert(asset_id.clone(), AssetMetadata {
-            cid: cid.clone(),
-        });
+        <Metadata<T>>::insert(asset_id.clone(), AssetMetadata { cid: cmd.cid.clone() });
+        // remove from ingestion commands, this must be done before the 'now + delay' number of blocks passes
+        // for now... let's just assume there is not time limit and test it out
+        let mut cmds = IngestionCommands::<T>::get(who.clone());
+        let cmd_idx = cmds.iter().position(|c| *c == cmd.clone()).unwrap();
+        cmds.remove(cmd_idx);
+        IngestionCommands::<T>::insert(who.clone(), cmds);
+        // emit event?
         Ok(())
     }
 }

@@ -33,6 +33,7 @@
 
 use frame_support::{
     traits::{Currency, LockIdentifier, LockableCurrency, WithdrawReasons},
+    pallet_prelude::*,
 };
 use frame_system::ensure_signed;
 

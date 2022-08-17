@@ -27,8 +27,10 @@ frame-system = { version = "4.0.0-dev", default-features = false, git = "https:/
 frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23", optional = true }
 
 log = { version = "0.4.14", default-features = false }
-
+# Substrate pallets
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
+pallet-vesting = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
+# Iris pallets
 pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = false }
 iris-primitives = { version = "1.0.0", default-features = false, path = "../common" }
 
@@ -42,11 +44,12 @@ std = [
 	'frame-benchmarking/std',
 	'sp-io/std',
 	'sp-std/std',
-	# 'sp-keystore/std',
 	'sp-runtime/std',
 	'log/std',
 	'pallet-assets/std',
 	'pallet-balances/std',
+	'pallet-vesting/std',
+	'iris-primitives/std',
 ]
 
 runtime-benchmarks = ["frame-benchmarking"]

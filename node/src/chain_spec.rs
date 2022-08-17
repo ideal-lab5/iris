@@ -18,7 +18,7 @@ use iris_runtime::{
 	AccountId, AssetsConfig, AuraConfig, BalancesConfig, 
 	GenesisConfig, GrandpaConfig, Signature, 
 	SudoConfig, SessionConfig, AuthoritiesConfig, ImOnlineConfig,
-	ProxyConfig, SystemConfig, DataAssetsConfig, ElectionsConfig, WASM_BINARY,
+	ProxyConfig, SystemConfig, DataAssetsConfig, VestingConfig, WASM_BINARY,
 	opaque::SessionKeys,
 };
 use sc_service::ChainType;
@@ -182,11 +182,7 @@ fn testnet_genesis(
 		},
 		data_assets: DataAssetsConfig {
 			initial_asset_id: 2,
-		},
-		elections: ElectionsConfig {
-			stake_redistribution_interval: 7,
-			election_interval: 11,
-			execution_result_interval: 17,
+			delay: 10,
 		},
 		session: SessionConfig {
 			keys: initial_authorities.iter().map(|x| {
@@ -210,5 +206,6 @@ fn testnet_genesis(
 			min_proxy_bond: 50,
 			max_proxy_count: Some(256),
 		},
+		vesting: Default::default(),
 	}
 }

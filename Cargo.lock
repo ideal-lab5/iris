@@ -2454,7 +2454,6 @@ dependencies = [
  "pallet-contracts-rpc-runtime-api",
  "pallet-data-assets",
  "pallet-data-spaces",
- "pallet-elections",
  "pallet-grandpa",
  "pallet-im-online",
  "pallet-ipfs",
@@ -2468,6 +2467,7 @@ dependencies = [
  "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
+ "pallet-vesting",
  "parity-scale-codec",
  "scale-info",
  "sp-api",
@@ -4154,6 +4154,7 @@ dependencies = [
  "log",
  "pallet-assets",
  "pallet-balances",
+ "pallet-vesting",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -4178,32 +4179,6 @@ dependencies = [
  "sp-core",
  "sp-io",
  "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-elections"
-version = "1.0.0"
-dependencies = [
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "iris-primitives",
- "log",
- "pallet-assets",
- "pallet-authorities",
- "pallet-balances",
- "pallet-data-assets",
- "pallet-im-online",
- "pallet-proxy",
- "pallet-session",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-io",
- "sp-keystore",
- "sp-runtime",
- "sp-staking",
  "sp-std",
 ]
 
@@ -4264,7 +4239,6 @@ dependencies = [
  "pallet-assets",
  "pallet-balances",
  "pallet-data-assets",
- "pallet-elections",
  "pallet-im-online",
  "pallet-ipfs-primitives",
  "pallet-proxy",
@@ -4473,6 +4447,20 @@ dependencies = [
  "parity-scale-codec",
  "sp-api",
  "sp-runtime",
+]
+
+[[package]]
+name = "pallet-vesting"
+version = "4.0.0-dev"
+source = "git+https://github.com/paritytech/substrate.git?branch=polkadot-v0.9.23#76522d7937ba94ff1becef4e4e3ca78e3e1de341"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]

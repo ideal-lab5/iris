@@ -77,7 +77,6 @@ use sp_runtime::{
 use codec::HasCompact;
 use iris_primitives::IngestionCommand;
 use pallet_authorities::EraProvider;
-use pallet_data_assets::QueueProvider;
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
@@ -278,14 +277,6 @@ pub mod pallet {
 	pub type Proxies<T: Config> =
 		CountedStorageMap<_, Twox64Concat, T::AccountId, ProxyPrefs>;
 
-	/// Track which proxy nodes require configuration and identity verification
-	/// If an address is mapped to true, then it requires configuration
-	/// If it is mapped to false, then it is already configured
-	///
-	#[pallet::storage]
-	#[pallet::getter(fn proxy_config_status)]
-	pub type ProxyConfigStatus<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, ProxyConfigState>;
-
 	/// The minimum active bond to become and maintain the role of a nominator.
 	#[pallet::storage]
 	pub type MinProxyBond<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
@@ -384,7 +375,7 @@ pub mod pallet {
 				MaxProxyCount::<T>::put(x);
 			}
 		}
-	} 
+	}
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
@@ -596,16 +587,6 @@ pub mod pallet {
 
 			Ok(())
 		}
-
-		// #[pallet::weight(100)]
-		// pub fn redistribute_stake(
-		// 	origin: OriginFor<T>,
-		// 	distribution: BTreeMap<IngestionCommand<T::AccountId, T::AssetId, T::Balance>, u128>
-		// ) -> DispatchResult {
-		// 	let who = ensure_signed(origin)?;
-
-		// 	Ok(())
-		// }
 	}
 }
 
@@ -652,8 +633,6 @@ impl<T: Config> Pallet<T> {
 	/// * prefs: The ProxyPrefs to insert
 	/// 
 	fn do_add_proxy(who: &T::AccountId, prefs: ProxyPrefs) {
-		// mark all new proxy nodes as requiring configuration
-		ProxyConfigStatus::<T>::insert(who, ProxyConfigState::Unconfigured);
 		Proxies::<T>::insert(who, prefs.clone());
 		// let new_origin = system::RawOrigin::Signed(who.clone()).into();
 		// <pallet_ipfs::Pallet<T>>::update_node_config(new_origin, prefs.clone().storage_max_gb);
@@ -667,14 +646,10 @@ impl<T: Config> Pallet<T> {
 		<Ledger<T>>::insert(controller, ledger);
 	}
 
-	// TODO: Get rid of this? I don't think it's needed really
-	pub fn update_proxy_state(
-		addr: T::AccountId,
-		new_status: ProxyConfigState,
-	) -> DispatchResult {
-		<ProxyConfigStatus<T>>::insert(addr, new_status);
-		Ok(())
-	}	
+	// fn price() -> T::Balance {
+
+	// }
+
 }
 
 /// A trait to expose information about bonded accounts and staked amounts

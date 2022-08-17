@@ -39,7 +39,6 @@ pallet-session = { version = "4.0.0-dev", default-features = false, git = "https
 pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = false }
 pallet-data-assets = { version = "1.0.0", default-features = false, path = "../data-assets" }
 pallet-proxy = { version = "1.0.0", default-features = false, path = "../proxy" }
-pallet-elections = { version = "1.0.0", default-features = false, path = "../elections" }
 pallet-ipfs-primitives = { version = "1.0.0", default-features = false, path = "common" }
 iris-primitives = { version = "1.0.0", default-features = false, path = "../common" }
 
@@ -66,7 +65,6 @@ std = [
 	'pallet-balances/std',
 	'pallet-data-assets/std',
 	'pallet-proxy/std',
-	'pallet-elections/std',
 	'serde_json/std',
 ]
 

@@ -35,7 +35,7 @@ use serde::{
 };
 
 #[derive(Eq, Ord, PartialOrd, Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Clone)]
-pub struct IngestionCommand<AccountId, AssetId, Balance> {
+pub struct IngestionCommand<AccountId, Balance> {
     /// the owner of the data to be ingested (i.e. the caller)
     pub owner: AccountId,
     /// the CID of the data to be ingested
@@ -46,7 +46,7 @@ pub struct IngestionCommand<AccountId, AssetId, Balance> {
     /// the true data size can only be known after querying the OCC within the OCW
     pub estimated_size_gb: u128,
     /// the id of the dataspace to associate the asset class with
-    pub dataspace_id: AssetId,
+    // pub dataspace_id: AssetId,
     /// the balance used to create an asset class and pay a proxy node
     pub balance: Balance,
 }

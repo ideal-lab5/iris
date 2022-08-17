@@ -25,14 +25,14 @@ fn data_assets_initial_state() {
 	new_test_ext().execute_with(|| {
 		// Given: The node is initialized at block 0
 		// When: I query runtime storage
-		let ingestion_queue = crate::IngestionQueue::<Test>::get();
+		// let ingestion_queue = crate::IngestionQueue::<Test>::get();
 		let ejection_queue = crate::EjectionQueue::<Test>::get();
 
-		let ingestion_queue_len = ingestion_queue.len();
+		// let ingestion_queue_len = ingestion_queue.len();
 		let dataspace_queue_len = ejection_queue.len();
 
 		// Then: Runtime storage is empty
-		assert_eq!(ingestion_queue_len, 0);
+		// assert_eq!(ingestion_queue_len, 0);
 		assert_eq!(dataspace_queue_len, 0);
 	});
 }
@@ -87,11 +87,11 @@ fn data_assets_create_works_for_valid_value_when_authorized_for_data_space() {
 		));
 
 		// THEN: There is a single DataCommand::AddBytes in the IngestionQueue
-		let mut ingestion_queue = crate::IngestionQueue::<Test>::get();
-		let len = ingestion_queue.len();
-		assert_eq!(len, 1);
-		let actual_data_command = ingestion_queue.pop();
-		assert_eq!(actual_data_command, Some(expected_data_command));
+		// let mut ingestion_queue = crate::IngestionQueue::<Test>::get();
+		// let len = ingestion_queue.len();
+		// assert_eq!(len, 1);
+		// let actual_data_command = ingestion_queue.pop();
+		// assert_eq!(actual_data_command, Some(expected_data_command));
 	});
 }
 

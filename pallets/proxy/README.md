@@ -28,13 +28,12 @@ The `EjectionQueue` contains commands initiated  by data consumers to eject data
 
 ## Rewards
 
-Proxy nodes are rewarded based on the requests from the `IngestionQueue` and the `EjectionQueue` that they proxy. Unlike a staking mechanism for validator nodes, rhe tokens that proxy nodes recieve as a reward originate from the account who added the command to either queue initially.
+### Vesting Schedule
 
-### Reward for exeucting write commands
+Rewards are distributed based on a vesting schedule. When a request is added to the ingestion queue by a data owner, the price for the gateway node is locked and the data owner locks that amount of currency within a vesting schedule. 
 
-In this scenario, a proxy node is responsible
-
-### Rewards for executing read commands
+wishful thinking: The 50% of the total is distributed after an asset class is created
+over the next 50 blocks, the other 50% is leaked to the gateway, 1% per block.
 
 ## Slashing
 

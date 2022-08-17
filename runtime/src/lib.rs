@@ -84,7 +84,6 @@ pub use pallet_data_spaces;
 pub use pallet_authorities;
 pub use pallet_proxy;
 pub use pallet_ipfs;
-pub use pallet_elections;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -461,6 +460,7 @@ impl pallet_assets::Config for Runtime {
 impl pallet_data_assets::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
+	type Currency = Balances;
 }
 
 impl pallet_authorization::Config for Runtime {
@@ -525,19 +525,25 @@ impl pallet_ipfs::Config for Runtime {
 	type Currency = Balances;
 	type NodeConfigBlockDuration = NodeConfigBlockDuration;
 	type ProxyProvider = Proxy;
-	type ElectionProvider = Elections;
+	type QueueProvider = DataAssets;
+	type ResultsHandler = DataAssets;
 }
 
-impl pallet_elections::Config for Runtime {
-	type Event = Event;
-	type Call = Call;
-	type AssetId = AssetId;
-	type AuthorityId = pallet_authorities::crypto::TestAuthId;
-	type Balance = Balance;
-	type ProxyProvider = Proxy;
-	type QueueProvider = DataAssets;
-	type ResultHandler = DataAssets;
+parameter_types! {
+	pub const MinVestedTransfer: Balance = 100 * DOLLARS;
 }
+
+impl pallet_vesting::Config for Runtime {
+	type Event = Event;
+	type Currency = Balances;
+	type BlockNumberToBalance = ConvertInto;
+	type MinVestedTransfer = MinVestedTransfer;
+	type WeightInfo = pallet_vesting::weights::SubstrateWeight<Runtime>;
+	// `VestingInfo` encode length is 36bytes. 28 schedules gets encoded as 1009 bytes, which is the
+	// highest number of schedules that encodes less than 2^10.
+	const MAX_VESTING_SCHEDULES: u32 = 28;
+}
+
 
 impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Runtime
 where
@@ -624,7 +630,7 @@ construct_runtime!(
 		Contracts: pallet_contracts,
 		Proxy: pallet_proxy,
 		Ipfs: pallet_ipfs,
-		Elections: pallet_elections,
+		Vesting: pallet_vesting,
 	}
 );
 
@@ -970,7 +976,10 @@ use pallet_contracts::chain_extension::{
     SysConfig,
     UncheckedFrom,
 };
-use sp_runtime::DispatchError;
+use sp_runtime::{
+	DispatchError,
+	traits::{ConvertInto},
+};
 use frame_system::{
 	self as system,
 };
