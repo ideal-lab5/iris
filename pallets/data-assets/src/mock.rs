@@ -27,12 +27,20 @@ use sp_core::{
 };
 use sp_runtime::{
 	testing::Header,
-	traits::{BlakeTwo256, Extrinsic as ExtrinsicT, IdentityLookup},
+	traits::{BlakeTwo256, ConvertInto, Extrinsic as ExtrinsicT, IdentityLookup},
 };
 use core::convert::{TryInto, TryFrom};
+use crate::mock::sp_api_hidden_includes_construct_runtime::hidden_include::traits::GenesisBuild;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
+
+/// Balance of an account.
+pub type Balance = u64;
+
+pub const MILLICENTS: Balance = 1_000_000_000;
+pub const CENTS: Balance = 1_000 * MILLICENTS; // assume this is worth about a cent.
+pub const DOLLARS: Balance = 100 * CENTS;
 
 // Configure a mock runtime to test the pallet.
 construct_runtime!(
@@ -44,6 +52,7 @@ construct_runtime!(
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		Assets: pallet_assets::{Pallet, Storage, Event<T>},
+		Vesting: pallet_vesting,
 		Iris: pallet_data_assets::{Pallet, Call, Storage, Event<T>},
 	}
 );
@@ -123,22 +132,43 @@ impl pallet_assets::Config for Test {
 	type Extra = ();
 }
 
+parameter_types! {
+	pub const MinVestedTransfer: Balance = 100 * DOLLARS;
+}
+
+impl pallet_vesting::Config for Test {
+	type Event = Event;
+	type Currency = Balances;
+	type BlockNumberToBalance = ConvertInto;
+	type MinVestedTransfer = MinVestedTransfer;
+	type WeightInfo = pallet_vesting::weights::SubstrateWeight<Test>;
+	// `VestingInfo` encode length is 36bytes. 28 schedules gets encoded as 1009 bytes, which is the
+	// highest number of schedules that encodes less than 2^10.
+	const MAX_VESTING_SCHEDULES: u32 = 28;
+}
+
 impl Config for Test {
-	// type Currency = Balances;
 	type Call = Call;
 	type Event = Event;
+	type Currency = Balances;
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
 	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
+
 	let (pair1, _) = sp_core::sr25519::Pair::generate();
 	let (pair2, _) = sp_core::sr25519::Pair::generate();
 	let (pair3, _) = sp_core::sr25519::Pair::generate();
+
 	pallet_balances::GenesisConfig::<Test> {
 		balances: vec![(pair1.public(), 10), (pair2.public(), 20), (pair3.public(), 30)],
-	}
-	.assimilate_storage(&mut t)
-	.unwrap();
+	}.assimilate_storage(&mut t).unwrap();
+
+	pallet_data_assets::GenesisConfig::<Test> {
+		initial_asset_id: 2,
+		delay: 10,
+	}.assimilate_storage(&mut t).unwrap();
+	
 	t.into()
 }
 
@@ -149,8 +179,12 @@ pub fn new_test_ext_funded(pairs: Vec<(sp_core::sr25519::Public, u64)>) -> sp_io
 
 	pallet_balances::GenesisConfig::<Test> {
 		balances: pairs,
-	}
-	.assimilate_storage(&mut t)
-	.unwrap();
+	}.assimilate_storage(&mut t).unwrap();
+
+	pallet_data_assets::GenesisConfig::<Test> {
+		initial_asset_id: 2,
+		delay: 10,
+	}.assimilate_storage(&mut t).unwrap();
+
 	t.into()
 }

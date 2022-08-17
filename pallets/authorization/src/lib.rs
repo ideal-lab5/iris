@@ -35,7 +35,6 @@ use sp_std::{
 use core::convert::TryInto;
 
 use frame_system::ensure_signed;
-use pallet_data_assets::DataCommand;
 
 pub use pallet::*;
 
@@ -95,19 +94,6 @@ pub mod pallet {
         ValueQuery,
     >;
 
-    #[pallet::storage]
-    #[pallet::getter(fn data_retrieval_queue)]
-    pub(super) type DataRetrievalQueue<T: Config> = StorageValue<
-        _,
-        Vec<DataCommand<
-            <T::Lookup as StaticLookup>::Source, 
-            T::AssetId,
-            T::Balance,
-            T::AccountId>
-        >,
-        ValueQuery,
-    >;
-
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
@@ -127,7 +113,7 @@ pub mod pallet {
          fn on_initialize(block_number: T::BlockNumber) -> Weight {
             // needs to be synchronized with offchain_worker actitivies
             if block_number % 2u32.into() == 1u32.into() {
-                <DataRetrievalQueue<T>>::kill();
+                // <DataRetrievalQueue<T>>::kill();
             }
 
             0
@@ -197,12 +183,14 @@ pub mod pallet {
                         // submit request to data retrieval queue
                         match <pallet_assets::Pallet<T>>::asset(id.clone()) {
                             Some(addr) => {
-                                <DataRetrievalQueue<T>>::mutate(
-                                    |queue| queue.push(DataCommand::CatBytes(
-                                        who.clone(),
-                                        addr.owner.clone(),
-                                        id.clone(),
-                                    )));
+                                // TODO: trigger data ejection
+
+                                // <DataRetrievalQueue<T>>::mutate(
+                                //     |queue| queue.push(DataCommand::CatBytes(
+                                //         who.clone(),
+                                //         addr.owner.clone(),
+                                //         id.clone(),
+                                //     )));
                             },
                             None => {
                                 return Ok(());

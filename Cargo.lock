@@ -2383,6 +2383,7 @@ dependencies = [
  "pallet-contracts-rpc",
  "pallet-im-online",
  "pallet-ipfs-rpc",
+ "pallet-proxy",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc",
  "sc-basic-authorship",

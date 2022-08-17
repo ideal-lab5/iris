@@ -530,7 +530,7 @@ impl pallet_ipfs::Config for Runtime {
 }
 
 parameter_types! {
-	pub const MinVestedTransfer: Balance = 100 * DOLLARS;
+	pub const MinVestedTransfer: Balance = 1 * MILLICENTS;
 }
 
 impl pallet_vesting::Config for Runtime {

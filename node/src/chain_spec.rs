@@ -21,6 +21,7 @@ use iris_runtime::{
 	ProxyConfig, SystemConfig, DataAssetsConfig, VestingConfig, WASM_BINARY,
 	opaque::SessionKeys,
 };
+use pallet_proxy::ProxyStatus;
 use sc_service::ChainType;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{sr25519, Pair, Public};
@@ -202,7 +203,10 @@ fn testnet_genesis(
 		},
 		transaction_payment: Default::default(),
 		proxy: ProxyConfig {
-			initial_proxies: vec![],
+			initial_proxies: initial_authorities.iter().map(|x| 
+				(x.0.clone(), x.0.clone(), 5000, ProxyStatus::Proxy)
+			).collect::<Vec<_>>(),
+			// initial_proxies: vec![],
 			min_proxy_bond: 50,
 			max_proxy_count: Some(256),
 		},

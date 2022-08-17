@@ -60,18 +60,6 @@ pub struct EjectionCommand {
 
 }
 
-#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-pub enum DataCommand<LookupSource, AssetId, Balance, AccountId> {
-    /// (ipfs_address, cid, requesting node address, asset id, balance, dataspace_id)
-    AddBytes(Vec<u8>, Vec<u8>, LookupSource, AssetId, Balance, AssetId),
-    /// (requestor, owner, assetid)
-    CatBytes(AccountId, AccountId, AssetId),
-    /// (node, assetid, CID)
-    PinCID(AccountId, AssetId, Vec<u8>),
-    /// asset id, lsit of dataspace ids
-    AddToDataSpace(AssetId, AssetId),
-}
-
 /// struct to store metadata of an asset class
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 pub struct AssetMetadata {
@@ -128,19 +116,6 @@ pub mod pallet {
 
     #[pallet::storage]
     pub(super) type NextAssetId<T: Config> = StorageValue<_, T::AssetId, ValueQuery>;
-
-	#[pallet::storage]
-    #[pallet::getter(fn ejection_queue)]
-	pub(super) type EjectionQueue<T: Config> = StorageValue<
-        _,
-        Vec<DataCommand<
-            <T::Lookup as StaticLookup>::Source, 
-            T::AssetId,
-            T::Balance,
-            T::AccountId>
-        >,
-        ValueQuery,
-    >;
 
     // map asset id to (cid, dataspaces)
     #[pallet::storage]
@@ -202,39 +177,28 @@ pub mod pallet {
 	}
 
     #[pallet::genesis_config]
-    pub struct GenesisConfig {
-        pub initial_asset_id: u32,
+    pub struct GenesisConfig<T: Config> {
+        pub initial_asset_id: T::AssetId,
         pub delay: u32,
     }
 
     #[cfg(feature = "std")]
-    impl Default for GenesisConfig {
+    impl<T: Config> Default for GenesisConfig<T> {
         fn default() -> Self {
+            let base_asset_id: u32 = 2u32;
+            let asset_id = TryInto::<T::AssetId>::try_into(base_asset_id).ok().unwrap();
             GenesisConfig {
-                initial_asset_id: 2,
+                initial_asset_id: asset_id,
                 delay: 10,
             }
         }
     }
 
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig {
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
-            let asset_id = TryInto::<T::AssetId>::try_into(self.initial_asset_id).ok().unwrap();
-            NextAssetId::<T>::put(asset_id);
+            NextAssetId::<T>::put(self.initial_asset_id);
             Delay::<T>::put(self.delay);
-        }
-    }
-
-    #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-         fn on_initialize(block_number: T::BlockNumber) -> Weight {
-            // needs to be synchronized with offchain_worker actitivies
-            if block_number % 2u32.into() == 1u32.into() {
-                <EjectionQueue<T>>::kill();
-            }
-
-            0
         }
     }
 
@@ -263,7 +227,7 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let g = T::Lookup::lookup(gateway.clone())?;
-            let mut commands = IngestionCommands::<T>::get(g);
+            let mut commands = IngestionCommands::<T>::get(g.clone());
             let cmd = IngestionCommand {
                 owner: who.clone(),
                 cid: cid,
@@ -272,6 +236,8 @@ pub mod pallet {
                 balance: min_asset_balance,
             };
             commands.push(cmd.clone());
+            IngestionCommands::<T>::insert(g.clone(), commands);
+
             let current_block_number = <frame_system::Pallet<T>>::block_number();
             let target_block = current_block_number + Delay::<T>::get().into();
             // we need to store this info somewhere...
