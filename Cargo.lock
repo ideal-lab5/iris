@@ -1350,6 +1350,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "encryption-rpc"
+version = "1.0.0"
+dependencies = [
+ "encryption-rpc-runtime-api",
+ "jsonrpsee",
+ "parity-scale-codec",
+ "serde",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-rpc",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "encryption-rpc-runtime-api"
 version = "1.0.0"
 dependencies = [
@@ -2401,6 +2417,7 @@ name = "iris-node"
 version = "1.0.0"
 dependencies = [
  "clap",
+ "encryption-rpc",
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "frame-system",
@@ -4310,22 +4327,6 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-core",
- "sp-rpc",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-ipfs-rpc"
-version = "1.0.0"
-dependencies = [
- "encryption-rpc-runtime-api",
- "jsonrpsee",
- "parity-scale-codec",
- "serde",
- "sp-api",
- "sp-blockchain",
  "sp-core",
  "sp-rpc",
  "sp-runtime",

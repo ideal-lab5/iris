@@ -856,15 +856,15 @@ impl_runtime_apis! {
 		}
 	}
 
-	// impl encryption_rpc_runtime_api::EncryptionApi<> for Runtime {
-	// 	fn encrypt() -> Option<EncryptionResult> {
-	// 		None
-	// 	}
+	impl encryption_rpc_runtime_api::EncryptionApi<Block, Balance> for Runtime {
+		fn encrypt() -> Option<EncryptionResult> {
+			None
+		}
 
-	// 	fn decrypt() -> Option<Bytes> {
-	// 		None
-	// 	}
-	// }
+		fn decrypt() -> Option<Bytes> {
+			None
+		}
+	}
 
 	#[cfg(feature = "runtime-benchmarks")]
 	impl frame_benchmarking::Benchmark<Block> for Runtime {

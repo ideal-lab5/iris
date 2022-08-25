@@ -54,12 +54,12 @@ pub trait EncryptionApi<BlockHash, Balance> {
 }
 
 /// A struct that implements EncryptionRpc
-pub struct Encrypt<C, P> {
+pub struct Encryption<C, P> {
 	client: Arc<C>,
 	_marker: std::marker::PhantomData<P>,
 }
 
-impl<C, P> Encrypt<C, P> {
+impl<C, P> Encryption<C, P> {
 	/// create new 'Encrypt' instance with the given reference	to the client
 	pub fn new(client: Arc<C>) -> Self {
 		Self { client, _marker: Default::default() }
@@ -82,7 +82,7 @@ impl From<Error> for i32 {
 
 #[async_trait]
 impl<C, Block, Balance> 
-	EncryptionApiServer<<Block as BlockT>::Hash, Balance> for Encrypt<C, Block>
+	EncryptionApiServer<<Block as BlockT>::Hash, Balance> for Encryption<C, Block>
 where 
 	Block: BlockT,
 	C: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync + 'static,

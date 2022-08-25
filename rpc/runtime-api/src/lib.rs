@@ -36,7 +36,9 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Eq, Encode, Decode, RuntimeDebug)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct EncryptionResult {
-
+	pub public_key: [u8];
+	pub encrypted_secret_key: [u8];
+	pub ciphertext: Vec<u8>;
 }
 
 sp_api::decl_runtime_apis! {

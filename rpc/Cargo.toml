@@ -1,5 +1,5 @@
 [package]
-name = "pallet-ipfs-rpc"
+name = "encryption-rpc"
 version = "1.0.0"
 authors = ["Ideal Labs <https://github.com/ideal-lab5>"]
 edition = "2021"
