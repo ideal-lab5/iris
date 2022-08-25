@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "offchain-client",
+    "rpc",
     "node",
     "pallets/*",
     "runtime",

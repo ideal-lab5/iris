@@ -18,16 +18,16 @@ use iris_runtime::{
 	AccountId, AssetsConfig, AuraConfig, BalancesConfig, 
 	GenesisConfig, GrandpaConfig, Signature, 
 	SudoConfig, SessionConfig, AuthoritiesConfig, ImOnlineConfig,
-	ProxyConfig, SystemConfig, DataAssetsConfig, VestingConfig, WASM_BINARY,
+	GatewayConfig, SystemConfig, DataAssetsConfig, VestingConfig, WASM_BINARY,
 	opaque::SessionKeys,
 };
-use pallet_proxy::ProxyStatus;
 use sc_service::ChainType;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{sr25519, Pair, Public};
 use sp_finality_grandpa::AuthorityId as GrandpaId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 
+use pallet_gateway::ProxyStatus;
 use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
 
 // The URL for the telemetry server.
@@ -202,7 +202,7 @@ fn testnet_genesis(
 			key: Some(root_key),
 		},
 		transaction_payment: Default::default(),
-		proxy: ProxyConfig {
+		gateway: GatewayConfig {
 			initial_proxies: initial_authorities.iter().map(|x| 
 				(x.0.clone(), x.0.clone(), 5000, ProxyStatus::Proxy)
 			).collect::<Vec<_>>(),

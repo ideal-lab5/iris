@@ -35,6 +35,12 @@ use serde::{
 };
 
 #[derive(Eq, Ord, PartialOrd, Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Clone)]
+pub struct EjectionCommand<AccountId, AssetId> {
+    pub asset_id: AssetId,
+    pub caller: AccountId,
+}
+
+#[derive(Eq, Ord, PartialOrd, Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Clone)]
 pub struct IngestionCommand<AccountId, Balance> {
     /// the owner of the data to be ingested (i.e. the caller)
     pub owner: AccountId,

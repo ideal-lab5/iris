@@ -109,7 +109,7 @@ fn data_spaces_can_associate_asset_id_with_data_space() {
 			balance.clone(),
 		));
 		// THEN: I can transfer my owned asset to another address
-		assert_ok!(DataSpaces::associate_asset_class_with_data_space(
+		assert_ok!(DataSpaces::bond(
 			Origin::signed(p.clone().public()),
 			dataspace_id.clone(),
 			asset_id.clone(),

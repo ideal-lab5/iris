@@ -55,7 +55,7 @@ pallet-authorities = { version = "1.0.0", default-features = false, path = "../p
 pallet-ledger = { version = "1.0.0", default-features = false, path = "../pallets/ledger" }
 pallet-data-spaces = { version = "1.0.0", default-features = false, path = "../pallets/data-spaces" }
 pallet-authorization = { version = "1.0.0", default-features = false, path = "../pallets/authorization" }
-pallet-proxy = { version = "1.0.0", default-features = false, path = "../pallets/proxy" }
+pallet-gateway = { version = "1.0.0", default-features = false, path = "../pallets/gateway" }
 pallet-ipfs = { version = "1.0.0", default-features = false, path = "../pallets/ipfs" }
 iris-primitives = { version = "1.0.0", default-features = false, path = "../pallets/common" }
 pallet-ipfs-primitives = { version = "1.0.0", default-features = false, path = "../pallets/ipfs/common" }
@@ -66,7 +66,7 @@ log = { version = "0.4.14", default-features = false }
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 pallet-contracts-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
-pallet-ipfs-rpc-runtime-api = { version = "1.0.0", default-features = false, path = "../pallets/ipfs/rpc/runtime-api" }
+encryption-rpc-runtime-api = { version = "1.0.0", path = "../rpc/runtime-api" }
 
 # Used for runtime benchmarking
 frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23", optional = true }
@@ -98,18 +98,18 @@ std = [
 	"pallet-data-assets/std",
 	"pallet-authorities/std",
 	"pallet-ledger/std",
-	"pallet-proxy/std",
+	"pallet-gateway/std",
 	"pallet-ipfs/std",
 	"pallet-timestamp/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",
+	'encryption-rpc-runtime-api/std',
 	"pallet-session/std",
 	"pallet-im-online/std",
 	"pallet-contracts/std",
 	"pallet-contracts-primitives/std",
 	"iris-primitives/std",
 	"pallet-contracts-rpc-runtime-api/std",
-	"pallet-ipfs-rpc-runtime-api/std",
 	"sp-api/std",
 	"sp-block-builder/std",
 	"sp-consensus-aura/std",

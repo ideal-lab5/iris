@@ -125,6 +125,7 @@ pub mod pallet {
         Blake2_128Concat,
         T::AssetId,
         AssetMetadata,
+        OptionQuery
     >;
 
     #[pallet::storage]
@@ -226,7 +227,7 @@ pub mod pallet {
             #[pallet::compact] min_asset_balance: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let g = T::Lookup::lookup(gateway.clone())?;
+            let g = T::Lookup::lookup(gateway.clone())?; 
             let mut commands = IngestionCommands::<T>::get(g.clone());
             let cmd = IngestionCommand {
                 owner: who.clone(),
@@ -269,6 +270,17 @@ impl<T: Config> Pallet<T> {
     }
 }
 
+pub trait MetadataProvider<AssetId> {
+    fn get(asset_id: AssetId) -> Option<AssetMetadata>;
+}
+
+impl<T: Config> MetadataProvider<T::AssetId> for Pallet<T> {
+    fn get(asset_id: T::AssetId) -> Option<AssetMetadata> {
+        Metadata::<T>::get(asset_id)
+    }
+}
+
+
 /// a trait to provide the ingestion queue to other modules
 pub trait QueueProvider<AccountId, Balance> {
     fn ingestion_requests(gateway: AccountId) -> Vec<IngestionCommand<AccountId, Balance>>;
@@ -301,6 +313,10 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
         let who = ensure_signed(origin)?;
         let asset_id = Self::next_asset_id();
         let admin = T::Lookup::unlookup(cmd.clone().owner);
+
+        // create kfrags
+        // distribute kfrags
+
         let new_origin = system::RawOrigin::Signed(who.clone()).into();
         <pallet_assets::Pallet<T>>::create(new_origin, asset_id.clone(), admin.clone(), cmd.balance.clone())
             .map_err(|e| {

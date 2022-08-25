@@ -219,18 +219,13 @@ pub mod pallet {
 	#[pallet::getter(fn validators_to_remove)]
 	pub type OfflineValidators<T: Config> = StorageValue<_, Vec<T::AccountId>, ValueQuery>;
 
-	#[pallet::storage]
-	#[pallet::getter(fn total_session_rewards)]
-	pub type SessionParticipation<T: Config> = StorageMap<_, Blake2_128Concat, EraIndex, Vec<T::AccountId>, ValueQuery>;
+	// #[pallet::storage]
+	// #[pallet::getter(fn total_session_rewards)]
+	// pub type SessionParticipation<T: Config> = StorageMap<_, Blake2_128Concat, EraIndex, Vec<T::AccountId>, ValueQuery>;
 
-	#[pallet::storage]
-	#[pallet::getter(fn unproductive_sessions)]
-	pub type UnproductiveSessions<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
-
-	
-	#[pallet::storage]
-	#[pallet::getter(fn do_run_election)]
-	pub type DoRunElection<T: Config> = StorageValue<_, bool, ValueQuery>;
+	// #[pallet::storage]
+	// #[pallet::getter(fn unproductive_sessions)]
+	// pub type UnproductiveSessions<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -361,9 +356,9 @@ impl<T: Config> Pallet<T> {
 		let validator_set: BTreeSet<_> = <Validators<T>>::get().into_iter().collect();
 		ensure!(!validator_set.contains(&validator_id), Error::<T>::Duplicate);
 		<Validators<T>>::mutate(|v| v.push(validator_id.clone()));
-		UnproductiveSessions::<T>::mutate(validator_id.clone(), |v| {
-			*v = 0;
-		});
+		// UnproductiveSessions::<T>::mutate(validator_id.clone(), |v| {
+		// 	*v = 0;
+		// });
 
 		Self::deposit_event(Event::ValidatorAdditionInitiated(validator_id.clone()));
 		log::debug!(target: LOG_TARGET, "Validator addition initiated.");
@@ -433,29 +428,6 @@ impl<T: Config> Pallet<T> {
 		<OfflineValidators<T>>::put(Vec::<T::AccountId>::new());
 	}
 
-	fn mark_dead_validators(era_index: EraIndex) {
-		// for each validator that didn't participate, mark for removal
-		let partipating_validators = SessionParticipation::<T>::get(era_index.clone());
-		for acct in Validators::<T>::get() {
-			if !partipating_validators.contains(&acct) {
-				if UnproductiveSessions::<T>::get(acct.clone()) <= T::MaxDeadSession::get() {
-					UnproductiveSessions::<T>::mutate(acct.clone(), |v| {
-						*v += 1;
-					});
-				} else {
-					let mut validators = <Validators<T>>::get();
-					// Ensuring that the post removal, target validator count doesn't go
-					// below the minimum.
-					if validators.len().saturating_sub(1) as u32 >= T::MinAuthorities::get() {
-						validators.retain(|v| *v != acct.clone());
-						<Validators<T>>::put(validators);
-						log::debug!(target: LOG_TARGET, "Validator removal initiated.");
-					}
-				}
-			}
-		}
-	}
-
 	fn validate_transaction_parameters() -> TransactionValidity {
 		ValidTransaction::with_tag_prefix("iris")
 			.longevity(5)
@@ -476,7 +448,6 @@ impl<T: Config> EraProvider for Pallet<T> {
 
 // Provides the new set of validators to the session module when session is
 // being rotated.
-// additionally, the session manager is also responsible for triggering the proxy node election mechanism
 //
 impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 	// Plan a new session and provide new validator set.
@@ -484,7 +455,6 @@ impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 		log:: info!("Starting new session with index: {:?}", new_index);
 		CurrentEra::<T>::mutate(|s| *s = Some(new_index));
 		Self::remove_offline_validators();
-		<DoRunElection<T>>::put(true);
 		log::debug!(target: LOG_TARGET, "New session called; updated validator set provided, proxy node elections started.");
 		Some(Self::validators())
 	}
@@ -492,12 +462,10 @@ impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 	fn start_session(start_index: u32) {
 		log::info!("Starting session with index: {:?}", start_index);
 		ActiveEra::<T>::mutate(|s| *s = Some(start_index));
-		// TODO: Node elections tie breaker
 	}
 
 	fn end_session(end_index: u32) {
 		log::info!("Ending session with index: {:?}", end_index);
-		Self::mark_dead_validators(end_index);
 	}
 }
 

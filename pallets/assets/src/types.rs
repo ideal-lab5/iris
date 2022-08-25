@@ -44,7 +44,7 @@ pub struct AssetDetails<Balance, AccountId, DepositBalance> {
 	/// The balance deposited for this asset. This pays for the data stored here.
 	pub(super) deposit: DepositBalance,
 	/// The ED for virtual accounts.
-	pub(super) min_balance: Balance,
+	pub min_balance: Balance,
 	/// If `true`, then any account with this asset is given a provider reference. Otherwise, it
 	/// requires a consumer reference.
 	pub(super) is_sufficient: bool,

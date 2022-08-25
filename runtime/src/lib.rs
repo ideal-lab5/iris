@@ -77,12 +77,13 @@ pub use sp_runtime::{Perbill, Permill};
 use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
 use pallet_authorities::EraIndex;
 use pallet_ipfs_primitives::IpfsResult;
+use encryption_rpc_runtime_api::EncryptionResult;
 
 pub use pallet_data_assets;
 pub use pallet_authorization;
 pub use pallet_data_spaces;
 pub use pallet_authorities;
-pub use pallet_proxy;
+pub use pallet_gateway;
 pub use pallet_ipfs;
 
 /// An index to a block.
@@ -505,7 +506,7 @@ parameter_types! {
 	pub const BondingDuration: EraIndex = 3;
 }
 
-impl pallet_proxy::Config for Runtime {
+impl pallet_gateway::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 	type Currency = Balances;
@@ -524,8 +525,10 @@ impl pallet_ipfs::Config for Runtime {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type Currency = Balances;
 	type NodeConfigBlockDuration = NodeConfigBlockDuration;
-	type ProxyProvider = Proxy;
+	type ProxyProvider = Gateway;
 	type QueueProvider = DataAssets;
+	type MetadataProvider = DataAssets;
+	type EjectionCommandDelegator = Authorization;
 	type ResultsHandler = DataAssets;
 }
 
@@ -628,7 +631,7 @@ construct_runtime!(
 		DataSpaces: pallet_data_spaces,
 		ImOnline: pallet_im_online,
 		Contracts: pallet_contracts,
-		Proxy: pallet_proxy,
+		Gateway: pallet_gateway,
 		Ipfs: pallet_ipfs,
 		Vesting: pallet_vesting,
 	}
@@ -853,35 +856,15 @@ impl_runtime_apis! {
 		}
 	}
 
-	impl pallet_ipfs_rpc_runtime_api::IpfsApi<Block, Balance>
-		for Runtime
-	{
-		fn add_bytes(
-			byte_stream: Bytes,
-			asset_id: u32,
-			dataspace_id: u32,
-			balance: Balance,
-			signature: Bytes,
-			signer: Bytes,
-			message: Bytes,
-		) -> IpfsResult {
-			Ipfs::handle_add_bytes(
-				byte_stream,
-				asset_id,
-				dataspace_id,
-				balance,
-				signature,
-				signer,
-				message,
-			)
-		}
-		
-		fn retrieve_bytes(
-			asset_id: u32,
-		) -> Bytes {
-			Ipfs::handle_retrieve_bytes(asset_id)
-		}
-	}
+	// impl encryption_rpc_runtime_api::EncryptionApi<> for Runtime {
+	// 	fn encrypt() -> Option<EncryptionResult> {
+	// 		None
+	// 	}
+
+	// 	fn decrypt() -> Option<Bytes> {
+	// 		None
+	// 	}
+	// }
 
 	#[cfg(feature = "runtime-benchmarks")]
 	impl frame_benchmarking::Benchmark<Block> for Runtime {
@@ -1059,8 +1042,9 @@ impl ChainExtension<Runtime> for IrisExtension {
 				let (caller_account, asset_id, target, result): (AccountId, u32, AccountId, bool) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
+				// TODO: right now you're your own gateway
 				crate::Authorization::submit_execution_results(
-					origin, asset_id, target, result,
+					origin, asset_id, target.clone(), target.clone(), result,
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},

@@ -55,14 +55,13 @@ where
 	C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Index>,
 	C::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>,
 	C::Api: pallet_contracts_rpc::ContractsRuntimeApi<Block, AccountId, Balance, BlockNumber, Hash>,
-	C::Api: pallet_ipfs_rpc::IpfsRuntimeApi<Block, Balance>,
 	C::Api: BlockBuilder<Block>,
 	P: TransactionPool + 'static,
 {
 	use pallet_contracts_rpc::{Contracts, ContractsApiServer};
 	use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 	use substrate_frame_rpc_system::{System, SystemApiServer};
-	use pallet_ipfs_rpc::{Ipfs, IpfsApiServer};
+	// use pallet_ipfs_rpc::{Ipfs, IpfsApiServer};
 
 	let mut module = RpcModule::new(());
 	let FullDeps { client, pool, deny_unsafe } = deps;
@@ -72,7 +71,7 @@ where
 	// Contracts RPC API extension
 	module.merge(Contracts::new(client.clone()).into_rpc())?;
 	// Ipfs RPC API extension
-	module.merge(Ipfs::new(client.clone()).into_rpc())?;
+	// module.merge(Ipfs::new(client.clone()).into_rpc())?;
 	// Extend this RPC with a custom API by using the following syntax.
 	// `YourRpcStruct` should have a reference to a client, which is needed
 	// to call into the runtime.

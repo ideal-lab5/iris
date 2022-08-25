@@ -31,7 +31,7 @@
 //!
 //! #### Permissioned Functions
 //! * mint
-//! * associate_asset_class_with_data_space
+//! * bond
 //!
 
 use scale_info::TypeInfo;
@@ -223,7 +223,7 @@ pub mod pallet {
         /// associate an asset class with a set of data spaces
         /// We still need to secure this to make it callable only by offchain workers
         #[pallet::weight(100)]
-        pub fn associate_asset_class_with_data_space(
+        pub fn bond(
             origin: OriginFor<T>,
             dataspace_id: T::AssetId,
             asset_class_id: T::AssetId,

@@ -35,6 +35,7 @@ use sp_std::{
 use core::convert::TryInto;
 
 use frame_system::ensure_signed;
+use iris_primitives::EjectionCommand;
 
 pub use pallet::*;
 
@@ -94,6 +95,15 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    #[pallet::storage]
+    pub type EjectionCommands<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Vec<EjectionCommand<T::AccountId, T::AssetId>>,
+        ValueQuery,
+    >;
+
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
@@ -106,20 +116,8 @@ pub mod pallet {
         NoSuchOwnedAssetClass,
         NoSuchAssetClass,
         InsufficientBalance,
+        InvalidRuleExecutor,
 	}
-
-    #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-         fn on_initialize(block_number: T::BlockNumber) -> Weight {
-            // needs to be synchronized with offchain_worker actitivies
-            if block_number % 2u32.into() == 1u32.into() {
-                // <DataRetrievalQueue<T>>::kill();
-            }
-
-            0
-        }
-    }
-
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
@@ -157,48 +155,44 @@ pub mod pallet {
         #[pallet::weight(100)]
         pub fn submit_execution_results(
             origin: OriginFor<T>,
-            #[pallet::compact] id: T::AssetId,
+            #[pallet::compact] asset_id: T::AssetId,
             data_consumer_address: T::AccountId,
+            gateway: T::AccountId,
             execution_result: bool,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // verify that the data_consumer holds an asset from the asset class
-            let balance = <pallet_assets::Pallet<T>>::balance(id.clone(), data_consumer_address.clone());
+            let balance = <pallet_assets::Pallet<T>>::balance(asset_id.clone(), data_consumer_address.clone());
             let balance_primitive = TryInto::<u64>::try_into(balance).ok();            
-            match balance_primitive {
-                Some(b) => ensure!(b >= 1, Error::<T>::InsufficientBalance),
-                None => {
-                    return Ok(());
-                }
-            }
-            // verify the caller is the registered rule exectuor contract
-            match <Registry::<T>>::get(id.clone()) {
-                Some(addr) => {
-                    if addr != who.clone() { return Ok(()) }
-                    // update the 'lock' for the asset id/caller combo
-                    <Lock::<T>>::insert(
-                        &data_consumer_address, &id, execution_result
-                    );
-                    if execution_result {
-                        // submit request to data retrieval queue
-                        match <pallet_assets::Pallet<T>>::asset(id.clone()) {
-                            Some(addr) => {
-                                // TODO: trigger data ejection
-
-                                // <DataRetrievalQueue<T>>::mutate(
-                                //     |queue| queue.push(DataCommand::CatBytes(
-                                //         who.clone(),
-                                //         addr.owner.clone(),
-                                //         id.clone(),
-                                //     )));
-                            },
-                            None => {
-                                return Ok(());
-                            }
+            match <pallet_assets::Pallet<T>>::asset(asset_id.clone()) {
+                Some(asset) => {
+                    match balance_primitive {
+                        Some(b) => ensure!(balance >= asset.min_balance, Error::<T>::InsufficientBalance),
+                        None => {
+                            return Ok(());
                         }
                     }
+                    // verify the caller is the registered rule executor contract
+                    match <Registry::<T>>::get(asset_id.clone()) {
+                        Some(addr) => {
+                            ensure!(addr == who.clone(), Error::<T>::InvalidRuleExecutor);
+                            // TODO: locks should expire after some number of blocks
+                            // is there any way we can use the vesting schedule approach to facilitate this?
+                            <Lock::<T>>::insert(&data_consumer_address, &asset_id, execution_result);
+                            if execution_result {
+                                // EjectionCommands::<T>::insert(
+                                //     gateway,
+                                //     EjectionCommand {
+                                //         asset_id: asset_id.clone(),
+                                //         caller: data_consumer_address.clone(),
+                                //     }
+                                // );
+                            }
+                        },
+                        None => { return Ok(()) }
+                    }
                 },
-                None => { return Ok(()) }
+                None => {},
             }
 
 			Ok(())
@@ -207,7 +201,6 @@ pub mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-
     /// Check if an address is the owner of an asset id
     /// if not the owner or dne, then return false
     /// if owner, return true
@@ -225,4 +218,14 @@ impl<T: Config> Pallet<T> {
             None => false
         }
     }
+}
+
+pub trait EjectionCommandDelegator<AccountId, AssetId> {
+    fn ejection_commands(gateway: AccountId) -> Vec<EjectionCommand<AccountId, AssetId>>;
+}
+
+impl<T: Config> EjectionCommandDelegator<T::AccountId, T::AssetId> for Pallet<T> {
+    fn ejection_commands(gateway: T::AccountId) -> Vec<EjectionCommand<T::AccountId, T::AssetId>> {
+        EjectionCommands::<T>::get(gateway)
+    }  
 }

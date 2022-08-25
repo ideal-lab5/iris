@@ -46,7 +46,7 @@ fn data_assets_can_request_ingestion() {
 	let cid_vec = "QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9".as_bytes().to_vec();
 	let name: Vec<u8> = "test.txt".as_bytes().to_vec();
 	let id = 1;
-	let balance: u64 = 1;
+	let balance = 1;
 	let min_asset_balance: u64 = 1;
 	let size = 10;
 
