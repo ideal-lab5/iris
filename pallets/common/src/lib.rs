@@ -63,67 +63,10 @@ pub struct AssetId<T: Copy> {
     pub id: T,
 }
 
-// // Serialize
-// impl<T> Serialize for AssetId<T> {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         let mut state = serializer.serialize_struct("AssetId", 1)?;
-//         state.serialize_field("id", &self.id)?;
-//         state.end()
-//     }
-// }
-
-// // visitor
-// struct AssetIdVisitor;
-
-// impl<'de> Visitor<'de> for AssetIdVisitor {
-//     type Value = u32;
-//     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-//         formatter.write_str("an asset id greater than 0")
-//     }
-//     fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
-//     where
-//         E: de::Error
-//     {
-//         Ok(value)
-//     }
-// }
-
-// // Deserialize
-// impl<'de> Deserialize<'de> for AssetId<u32> {
-//     fn deserialize<D>(&self, deserializer: D) -> Result<AssetId<u32>, D:Error> 
-//     where 
-//         D: Deserializer<'de>,
-//     {
-//         deserializer.deserialize_u32(AssetIdVisitor)
-//     }
-// }
-
-// // HasCompact
-// impl<T: Copy> CompactAs for AssetId<T> {
-//     type As = T;
-
-//     fn encode_as(&self) -> &Self::As {
-//         &self.id
-//     }
-
-//     fn decode_from(x: Self::As) -> Result<Self, codec::Error> {
-//         Ok(AssetId {
-//             id: x,
-//         })
-//     }
-// }
-
-// impl<T: Copy> From<Compact<AssetId<T>>> for AssetId<T> {
-//     fn from(x: Compact<AssetId<T>>) -> Self {
-//         x.0
-//     }
-// }
-
-// impl From<u32> for AssetId<u32> {
-//     fn from(u: u32) -> AssetId<u32> {
-//         AssetId { id: u }
-//     }
-// }
+#[derive(PartialEq, Eq, Encode, Decode, RuntimeDebug)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct EncryptionResult {
+	// maybe change to Bytes?
+	pub public_key: Bytes,
+	pub ciphertext: Bytes,
+}

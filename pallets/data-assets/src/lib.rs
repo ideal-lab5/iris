@@ -40,20 +40,51 @@ use frame_support::{
     traits::{Currency, LockableCurrency},
 };
 use frame_system::{
-    self as system, ensure_signed, pallet_prelude::*,
+    self as system, 
+    ensure_signed, 
+    pallet_prelude::*,
+    offchain::{
+        AppCrypto, CreateSignedTransaction, SendUnsignedTransaction, SignedPayload, SubmitTransaction,
+    },
 };
 
 use sp_runtime::{
+    KeyTypeId,
     RuntimeDebug,
-    traits::StaticLookup,
+    traits::{
+        StaticLookup,
+        Verify,
+    },
+    transaction_validity::{
+        InvalidTransaction, 
+        TransactionValidity, 
+        ValidTransaction
+    },
 };
 use sp_std::{
     prelude::*,
 };
 
+use umbral_pre::*;
+use rand_chacha::{
+    ChaCha20Rng,
+    rand_core::SeedableRng,
+};
+use scale_info::prelude::string::ToString;
+use sp_runtime::offchain::storage::StorageValueRef;
+use generic_array::{
+    GenericArray,
+    typenum::UTerm,
+};
+
+use sp_core::{
+    Bytes,
+    sr25519::{Public, Signature},
+};
 use core::convert::TryInto;
 use pallet_vesting::VestingInfo;
-use iris_primitives::IngestionCommand;
+use iris_primitives::{IngestionCommand, EncryptionResult};
+
 
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 pub struct EjectionCommand {
@@ -65,6 +96,40 @@ pub struct EjectionCommand {
 pub struct AssetMetadata {
     /// the cid of some data
     pub cid: Vec<u8>,
+}
+
+
+pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"iris");
+
+/// Based on the above `KeyTypeId` we need to generate a pallet-specific crypto type wrappers.
+/// We can use from supported crypto kinds (`sr25519`, `ed25519` and `ecdsa`) and augment
+/// the types with this pallet-specific identifier.
+pub mod crypto {
+	use super::KEY_TYPE;
+	use sp_core::sr25519::Signature as Sr25519Signature;
+	use sp_runtime::{
+		app_crypto::{app_crypto, sr25519},
+		traits::Verify,
+		MultiSignature, MultiSigner,
+	};
+	app_crypto!(sr25519, KEY_TYPE);
+
+	pub struct TestAuthId;
+
+	impl frame_system::offchain::AppCrypto<MultiSigner, MultiSignature> for TestAuthId {
+		type RuntimeAppPublic = Public;
+		type GenericSignature = sp_core::sr25519::Signature;
+		type GenericPublic = sp_core::sr25519::Public;
+	}
+
+	// implemented for mock runtime in test
+	impl frame_system::offchain::AppCrypto<<Sr25519Signature as Verify>::Signer, Sr25519Signature>
+		for TestAuthId
+	{
+		type RuntimeAppPublic = Public;
+		type GenericSignature = sp_core::sr25519::Signature;
+		type GenericPublic = sp_core::sr25519::Public;
+	}
 }
 
 type BalanceOf<T> =
@@ -90,7 +155,10 @@ pub mod pallet {
     };
 
 	#[pallet::config]
-	pub trait Config: frame_system::Config + pallet_assets::Config + pallet_vesting::Config
+	pub trait Config: frame_system::Config + 
+        CreateSignedTransaction<Call<Self>> + 
+        pallet_assets::Config + 
+        pallet_vesting::Config
     {
         /// The overarching event type
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -98,6 +166,8 @@ pub mod pallet {
 	    type Call: From<Call<Self>>;
         /// The currency trait.
 		type Currency: LockableCurrency<Self::AccountId>;
+        /// the authority id used for sending signed txs
+        type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
 	}
 
 	#[pallet::pallet]
@@ -130,6 +200,18 @@ pub mod pallet {
 
     #[pallet::storage]
     pub type Delay<T: Config> = StorageValue<_, u32, ValueQuery>;
+
+    // TODO: Explore making a type TPREPublicKey, Ciphertext
+    // map pubkey to ciphertext
+    // Also I'm not a big fan of the name Capsules, change that later
+    #[pallet::storage]
+    pub type Capsules<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        Vec<u8>,
+        Vec<u8>,
+        ValueQuery,
+    >;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -176,6 +258,25 @@ pub mod pallet {
         InvalidAssetId,
         DataSpaceNotAccessible,
 	}
+
+    #[pallet::validate_unsigned]
+	impl<T: Config> ValidateUnsigned for Pallet<T> {
+		type Call = Call<T>;
+
+		/// Validate unsigned call to this module.
+		///
+		/// By default unsigned transactions are disallowed, but implementing the validator
+		/// here we make sure that some particular calls (the ones produced by offchain worker)
+		/// are being whitelisted and marked as valid.
+		fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
+            if let Call::submit_capsule_and_kfrags{ .. } = call {
+				Self::validate_transaction_parameters()
+			} else {
+				InvalidTransaction::Call.into()
+			}
+		}
+	}
+
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
@@ -254,6 +355,17 @@ pub mod pallet {
             Self::deposit_event(Event::CreatedIngestionRequest);
 			Ok(())
         }
+
+        #[pallet::weight(0)]
+        pub fn submit_capsule_and_kfrags(
+            origin: OriginFor<T>,
+            capsule: Vec<u8>,
+            public_key: Vec<u8>,
+        ) -> DispatchResult {
+            ensure_none(origin)?;
+            Capsules::<T>::insert(public_key, capsule);
+            Ok(())
+        }
 	}
 }
 
@@ -267,6 +379,85 @@ impl<T: Config> Pallet<T> {
         let new_next_asset_id = TryInto::<T::AssetId>::try_into(new_id).ok().unwrap();
         NextAssetId::<T>::mutate(|id| *id = new_next_asset_id);
         next
+    }
+
+    /// validates if an unsigned tx is valid
+    /// for now, all are valid
+    fn validate_transaction_parameters() -> TransactionValidity {
+		ValidTransaction::with_tag_prefix("iris")
+			.longevity(5)
+			.propagate(true)
+			.build()
+	}
+
+    /// Recover signing acct and use it to encrypt the data and submit unsigned tx
+    pub fn encrypt(
+        plaintext: Bytes,
+        signature: Bytes,
+        signer: Bytes,
+        message: Bytes,
+        shares: usize,
+        threshold: usize,
+    ) -> Option<EncryptionResult> {
+
+        let plaintext_as_slice: &[u8] = &plaintext.to_vec();
+        Self::do_encrypt(plaintext_as_slice, shares, threshold)
+
+        // let acct_bytes: [u8;32] = signer.to_vec().try_into().unwrap();
+        // let acct_pubkey = Public::from_raw(acct_bytes);
+        // let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
+        // let msg: Vec<u8> = message.to_vec();
+
+        // if sig.verify(msg.as_slice(), &acct_pubkey) {
+        //     let plaintext_as_slice: &[u8] = &plaintext.to_vec();
+        //     return Self::do_encrypt(plaintext_as_slice, shares, threshold);
+        // }
+
+        // None 
+    }
+
+    /// 
+    fn do_encrypt(
+        plaintext: &[u8], 
+        shares: usize, 
+        threshold: usize
+    ) -> Option<EncryptionResult> {
+        // could use prng to generate the seed?
+        let mut rng = ChaCha20Rng::seed_from_u64(17u64);
+        // generate keys
+        let sk = SecretKey::random_with_rng(rng.clone());
+        let pk = sk.public_key();
+
+        let (capsule, ciphertext) = match umbral_pre::encrypt_with_rng(
+            &mut rng.clone(), &pk, plaintext)
+        {
+            Ok((capsule, ciphertext)) => (capsule, ciphertext),
+            Err(error) => {
+                return None;
+            },
+        };
+
+        let signer = Signer::new(SecretKey::random_with_rng(rng.clone()));
+        let verified_kfrags = generate_kfrags_with_rng(
+            &mut rng.clone(), &sk, &pk, &signer, threshold, shares, true, true
+        );
+
+        let capsule_vec: Vec<u8> = capsule.to_array().as_slice().to_vec();
+        let pk_vec: Vec<u8> = pk.to_array().as_slice().to_vec();
+
+        let call = Call::submit_capsule_and_kfrags { 
+            capsule: capsule_vec,
+            public_key: pk_vec.clone(),
+        };
+
+		SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
+			.map_err(|()| "Unable to submit unsigned transaction.");
+
+        Some(EncryptionResult{
+            public_key: Bytes::from(pk_vec.clone()),
+            ciphertext: Bytes::from(ciphertext.to_vec()),
+        })
+        // None
     }
 }
 
@@ -313,10 +504,6 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
         let who = ensure_signed(origin)?;
         let asset_id = Self::next_asset_id();
         let admin = T::Lookup::unlookup(cmd.clone().owner);
-
-        // create kfrags
-        // distribute kfrags
-
         let new_origin = system::RawOrigin::Signed(who.clone()).into();
         <pallet_assets::Pallet<T>>::create(new_origin, asset_id.clone(), admin.clone(), cmd.balance.clone())
             .map_err(|e| {

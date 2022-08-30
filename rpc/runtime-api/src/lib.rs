@@ -30,23 +30,24 @@ use sp_runtime::{
 	traits::MaybeDisplay,
 };
 
+use iris_primitives::EncryptionResult;
+
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-
-#[derive(PartialEq, Eq, Encode, Decode, RuntimeDebug)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct EncryptionResult {
-	pub public_key: [u8];
-	pub encrypted_secret_key: [u8];
-	pub ciphertext: Vec<u8>;
-}
 
 sp_api::decl_runtime_apis! {
 	pub trait EncryptionApi<Balance> 
 		where Balance: Codec + MaybeDisplay,
 	{
-		fn encrypt() -> Option<EncryptionResult>;
+		fn encrypt(
+			plaintext: Bytes,
+			signature: Bytes,
+			signer: Bytes,
+			message: Bytes,
+			// shares: usize,
+			// threshold: usize,
+		) -> Option<EncryptionResult>;
 
-		fn decrypt() -> Option<Bytes>;
+		fn decrypt(bytes: Bytes) -> Option<Bytes>;
 	}
 }

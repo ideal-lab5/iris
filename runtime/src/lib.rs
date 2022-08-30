@@ -77,7 +77,7 @@ pub use sp_runtime::{Perbill, Permill};
 use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
 use pallet_authorities::EraIndex;
 use pallet_ipfs_primitives::IpfsResult;
-use encryption_rpc_runtime_api::EncryptionResult;
+use iris_primitives::EncryptionResult;
 
 pub use pallet_data_assets;
 pub use pallet_authorization;
@@ -462,6 +462,7 @@ impl pallet_data_assets::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 	type Currency = Balances;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
 impl pallet_authorization::Config for Runtime {
@@ -857,11 +858,25 @@ impl_runtime_apis! {
 	}
 
 	impl encryption_rpc_runtime_api::EncryptionApi<Block, Balance> for Runtime {
-		fn encrypt() -> Option<EncryptionResult> {
-			None
+		fn encrypt(
+			plaintext: Bytes,
+			signature: Bytes,
+			signer: Bytes,
+			message: Bytes,
+			// shares: usize,
+			// threshold: usize,
+		) -> Option<EncryptionResult> {
+			// None
+			DataAssets::encrypt(
+				plaintext, 
+				signature, 
+				signer, 
+				message, 
+				5, 3,
+			)
 		}
 
-		fn decrypt() -> Option<Bytes> {
+		fn decrypt(bytes: Bytes) -> Option<Bytes> {
 			None
 		}
 	}

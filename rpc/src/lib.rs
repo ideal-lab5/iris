@@ -35,7 +35,8 @@ use std::sync::Arc;
 use codec::{Codec, Decode, Encode};
 use sp_std::vec::Vec;
 
-pub use encryption_rpc_runtime_api::{EncryptionResult, EncryptionApi as EncryptionRuntimeApi};
+use iris_primitives::EncryptionResult;
+pub use encryption_rpc_runtime_api::EncryptionApi as EncryptionRuntimeApi;
 
 #[rpc(client, server)]
 pub trait EncryptionApi<BlockHash, Balance> {
@@ -43,12 +44,19 @@ pub trait EncryptionApi<BlockHash, Balance> {
 	#[method(name = "iris_encrypt")]
 	fn encrypt(
 		&self,
+		plaintext: Bytes,
+        signature: Bytes,
+        signer: Bytes,
+        message: Bytes,
+        // shares: usize,
+        // threshold: usize,
 		at: Option<BlockHash>,
 	) -> RpcResult<Option<EncryptionResult>>;
 
 	#[method(name = "iris_decrypt")]
 	fn decrypt(
 		&self,
+		bytes: Bytes,
 		at: Option<BlockHash>,
 	) -> RpcResult<Option<Bytes>>;
 }
@@ -92,13 +100,19 @@ where
 
 	fn encrypt(
 		&self,
+		plaintext: Bytes,
+        signature: Bytes,
+        signer: Bytes,
+        message: Bytes,
+        // shares: usize,
+        // threshold: usize,
 		at: Option<<Block as BlockT>::Hash>
 	) -> RpcResult<Option<EncryptionResult>> {
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			self.client.info().best_hash
 		));
-		api.encrypt(&at)
+		api.encrypt(&at, plaintext, signature, signer, message)
 			.map_err(|e| {
 				CallError::Custom(ErrorObject::owned(
 					Error::RuntimeError.into(),
@@ -111,13 +125,14 @@ where
 
 	fn decrypt(
 		&self,
+		bytes: Bytes,
 		at: Option<<Block as BlockT>::Hash>
 	) -> RpcResult<Option<Bytes>> {
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			self.client.info().best_hash
 		));
-		api.decrypt(&at).map_err(|e| {
+		api.decrypt(&at, bytes).map_err(|e| {
 			CallError::Custom(ErrorObject::owned(
 				Error::RuntimeError.into(),
 				"Unable to retrieve bytes.",
