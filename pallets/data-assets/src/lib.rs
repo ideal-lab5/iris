@@ -205,8 +205,10 @@ pub mod pallet {
     // map pubkey to ciphertext
     // Also I'm not a big fan of the name Capsules, change that later
     #[pallet::storage]
-    pub type Capsules<T: Config> = StorageMap<
+    pub type Capsules<T: Config> = StorageDoubleMap<
         _,
+        Blake2_128Concat,
+        T::AccountId,
         Blake2_128Concat,
         Vec<u8>,
         Vec<u8>,
@@ -359,11 +361,15 @@ pub mod pallet {
         #[pallet::weight(0)]
         pub fn submit_capsule_and_kfrags(
             origin: OriginFor<T>,
-            capsule: Vec<u8>,
+            owner: T::AccountId,
+            data_capsule: Vec<u8>,
             public_key: Vec<u8>,
+            sk_capsule: Vec<u8>,
+            sk_ciphertext: Vec<u8>,
+            encrypted_kfrags: Vec<u8>,
         ) -> DispatchResult {
             ensure_none(origin)?;
-            Capsules::<T>::insert(public_key, capsule);
+            Capsules::<T>::insert(owner, public_key, data_capsule);
             Ok(())
         }
 	}
@@ -399,36 +405,34 @@ impl<T: Config> Pallet<T> {
         shares: usize,
         threshold: usize,
     ) -> Option<EncryptionResult> {
+        let acct_bytes: [u8;32] = signer.to_vec().try_into().unwrap();
+        let acct_pubkey = Public::from_raw(acct_bytes);
+        let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
+        let msg: Vec<u8> = message.to_vec();
 
-        let plaintext_as_slice: &[u8] = &plaintext.to_vec();
-        Self::do_encrypt(plaintext_as_slice, shares, threshold)
+        let acct_id: T::AccountId = T::AccountId::decode(&mut &acct_bytes[..]).unwrap();
 
-        // let acct_bytes: [u8;32] = signer.to_vec().try_into().unwrap();
-        // let acct_pubkey = Public::from_raw(acct_bytes);
-        // let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
-        // let msg: Vec<u8> = message.to_vec();
+        if sig.verify(msg.as_slice(), &acct_pubkey) {
+            let plaintext_as_slice: &[u8] = &plaintext.to_vec();
+            return Self::do_encrypt(plaintext_as_slice, shares, threshold, acct_id);
+        }
 
-        // if sig.verify(msg.as_slice(), &acct_pubkey) {
-        //     let plaintext_as_slice: &[u8] = &plaintext.to_vec();
-        //     return Self::do_encrypt(plaintext_as_slice, shares, threshold);
-        // }
-
-        // None 
+        None 
     }
 
     /// 
     fn do_encrypt(
         plaintext: &[u8], 
         shares: usize, 
-        threshold: usize
+        threshold: usize,
+        owner: T::AccountId,
     ) -> Option<EncryptionResult> {
-        // could use prng to generate the seed?
         let mut rng = ChaCha20Rng::seed_from_u64(17u64);
         // generate keys
         let sk = SecretKey::random_with_rng(rng.clone());
         let pk = sk.public_key();
 
-        let (capsule, ciphertext) = match umbral_pre::encrypt_with_rng(
+        let (data_capsule, data_ciphertext) = match umbral_pre::encrypt_with_rng(
             &mut rng.clone(), &pk, plaintext)
         {
             Ok((capsule, ciphertext)) => (capsule, ciphertext),
@@ -437,17 +441,37 @@ impl<T: Config> Pallet<T> {
             },
         };
 
+        // encrypt the secret key
+        let (sk_capsule, sk_ciphertext) = match umbral_pre::encrypt_with_rng(
+            &mut rng.clone(), &pk, sk.to_string().as_bytes(),
+        ) {
+            Ok((capsule, ciphertext)) => (capsule, ciphertext),
+            Err(error) => {
+                return None;
+            },
+        };
+
         let signer = Signer::new(SecretKey::random_with_rng(rng.clone()));
+
         let verified_kfrags = generate_kfrags_with_rng(
             &mut rng.clone(), &sk, &pk, &signer, threshold, shares, true, true
         );
 
-        let capsule_vec: Vec<u8> = capsule.to_array().as_slice().to_vec();
+        let kfrag_bytes: Vec<Bytes> =
+            verified_kfrags.iter().map(|k| { Bytes::from(k.to_array().as_slice().to_vec()) }).collect();
+        let capsule_vec: Vec<u8> = data_capsule.to_array().as_slice().to_vec();
         let pk_vec: Vec<u8> = pk.to_array().as_slice().to_vec();
 
+        let sk_capsule_vec: Vec<u8> = sk_capsule.to_array().as_slice().to_vec();
+        let sk_ciphertext_vec: Vec<u8> = sk_ciphertext.to_vec();
+
         let call = Call::submit_capsule_and_kfrags { 
-            capsule: capsule_vec,
+            owner: owner,
+            data_capsule: capsule_vec,
             public_key: pk_vec.clone(),
+            sk_capsule: sk_capsule_vec,
+            sk_ciphertext: sk_ciphertext_vec,
+            encrypted_kfrags: encrypted_kfrags,
         };
 
 		SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
@@ -455,9 +479,8 @@ impl<T: Config> Pallet<T> {
 
         Some(EncryptionResult{
             public_key: Bytes::from(pk_vec.clone()),
-            ciphertext: Bytes::from(ciphertext.to_vec()),
+            ciphertext: Bytes::from(data_ciphertext.to_vec()),
         })
-        // None
     }
 }
 
@@ -502,6 +525,9 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
         cmd: IngestionCommand<T::AccountId, T::Balance>,
     ) -> DispatchResult {
         let who = ensure_signed(origin)?;
+
+        // verify that capsule exists (i.e. data is decryptable)
+
         let asset_id = Self::next_asset_id();
         let admin = T::Lookup::unlookup(cmd.clone().owner);
         let new_origin = system::RawOrigin::Signed(who.clone()).into();

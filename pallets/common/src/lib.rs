@@ -66,7 +66,6 @@ pub struct AssetId<T: Copy> {
 #[derive(PartialEq, Eq, Encode, Decode, RuntimeDebug)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct EncryptionResult {
-	// maybe change to Bytes?
 	pub public_key: Bytes,
 	pub ciphertext: Bytes,
 }
