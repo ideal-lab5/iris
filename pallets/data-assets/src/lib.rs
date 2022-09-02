@@ -98,6 +98,18 @@ pub struct AssetMetadata {
     pub cid: Vec<u8>,
 }
 
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+pub struct SecretStuff {
+    pub data_capsule: Vec<u8>,
+    pub sk_capsule: Vec<u8>,
+    pub sk_ciphertext: Vec<u8>,
+}
+
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+pub struct EncryptedData {
+    pub capsule: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+}
 
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"iris");
 
@@ -203,7 +215,6 @@ pub mod pallet {
 
     // TODO: Explore making a type TPREPublicKey, Ciphertext
     // map pubkey to ciphertext
-    // Also I'm not a big fan of the name Capsules, change that later
     #[pallet::storage]
     pub type Capsules<T: Config> = StorageDoubleMap<
         _,
@@ -211,8 +222,19 @@ pub mod pallet {
         T::AccountId,
         Blake2_128Concat,
         Vec<u8>,
+        SecretStuff,
+        OptionQuery,
+    >;
+
+    #[pallet::storage]
+    pub type Fragments<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
         Vec<u8>,
-        ValueQuery,
+        Blake2_128Concat,
+        T::AccountId,
+        EncryptedData,
+        OptionQuery,
     >;
 
 	#[pallet::event]
@@ -366,10 +388,42 @@ pub mod pallet {
             public_key: Vec<u8>,
             sk_capsule: Vec<u8>,
             sk_ciphertext: Vec<u8>,
-            encrypted_kfrags: Vec<u8>,
+            encrypted_kfrags: Vec<Vec<u8>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
-            Capsules::<T>::insert(owner, public_key, data_capsule);
+            // assign and distribute encrypted_kfrags
+            let mut rng = ChaCha20Rng::seed_from_u64(17u64);
+            let required_authorities_count = encrypted_kfrags.len();
+            // 1. choose 'delta' authorities
+            // let authorities = T::AuthorityProvider::choose_authorities(required_authorities_count)?;
+            let authorities: Vec<T::AccountId> = Vec::new();
+            // 2. for each chosen authority, distribute a kfrag (how?) if it isn't encrypted, how is it secure? it's not
+            // so we need to perform some kind of on-chain encryption using the public key of the authority
+
+            for (pos, a) in authorities.iter().enumerate() {
+                let avec: Vec<u8> = T::AccountId::encode(&owner);
+                let a32: &[u8] = avec.as_slice();
+                let pk = umbral_pre::PublicKey::from_bytes(a32.clone()).unwrap();
+                let plaintext = encrypted_kfrags[pos].as_slice();
+                let (a_capsule, a_ciphertext) = match umbral_pre::encrypt_with_rng(&mut rng.clone(), &pk, plaintext) {
+                    Ok((capsule, ciphertext)) => (capsule, ciphertext),
+                    Err(error) => {
+                            // todo
+                            return Ok(());
+                    },
+                };
+               Fragments::<T>::insert(public_key.clone(), a.clone(), EncryptedData{
+                capsule: a_capsule.to_array().as_slice().to_vec(),
+                ciphertext: a_ciphertext.to_vec(),
+               });
+            }
+
+            Capsules::<T>::insert(owner, public_key, 
+                SecretStuff {
+                    data_capsule,
+                    sk_capsule,
+                    sk_ciphertext,
+            });
             Ok(())
         }
 	}
@@ -457,8 +511,8 @@ impl<T: Config> Pallet<T> {
             &mut rng.clone(), &sk, &pk, &signer, threshold, shares, true, true
         );
 
-        let kfrag_bytes: Vec<Bytes> =
-            verified_kfrags.iter().map(|k| { Bytes::from(k.to_array().as_slice().to_vec()) }).collect();
+        let kfrag_bytes: Vec<Vec<u8>> =
+            verified_kfrags.iter().map(|k| { k.to_array().as_slice().to_vec() }).collect();
         let capsule_vec: Vec<u8> = data_capsule.to_array().as_slice().to_vec();
         let pk_vec: Vec<u8> = pk.to_array().as_slice().to_vec();
 
@@ -471,7 +525,7 @@ impl<T: Config> Pallet<T> {
             public_key: pk_vec.clone(),
             sk_capsule: sk_capsule_vec,
             sk_ciphertext: sk_ciphertext_vec,
-            encrypted_kfrags: encrypted_kfrags,
+            encrypted_kfrags: kfrag_bytes,
         };
 
 		SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
