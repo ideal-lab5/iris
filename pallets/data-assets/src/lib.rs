@@ -458,7 +458,7 @@ impl<T: Config> Pallet<T> {
         message: Bytes,
         shares: usize,
         threshold: usize,
-    ) -> Option<EncryptionResult> {
+    ) -> Option<Bytes> {
         let acct_bytes: [u8;32] = signer.to_vec().try_into().unwrap();
         let acct_pubkey = Public::from_raw(acct_bytes);
         let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
@@ -480,7 +480,7 @@ impl<T: Config> Pallet<T> {
         shares: usize, 
         threshold: usize,
         owner: T::AccountId,
-    ) -> Option<EncryptionResult> {
+    ) -> Option<Bytes> {
         let mut rng = ChaCha20Rng::seed_from_u64(17u64);
         // generate keys
         let sk = SecretKey::random_with_rng(rng.clone());
@@ -531,10 +531,11 @@ impl<T: Config> Pallet<T> {
 		SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
 			.map_err(|()| "Unable to submit unsigned transaction.");
 
-        Some(EncryptionResult{
-            public_key: Bytes::from(pk_vec.clone()),
-            ciphertext: Bytes::from(data_ciphertext.to_vec()),
-        })
+        // Some(EncryptionResult{
+        //     public_key: Bytes::from(pk_vec.clone()),
+        //     ciphertext: Bytes::from(data_ciphertext.to_vec()),
+        // })
+        Some(Bytes::from(data_ciphertext.to_vec()))
     }
 }
 

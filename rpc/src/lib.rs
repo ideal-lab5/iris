@@ -51,7 +51,7 @@ pub trait EncryptionApi<BlockHash, Balance> {
         // shares: usize,
         // threshold: usize,
 		at: Option<BlockHash>,
-	) -> RpcResult<Option<EncryptionResult>>;
+	) -> RpcResult<Option<Bytes>>;
 
 	#[method(name = "iris_decrypt")]
 	fn decrypt(
@@ -104,10 +104,8 @@ where
         signature: Bytes,
         signer: Bytes,
         message: Bytes,
-        // shares: usize,
-        // threshold: usize,
 		at: Option<<Block as BlockT>::Hash>
-	) -> RpcResult<Option<EncryptionResult>> {
+	) -> RpcResult<Option<Bytes>> {
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			self.client.info().best_hash

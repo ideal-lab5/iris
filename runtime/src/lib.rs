@@ -857,15 +857,14 @@ impl_runtime_apis! {
 		}
 	}
 
+	// USE {5 ,3}-Threshold encryption
 	impl encryption_rpc_runtime_api::EncryptionApi<Block, Balance> for Runtime {
 		fn encrypt(
 			plaintext: Bytes,
 			signature: Bytes,
 			signer: Bytes,
 			message: Bytes,
-			// shares: usize,
-			// threshold: usize,
-		) -> Option<EncryptionResult> {
+		) -> Option<Bytes> {
 			// None
 			DataAssets::encrypt(
 				plaintext, 

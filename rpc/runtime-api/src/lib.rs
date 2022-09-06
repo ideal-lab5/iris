@@ -44,9 +44,7 @@ sp_api::decl_runtime_apis! {
 			signature: Bytes,
 			signer: Bytes,
 			message: Bytes,
-			// shares: usize,
-			// threshold: usize,
-		) -> Option<EncryptionResult>;
+		) -> Option<Bytes>;
 
 		fn decrypt(bytes: Bytes) -> Option<Bytes>;
 	}
