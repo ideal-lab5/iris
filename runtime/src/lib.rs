@@ -463,6 +463,7 @@ impl pallet_data_assets::Config for Runtime {
 	type Call = Call;
 	type Currency = Balances;
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	// type ValidatorId = <Self as frame_system::Config>::AccountId;
 }
 
 impl pallet_authorization::Config for Runtime {

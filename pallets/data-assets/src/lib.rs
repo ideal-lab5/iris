@@ -52,6 +52,7 @@ use sp_runtime::{
     KeyTypeId,
     RuntimeDebug,
     traits::{
+        Convert,
         StaticLookup,
         Verify,
     },
@@ -81,10 +82,10 @@ use sp_core::{
     Bytes,
     sr25519::{Public, Signature},
 };
+
 use core::convert::TryInto;
 use pallet_vesting::VestingInfo;
 use iris_primitives::{IngestionCommand, EncryptionResult};
-
 
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 pub struct EjectionCommand {
@@ -170,7 +171,8 @@ pub mod pallet {
 	pub trait Config: frame_system::Config + 
         CreateSignedTransaction<Call<Self>> + 
         pallet_assets::Config + 
-        pallet_vesting::Config
+        pallet_vesting::Config +
+        pallet_authorities::Config
     {
         /// The overarching event type
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -395,16 +397,24 @@ pub mod pallet {
             let mut rng = ChaCha20Rng::seed_from_u64(17u64);
             let required_authorities_count = encrypted_kfrags.len();
             // 1. choose 'delta' authorities
-            // let authorities = T::AuthorityProvider::choose_authorities(required_authorities_count)?;
-            let authorities: Vec<T::AccountId> = Vec::new();
+            // TODO: need to properly define shares and threshold somewhere, either runtime storage or in runtime/lib.rs
+            let authorities: Vec<T::AccountId> = pallet_authorities::Pallet::<T>::validators();
+            // for now, foregoing random selection and just choosing first requried_authorities_count authorities
+            // let rand_authorities: Vec<T::AccountId> = vec![0..required_authorities_count]
+            //     .iter().map(|i| authorities[i as usize].clone()).collect();
+                // .iter()
+                // .choose_multiple(&mut rand::thread_rng(), required_authorities_count)
+                // // .map(|v| v.into())
+                // .collect();
             // 2. for each chosen authority, distribute a kfrag (how?) if it isn't encrypted, how is it secure? it's not
             // so we need to perform some kind of on-chain encryption using the public key of the authority
 
-            for (pos, a) in authorities.iter().enumerate() {
-                let avec: Vec<u8> = T::AccountId::encode(&owner);
+            for i in vec![0, required_authorities_count] {
+                let authority = authorities[i].clone();
+                let avec: Vec<u8> = T::AccountId::encode(&authority);
                 let a32: &[u8] = avec.as_slice();
                 let pk = umbral_pre::PublicKey::from_bytes(a32.clone()).unwrap();
-                let plaintext = encrypted_kfrags[pos].as_slice();
+                let plaintext = encrypted_kfrags[i].as_slice();
                 let (a_capsule, a_ciphertext) = match umbral_pre::encrypt_with_rng(&mut rng.clone(), &pk, plaintext) {
                     Ok((capsule, ciphertext)) => (capsule, ciphertext),
                     Err(error) => {
@@ -412,11 +422,29 @@ pub mod pallet {
                             return Ok(());
                     },
                 };
-               Fragments::<T>::insert(public_key.clone(), a.clone(), EncryptedData{
+               Fragments::<T>::insert(public_key.clone(), authority.clone(), EncryptedData{
                 capsule: a_capsule.to_array().as_slice().to_vec(),
                 ciphertext: a_ciphertext.to_vec(),
                });
             }
+
+            // for (pos, a) in rand_authorities.iter().enumerate() {
+            //     let avec: Vec<u8> = T::AccountId::encode(&owner);
+            //     let a32: &[u8] = avec.as_slice();
+            //     let pk = umbral_pre::PublicKey::from_bytes(a32.clone()).unwrap();
+            //     let plaintext = encrypted_kfrags[pos].as_slice();
+            //     let (a_capsule, a_ciphertext) = match umbral_pre::encrypt_with_rng(&mut rng.clone(), &pk, plaintext) {
+            //         Ok((capsule, ciphertext)) => (capsule, ciphertext),
+            //         Err(error) => {
+            //                 // todo
+            //                 return Ok(());
+            //         },
+            //     };
+            //    Fragments::<T>::insert(public_key.clone(), a.clone(), EncryptedData{
+            //     capsule: a_capsule.to_array().as_slice().to_vec(),
+            //     ciphertext: a_ciphertext.to_vec(),
+            //    });
+            // }
 
             Capsules::<T>::insert(owner, public_key, 
                 SecretStuff {
@@ -549,6 +577,14 @@ impl<T: Config> MetadataProvider<T::AssetId> for Pallet<T> {
     }
 }
 
+// Implementation of Convert trait for mapping ValidatorId with AccountId.
+pub struct ValidatorOf<T>(sp_std::marker::PhantomData<T>);
+
+impl<T: Config> Convert<T::ValidatorId, Option<T::ValidatorId>> for ValidatorOf<T> {
+	fn convert(account: T::ValidatorId) -> Option<T::ValidatorId> {
+		Some(account)
+	}
+}
 
 /// a trait to provide the ingestion queue to other modules
 pub trait QueueProvider<AccountId, Balance> {

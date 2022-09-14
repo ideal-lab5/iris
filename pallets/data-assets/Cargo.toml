@@ -33,15 +33,14 @@ pallet-balances = { version = "4.0.0-dev", default-features = false, git = "http
 pallet-vesting = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
 # Iris pallets
 pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = false }
+pallet-authorities = { version = "1.0.0", path = "../authorities", default-features = false }
 iris-primitives = { version = "1.0.0", default-features = false, path = "../common" }
 
-# umbral-pre = { version = "0.5.2", default-features = false, features = ["serde-support", "bindings-wasm"] }
 umbral-pre = { version = "0.5.2", default-features = false, features = ["serde-support"] }
 # needed for umbral-pre
 getrandom = { version = "0.2", default-features = false, features = ["js"] }
 rand_chacha = { version = "0.3.1", default-features = false }
 generic-array = "0.14.6"
-# generic-array = { version = "0.14.6", default-features = false }
 
 [features]
 default = ['std']
@@ -56,13 +55,13 @@ std = [
 	'sp-runtime/std',
 	'log/std',
 	'pallet-assets/std',
+	'pallet-authorities/std',
 	'pallet-balances/std',
 	'pallet-vesting/std',
 	'iris-primitives/std',
 	'umbral-pre/std',
 	'getrandom/std',
 	'rand_chacha/std',
-	# 'generic-array/std',
 ]
 
 runtime-benchmarks = ["frame-benchmarking"]

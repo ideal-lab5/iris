@@ -17,13 +17,13 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-//! # Data Ejection Pallet
+//! # Authorization Pallet
 //! 
 //! ## Goal
 //! 
 //! The goal of this pallet is to handle verification of access rules
-//! associated with data asset classes.
-//! 
+//! associated with data asset classes. Rule executor contracts call into the extrinsics exposed
+//! by this pallet to provide proof of accessibility for 
 //! 
 //!
 

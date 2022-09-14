@@ -4194,6 +4194,7 @@ dependencies = [
  "iris-primitives",
  "log",
  "pallet-assets",
+ "pallet-authorities",
  "pallet-balances",
  "pallet-vesting",
  "parity-scale-codec",
