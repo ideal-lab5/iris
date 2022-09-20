@@ -87,16 +87,13 @@ use core::convert::TryInto;
 use pallet_vesting::VestingInfo;
 use iris_primitives::{IngestionCommand, EncryptionResult};
 
-#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-pub struct EjectionCommand {
-
-}
-
 /// struct to store metadata of an asset class
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 pub struct AssetMetadata {
     /// the cid of some data
     pub cid: Vec<u8>,
+    /// the public key associated with the encryption artifacts (capsule and fragments)
+    pub public_key: Vec<u8>,
 }
 
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
@@ -215,28 +212,61 @@ pub mod pallet {
     #[pallet::storage]
     pub type Delay<T: Config> = StorageValue<_, u32, ValueQuery>;
 
-    // TODO: Explore making a type TPREPublicKey, Ciphertext
-    // map pubkey to ciphertext
+    /// The staging map maps account ids to the public key that 
+    /// corresponds to data they've encrypted but have not yet ingested
+    /// We make the assumption that a node is only allowed to stage
+    /// a single encrypted dataset at once
+    #[pallet::storage]
+    pub type IngestionStaging<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Vec<u8>,
+        OptionQuery,
+    >;
+
+    // TODO: Explore making types for TPREPublicKey, Ciphertext
+    // maps pubkey to ciphertext/capsule
     #[pallet::storage]
     pub type Capsules<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
-        T::AccountId,
+        T::AccountId, // owner
         Blake2_128Concat,
-        Vec<u8>,
-        SecretStuff,
+        Vec<u8>,  // public key
+        SecretStuff, // 
         OptionQuery,
+    >;
+
+    #[pallet::storage]
+    pub type FragmentOwnerSet<T: Config> = StorageMap<
+        _, 
+        Blake2_128Concat,
+        Vec<u8>, // public key
+        Vec<T::AccountId>, // collection of all fragment holders
+        ValueQuery,
     >;
 
     #[pallet::storage]
     pub type Fragments<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
-        Vec<u8>,
+        Vec<u8>, // public key
+        Blake2_128Concat,
+        T::AccountId, // the validator
+        EncryptedData, // the fragment
+        OptionQuery,
+    >;
+
+    /// maps a key fragment holder to a vec of public keys for which
+    /// they have been tasked with recovering the capsule fragmentr
+    #[pallet::storage]
+    pub type CapsuleRecoveryRequests<T: Config> = StorageMap<
+        _,
         Blake2_128Concat,
         T::AccountId,
-        EncryptedData,
-        OptionQuery,
+        Vec<Vec<u8>>,
+        ValueQuery,
     >;
 
 	#[pallet::event]
@@ -344,7 +374,7 @@ pub mod pallet {
         /// * `balance`: the balance the owner is willing to use to back the asset class which will be created
         ///
         #[pallet::weight(100)]
-        pub fn request_ingestion(
+        pub fn create_request(
             origin: OriginFor<T>,
             gateway: <T::Lookup as StaticLookup>::Source,
             gateway_reserve: BalanceOf<T>,
@@ -370,8 +400,6 @@ pub mod pallet {
             let target_block = current_block_number + Delay::<T>::get().into();
             // we need to store this info somewhere...
             // then in the OCW, check which commands are associated with (the block prior to??)the target block
-            // if not executed, then we need to undo the vesting/destroy the vesting schedule
-
             let new_origin = system::RawOrigin::Signed(who.clone()).into();
             // vest currency
             <pallet_vesting::Pallet<T>>::vested_transfer(
@@ -380,6 +408,26 @@ pub mod pallet {
             )?;
             Self::deposit_event(Event::CreatedIngestionRequest);
 			Ok(())
+        }
+
+        /// increase the balance vested in the request 
+        /// sent to a gateway
+        #[pallet::weight(100)]
+        pub fn bump_request(
+            origin: OriginFor<T>,
+            amount: BalanceOf<T>,
+        ) -> DispatchResult {
+            // TODO
+            Ok(())
+        }
+
+        /// if a request has not been processed, 'unvest' total balance
+        #[pallet::weight(100)]
+        pub fn kill_request(
+            origin: OriginFor<T>,
+        ) -> DispatchResult {
+            // TODO
+            Ok(())
         }
 
         #[pallet::weight(0)]
@@ -394,23 +442,15 @@ pub mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
             // assign and distribute encrypted_kfrags
-            let mut rng = ChaCha20Rng::seed_from_u64(17u64);
+            let rng = ChaCha20Rng::seed_from_u64(17u64);
             let required_authorities_count = encrypted_kfrags.len();
             // 1. choose 'delta' authorities
             // TODO: need to properly define shares and threshold somewhere, either runtime storage or in runtime/lib.rs
             let authorities: Vec<T::AccountId> = pallet_authorities::Pallet::<T>::validators();
-            // for now, foregoing random selection and just choosing first requried_authorities_count authorities
-            // let rand_authorities: Vec<T::AccountId> = vec![0..required_authorities_count]
-            //     .iter().map(|i| authorities[i as usize].clone()).collect();
-                // .iter()
-                // .choose_multiple(&mut rand::thread_rng(), required_authorities_count)
-                // // .map(|v| v.into())
-                // .collect();
-            // 2. for each chosen authority, distribute a kfrag (how?) if it isn't encrypted, how is it secure? it's not
-            // so we need to perform some kind of on-chain encryption using the public key of the authority
-
+            let mut frag_holders = Vec::new();
             for i in vec![0, required_authorities_count] {
                 let authority = authorities[i].clone();
+                frag_holders.push(authority.clone());
                 let avec: Vec<u8> = T::AccountId::encode(&authority);
                 let a32: &[u8] = avec.as_slice();
                 let pk = umbral_pre::PublicKey::from_bytes(a32.clone()).unwrap();
@@ -427,31 +467,18 @@ pub mod pallet {
                 ciphertext: a_ciphertext.to_vec(),
                });
             }
+            FragmentOwnerSet::<T>::insert(public_key.clone(), frag_holders);
 
-            // for (pos, a) in rand_authorities.iter().enumerate() {
-            //     let avec: Vec<u8> = T::AccountId::encode(&owner);
-            //     let a32: &[u8] = avec.as_slice();
-            //     let pk = umbral_pre::PublicKey::from_bytes(a32.clone()).unwrap();
-            //     let plaintext = encrypted_kfrags[pos].as_slice();
-            //     let (a_capsule, a_ciphertext) = match umbral_pre::encrypt_with_rng(&mut rng.clone(), &pk, plaintext) {
-            //         Ok((capsule, ciphertext)) => (capsule, ciphertext),
-            //         Err(error) => {
-            //                 // todo
-            //                 return Ok(());
-            //         },
-            //     };
-            //    Fragments::<T>::insert(public_key.clone(), a.clone(), EncryptedData{
-            //     capsule: a_capsule.to_array().as_slice().to_vec(),
-            //     ciphertext: a_ciphertext.to_vec(),
-            //    });
-            // }
-
-            Capsules::<T>::insert(owner, public_key, 
+            Capsules::<T>::insert(owner.clone(), public_key.clone(), 
                 SecretStuff {
                     data_capsule,
                     sk_capsule,
                     sk_ciphertext,
             });
+
+            IngestionStaging::<T>::insert(owner.clone(), public_key.clone());
+
+            // TODO: emit event
             Ok(())
         }
 	}
@@ -502,7 +529,17 @@ impl<T: Config> Pallet<T> {
         None 
     }
 
-    /// 
+    /// generates a new keypair and uses it to encrypt the plaintext
+    /// also encrypts the secret key with itself and generates 'shares' keyfragments
+    /// of which 'threshold' pieces are needed to re-encrypt the encrypted secret key
+    ///
+    /// * 'plaintext': the plaintext to encrypt
+    /// * 'shares': The number of shares to create (i.e. key fragments to create and distribute)
+    /// * 'threshold': The number of key fragments needed to re-encrypt the encrypted secret key
+    /// * 'owner': The account id of the address that owns the plaintext
+    ///
+    /// return the plaintext if successful, otherwise returns None
+    ///
     fn do_encrypt(
         plaintext: &[u8], 
         shares: usize, 
@@ -559,10 +596,6 @@ impl<T: Config> Pallet<T> {
 		SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
 			.map_err(|()| "Unable to submit unsigned transaction.");
 
-        // Some(EncryptionResult{
-        //     public_key: Bytes::from(pk_vec.clone()),
-        //     ciphertext: Bytes::from(data_ciphertext.to_vec()),
-        // })
         Some(Bytes::from(data_ciphertext.to_vec()))
     }
 }
@@ -588,12 +621,33 @@ impl<T: Config> Convert<T::ValidatorId, Option<T::ValidatorId>> for ValidatorOf<
 
 /// a trait to provide the ingestion queue to other modules
 pub trait QueueProvider<AccountId, Balance> {
+    /// read ingestion requests issued for a specific gateway
     fn ingestion_requests(gateway: AccountId) -> Vec<IngestionCommand<AccountId, Balance>>;
+    /// request that the kfrag holder recovers the capsule fragment associated with the given public key
+    fn add_capsule_recovery_request(kfrag_holder: &AccountId, public_key: Vec<u8>);
+    /// remove the specified public key from the collection of fragments to recover
+    fn remove_capsule_recovery_request(kfrag_holder: AccountId, public_key: Vec<u8>);
+    /// get the holder of kfrags as identified by public key
+    fn get_fragment_holders(public_key: Vec<u8>) -> Vec<AccountId>;
 }
 
 impl<T: Config> QueueProvider<T::AccountId, T::Balance> for Pallet<T> {
     fn ingestion_requests(gateway: T::AccountId) -> Vec<IngestionCommand<T::AccountId, T::Balance>> {
         IngestionCommands::<T>::get(gateway)
+    }
+
+    fn add_capsule_recovery_request(kfrag_holder: &T::AccountId, public_key: Vec<u8>) {
+        CapsuleRecoveryRequests::<T>::mutate(kfrag_holder, |mut pks| {
+            pks.push(public_key);
+        });
+    }
+
+    fn remove_capsule_recovery_request(kfrag_holder: T::AccountId, public_key: Vec<u8>) {
+        // TODO
+    }
+ 
+    fn get_fragment_holders(public_key: Vec<u8>) -> Vec<T::AccountId> {
+        FragmentOwnerSet::<T>::get(public_key)
     }
 }
 
@@ -617,24 +671,34 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
     ) -> DispatchResult {
         let who = ensure_signed(origin)?;
 
-        // verify that capsule exists (i.e. data is decryptable)
-
-        let asset_id = Self::next_asset_id();
-        let admin = T::Lookup::unlookup(cmd.clone().owner);
-        let new_origin = system::RawOrigin::Signed(who.clone()).into();
-        <pallet_assets::Pallet<T>>::create(new_origin, asset_id.clone(), admin.clone(), cmd.balance.clone())
-            .map_err(|e| {
-                log::info!("Failed to create asset class due to error: {:?}", e);
-                return Error::<T>::CantCreateAssetClass;
-            })?;
-        <Metadata<T>>::insert(asset_id.clone(), AssetMetadata { cid: cmd.cid.clone() });
-        // remove from ingestion commands, this must be done before the 'now + delay' number of blocks passes
-        // for now... let's just assume there is not time limit and test it out
-        let mut cmds = IngestionCommands::<T>::get(who.clone());
-        let cmd_idx = cmds.iter().position(|c| *c == cmd.clone()).unwrap();
-        cmds.remove(cmd_idx);
-        IngestionCommands::<T>::insert(who.clone(), cmds);
-        // emit event?
-        Ok(())
+        // verify that capsule exists (i.e. data is 'decryptable')
+        match IngestionStaging::<T>::get(cmd.owner.clone()) {
+            Some(pubkey) => {
+                let asset_id = Self::next_asset_id();
+                let admin = T::Lookup::unlookup(cmd.clone().owner);
+                let new_origin = system::RawOrigin::Signed(who.clone()).into();
+                <pallet_assets::Pallet<T>>::create(new_origin, asset_id.clone(), admin.clone(), cmd.balance.clone())
+                    .map_err(|e| {
+                        log::info!("Failed to create asset class due to error: {:?}", e);
+                        return Error::<T>::CantCreateAssetClass;
+                    })?;
+                <Metadata<T>>::insert(asset_id.clone(), AssetMetadata {
+                    cid: cmd.cid.clone(),
+                    public_key: pubkey,
+                });
+                IngestionStaging::<T>::remove(cmd.clone().owner);
+                // remove from ingestion commands, this must be done before the 'now + delay' number of blocks passes
+                // for now... let's just assume there is not time limit and test it out
+                let mut cmds = IngestionCommands::<T>::get(who.clone());
+                let cmd_idx = cmds.iter().position(|c| *c == cmd.clone()).unwrap();
+                cmds.remove(cmd_idx);
+                IngestionCommands::<T>::insert(who.clone(), cmds);
+                // emit event?
+                Ok(())
+            },
+            None => {
+                Ok(())
+            }
+        }
     }
 }

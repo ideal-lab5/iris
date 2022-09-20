@@ -80,7 +80,7 @@ use sp_runtime::{
 };
 use scale_info::prelude::format;
 use iris_primitives::IngestionCommand;
-use pallet_authorization::EjectionCommandDelegator;
+// use pallet_authorization::EjectionCommandDelegator;
 use pallet_gateway::ProxyProvider;
 use pallet_data_assets::{MetadataProvider, ResultsHandler, QueueProvider};
 use pallet_ipfs_primitives::{IpfsResult, IpfsError};
@@ -175,7 +175,7 @@ pub mod pallet {
 		/// provides asset metadata
 		type MetadataProvider: pallet_data_assets::MetadataProvider<Self::AssetId>;
 		/// provides ejection commands 
-		type EjectionCommandDelegator: pallet_authorization::EjectionCommandDelegator<Self::AccountId, Self::AssetId>;
+		// type EjectionCommandDelegator: pallet_authorization::EjectionCommandDelegator<Self::AccountId, Self::AssetId>;
 		/// handle results after executing a command
 		type ResultsHandler: pallet_data_assets::ResultsHandler<Self, Self::AccountId, Self::Balance>;
 		// TODO: this should be read from runtime storage instead
@@ -296,6 +296,7 @@ pub mod pallet {
 			let who = ensure_signed(origin)?;
 			let queued_commands = T::QueueProvider::ingestion_requests(who.clone());
 			ensure!(queued_commands.contains(&cmd), Error::<T>::NotAuthorized);
+			// we need to find the puiblic key as well..
 			let new_origin = system::RawOrigin::Signed(who.clone()).into();
 			T::ResultsHandler::create_asset_class(new_origin, cmd)?;
 			// emit event
@@ -360,12 +361,6 @@ impl<T: Config> Pallet<T> {
 	/// TODO: could potentially move this into the ipfs.rs file
 	pub fn fetch_identity_json() -> Result<serde_json::Value, Error<T>> {
 		let cached_info = StorageValueRef::persistent(b"ipfs:id");
-
-		// if let Ok(Some(cached_value)) = cached_info.get::<serde_json::Value>() {
-		// 	// cached_value should have type serde_json::Value
-		// 	return Ok(cached_value);
-		// }
-
 		let id_res = match ipfs::identity() {
 			Ok(res) => {
 				res.body().collect::<Vec<u8>>()
@@ -375,10 +370,8 @@ impl<T: Config> Pallet<T> {
 			}
 		};
 
-		// parse body
 		let body = sp_std::str::from_utf8(&id_res).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
 		let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-		// cached_info.set(j&son);
 		Ok(json)
 	}
 
@@ -553,73 +546,73 @@ impl<T: Config> Pallet<T> {
 		Ok(())
 	}
 
-	fn handle_data_ejection() -> Result<(), Error<T>> {
-		let id_json = Self::fetch_identity_json()?;
-		// get pubkey
-		let id = &id_json["ID"];
-		let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-		match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
-			// When node elections implemented => acct id will be used to get assigned reqs
-			Some(acct_id) => {
-				let queued_commands = T::EjectionCommandDelegator::ejection_commands(acct_id);
-				for cmd in queued_commands.iter() {
-					let caller = cmd.caller.clone();
-					let asset_id = cmd.asset_id.clone();
-					match T::MetadataProvider::get(asset_id.clone()) {
-						Some(metadata) => {
-							let cid = metadata.cid;
+	// fn handle_ejection_queue() -> Result<(), Error<T>> {
+	// 	let id_json = Self::fetch_identity_json()?;
+	// 	// get pubkey
+	// 	let id = &id_json["ID"];
+	// 	let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
+	// 	match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
+	// 		// When node elections implemented => acct id will be used to get assigned reqs
+	// 		Some(acct_id) => {
+	// 			let queued_commands = T::EjectionCommandDelegator::ejection_commands(acct_id);
+	// 			for cmd in queued_commands.iter() {
+	// 				let caller = cmd.caller.clone();
+	// 				let asset_id = cmd.asset_id.clone();
+	// 				match T::MetadataProvider::get(asset_id.clone()) {
+	// 					Some(metadata) => {
+	// 						let cid = metadata.cid;
 
-							let data = match ipfs::cat(&cid.clone()) {
-								Ok(res) => {
-									res.body().collect::<Vec<u8>>()
-								} 
-								Err(e) => {
-									return Err(Error::<T>::IpfsNotAvailable);
-								}
-							};
+	// 						let data = match ipfs::cat(&cid.clone()) {
+	// 							Ok(res) => {
+	// 								res.body().collect::<Vec<u8>>()
+	// 							} 
+	// 							Err(e) => {
+	// 								return Err(Error::<T>::IpfsNotAvailable);
+	// 							}
+	// 						};
 
-							log::info!("FETCHED DATA: {:?}", data);
-							// now need to re-encrypt and add to IPFS
-							let reencrypted = Self::reencrypt_data(data);
-							log::info!("Reencrypted and publishing new CID");
-							// add to IPFS
-							let _ipfs_add_res = ipfs::add(ipfs::IpfsAddRequest{
-								bytes: reencrypted,
-							}).map_err(|e| Error::<T>::IpfsError).ok().unwrap();
+	// 						log::info!("FETCHED DATA: {:?}", data);
+	// 						// now need to re-encrypt and add to IPFS
+	// 						let reencrypted = Self::reencrypt_data(data);
+	// 						log::info!("Reencrypted and publishing new CID");
+	// 						// add to IPFS
+	// 						let _ipfs_add_res = ipfs::add(ipfs::IpfsAddRequest{
+	// 							bytes: reencrypted,
+	// 						}).map_err(|e| Error::<T>::IpfsError).ok().unwrap();
 
-							let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-							if !signer.can_sign() {
-								log::error!(
-									"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-								);
-							}
-							// TODO:
-							let results = signer.send_signed_transaction(|_acct| { 
-								Call::submit_data_ready{
+	// 						let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+	// 						if !signer.can_sign() {
+	// 							log::error!(
+	// 								"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+	// 							);
+	// 						}
+	// 						// TODO:
+	// 						let results = signer.send_signed_transaction(|_acct| { 
+	// 							Call::submit_data_ready{
 									
-								}
-							});
+	// 							}
+	// 						});
 						
-							for (_, res) in &results {
-								match res {
-									Ok(()) => log::info!("Submitted results successfully"),
-									Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-								}
-							}
-						}, 
-						None => {
-							// do nothing
-						}
-					}
-				}
-			},
-			None => {
-				// do nothing for now
-				log::info!("No identifiable substrate-ipfs association");
-			}
-		}
-		Ok(())
-	}
+	// 						for (_, res) in &results {
+	// 							match res {
+	// 								Ok(()) => log::info!("Submitted results successfully"),
+	// 								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+	// 							}
+	// 						}
+	// 					}, 
+	// 					None => {
+	// 						// do nothing
+	// 					}
+	// 				}
+	// 			}
+	// 		},
+	// 		None => {
+	// 			// do nothing for now
+	// 			log::info!("No identifiable substrate-ipfs association");
+	// 		}
+	// 	}
+	// 	Ok(())
+	// }
 
 	fn reencrypt_data(data: Vec<u8>) -> Vec<u8> {
 		data

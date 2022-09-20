@@ -469,6 +469,9 @@ impl pallet_data_assets::Config for Runtime {
 impl pallet_authorization::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
+	type QueueProvider = DataAssets;
+	type MetadataProvider = DataAssets;
+	type ValidatorSet = Authorities;
 }
 
 impl pallet_data_spaces::Config for Runtime {
@@ -530,7 +533,7 @@ impl pallet_ipfs::Config for Runtime {
 	type ProxyProvider = Gateway;
 	type QueueProvider = DataAssets;
 	type MetadataProvider = DataAssets;
-	type EjectionCommandDelegator = Authorization;
+	// type EjectionCommandDelegator = Authorization;
 	type ResultsHandler = DataAssets;
 }
 
