@@ -41,6 +41,7 @@ umbral-pre = { version = "0.5.2", default-features = false, features = ["serde-s
 getrandom = { version = "0.2", default-features = false, features = ["js"] }
 rand_chacha = { version = "0.3.1", default-features = false }
 generic-array = "0.14.6"
+crypto_box = { version = "0.8.1", default-features = false, features = ["alloc"] }
 
 [features]
 default = ['std']
@@ -62,6 +63,7 @@ std = [
 	'umbral-pre/std',
 	'getrandom/std',
 	'rand_chacha/std',
+	'crypto_box/std',
 ]
 
 runtime-benchmarks = ["frame-benchmarking"]

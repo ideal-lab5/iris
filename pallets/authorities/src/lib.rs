@@ -56,7 +56,10 @@ use frame_support::{
 use log;
 use scale_info::TypeInfo;
 pub use pallet::*;
-use sp_runtime::traits::{Convert, Zero};
+use sp_runtime::{
+	traits::{Convert, Zero},
+	offchain::storage::StorageValueRef,
+};
 use sp_staking::offence::{Offence, OffenceError, ReportOffence};
 use sp_std::{
 	collections::{btree_set::BTreeSet, btree_map::BTreeMap},
@@ -79,9 +82,17 @@ use frame_system::{
 	}
 };
 use sp_runtime::{
-	// offchain::ipfs,
 	offchain::http,
 	traits::StaticLookup,
+};
+
+use crypto_box::{
+	// aead::{Aead, AeadCore, OsRng},
+	SalsaBox, PublicKey, SecretKey,
+};
+use rand_chacha::{
+	ChaCha20Rng,
+	rand_core::SeedableRng,
 };
 
 pub const LOG_TARGET: &'static str = "runtime::authorities";
@@ -219,13 +230,16 @@ pub mod pallet {
 	#[pallet::getter(fn validators_to_remove)]
 	pub type OfflineValidators<T: Config> = StorageValue<_, Vec<T::AccountId>, ValueQuery>;
 
-	// #[pallet::storage]
-	// #[pallet::getter(fn total_session_rewards)]
-	// pub type SessionParticipation<T: Config> = StorageMap<_, Blake2_128Concat, EraIndex, Vec<T::AccountId>, ValueQuery>;
-
-	// #[pallet::storage]
-	// #[pallet::getter(fn unproductive_sessions)]
-	// pub type UnproductiveSessions<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
+	// a map to associate an account id with a public key
+	#[pallet::storage]
+	#[pallet::getter(fn public_keys)]
+	pub type PKMap<T: Config> = StorageMap<
+		_, 
+		Blake2_128Concat,
+		T::AccountId,
+		Vec<u8>,
+		ValueQuery,
+	>;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -340,6 +354,15 @@ pub mod pallet {
 
 			Ok(())
 		}
+
+		#[pallet::weight(100)]
+		pub fn create_secrets(
+			origin: OriginFor<T>,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			Self::update_keys(who);
+			Ok(())
+		}
 	}
 }
 
@@ -426,6 +449,18 @@ impl<T: Config> Pallet<T> {
 		// remove as storage provider
 		// Clear the offline validator list to avoid repeated deletion.
 		<OfflineValidators<T>>::put(Vec::<T::AccountId>::new());
+	}
+
+	fn update_keys(validator_id: T::AccountId) {
+		// generate a new keypair
+		let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+		let secret_key = SecretKey::generate(&mut rng);
+		let public_key: Vec<u8> = secret_key.public_key().as_bytes().to_vec();
+
+		let local_storage = StorageValueRef::persistent(b"iris::secret");
+		local_storage.set(&secret_key.as_bytes());
+
+		PKMap::<T>::insert(validator_id, public_key);
 	}
 
 	fn validate_transaction_parameters() -> TransactionValidity {

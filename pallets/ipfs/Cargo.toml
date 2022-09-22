@@ -42,6 +42,14 @@ pallet-gateway = { version = "1.0.0", default-features = false, path = "../gatew
 pallet-ipfs-primitives = { version = "1.0.0", default-features = false, path = "common" }
 iris-primitives = { version = "1.0.0", default-features = false, path = "../common" }
 
+
+umbral-pre = { version = "0.5.2", default-features = false, features = ["serde-support"] }
+# needed for umbral-pre
+getrandom = { version = "0.2", default-features = false, features = ["js"] }
+rand_chacha = { version = "0.3.1", default-features = false }
+generic-array = "0.14.6"
+crypto_box = { version = "0.8.1", default-features = false, features = ["alloc"] }
+
 [dev-dependencies]
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
 sp-keystore = { version = "0.12.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
@@ -67,6 +75,10 @@ std = [
 	'pallet-gateway/std',
 	'pallet-authorization/std',
 	'serde_json/std',
+	'umbral-pre/std',
+	'getrandom/std',
+	'rand_chacha/std',
+	'crypto_box/std',
 ]
 
 runtime-benchmarks = ["frame-benchmarking"]

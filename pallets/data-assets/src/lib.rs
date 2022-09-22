@@ -66,11 +66,6 @@ use sp_std::{
     prelude::*,
 };
 
-use umbral_pre::*;
-use rand_chacha::{
-    ChaCha20Rng,
-    rand_core::SeedableRng,
-};
 use scale_info::prelude::string::ToString;
 use sp_runtime::offchain::storage::StorageValueRef;
 use generic_array::{
@@ -81,6 +76,16 @@ use generic_array::{
 use sp_core::{
     Bytes,
     sr25519::{Public, Signature},
+};
+
+use umbral_pre::*;
+use rand_chacha::{
+    ChaCha20Rng,
+    rand_core::SeedableRng,
+};
+use crypto_box::{
+    aead::{ AeadCore, Aead },
+	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
 };
 
 use core::convert::TryInto;
@@ -107,6 +112,13 @@ pub struct SecretStuff {
 pub struct EncryptedData {
     pub capsule: Vec<u8>,
     pub ciphertext: Vec<u8>,
+}
+
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+pub struct EncryptedFragment {
+    pub nonce: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+    pub public_key: Vec<u8>,
 }
 
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"iris");
@@ -228,13 +240,11 @@ pub mod pallet {
     // TODO: Explore making types for TPREPublicKey, Ciphertext
     // maps pubkey to ciphertext/capsule
     #[pallet::storage]
-    pub type Capsules<T: Config> = StorageDoubleMap<
+    pub type Capsules<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
-        T::AccountId, // owner
-        Blake2_128Concat,
         Vec<u8>,  // public key
-        SecretStuff, // 
+        SecretStuff, // capsule data 
         OptionQuery,
     >;
 
@@ -254,7 +264,7 @@ pub mod pallet {
         Vec<u8>, // public key
         Blake2_128Concat,
         T::AccountId, // the validator
-        EncryptedData, // the fragment
+        EncryptedFragment, // the information needed to decrypt encrypted fragment knowing secret key
         OptionQuery,
     >;
 
@@ -290,6 +300,7 @@ pub mod pallet {
 
 	#[pallet::error]
 	pub enum Error<T> {
+        PublicKeyConversionFailure,
         /// could not build the ipfs request
 		CantCreateRequest,
         /// the request to IPFS timed out
@@ -444,32 +455,26 @@ pub mod pallet {
             // assign and distribute encrypted_kfrags
             let rng = ChaCha20Rng::seed_from_u64(17u64);
             let required_authorities_count = encrypted_kfrags.len();
-            // 1. choose 'delta' authorities
-            // TODO: need to properly define shares and threshold somewhere, either runtime storage or in runtime/lib.rs
+            // TODO: should move this encryption offchain
             let authorities: Vec<T::AccountId> = pallet_authorities::Pallet::<T>::validators();
             let mut frag_holders = Vec::new();
             for i in vec![0, required_authorities_count] {
                 let authority = authorities[i].clone();
                 frag_holders.push(authority.clone());
-                let avec: Vec<u8> = T::AccountId::encode(&authority);
-                let a32: &[u8] = avec.as_slice();
-                let pk = umbral_pre::PublicKey::from_bytes(a32.clone()).unwrap();
-                let plaintext = encrypted_kfrags[i].as_slice();
-                let (a_capsule, a_ciphertext) = match umbral_pre::encrypt_with_rng(&mut rng.clone(), &pk, plaintext) {
-                    Ok((capsule, ciphertext)) => (capsule, ciphertext),
-                    Err(error) => {
-                            // todo
-                            return Ok(());
-                    },
-                };
-               Fragments::<T>::insert(public_key.clone(), authority.clone(), EncryptedData{
-                capsule: a_capsule.to_array().as_slice().to_vec(),
-                ciphertext: a_ciphertext.to_vec(),
-               });
+                
+                let pk_bytes: Vec<u8> = pallet_authorities::Pallet::<T>::public_keys(authority.clone());
+                let pk_slice = Self::slice_to_array_32(&pk_bytes)?;
+                let pk = BoxPublicKey::from(*pk_slice);
+                let key_fragment = encrypted_kfrags[i].as_slice().to_vec();
+
+                let encrypted_kfrag_data = Self::encrypt_kfrag_ephemeral(
+                    pk_bytes.clone(), key_fragment,
+                );
+                Fragments::<T>::insert(public_key.clone(), authority.clone(), encrypted_kfrag_data);
             }
             FragmentOwnerSet::<T>::insert(public_key.clone(), frag_holders);
 
-            Capsules::<T>::insert(owner.clone(), public_key.clone(), 
+            Capsules::<T>::insert(public_key.clone(), 
                 SecretStuff {
                     data_capsule,
                     sk_capsule,
@@ -598,6 +603,37 @@ impl<T: Config> Pallet<T> {
 
         Some(Bytes::from(data_ciphertext.to_vec()))
     }
+
+    fn encrypt_kfrag_ephemeral(public_key_bytes: Vec<u8>, key_fragment_bytes: Vec<u8>) -> EncryptedFragment {
+        let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+        let ephemeral_secret_key = BoxSecretKey::generate(&mut rng);
+        let pubkey_slice_32 = Self::slice_to_array_32(public_key_bytes.as_slice()).unwrap();
+        let public_key = BoxPublicKey::from(*pubkey_slice_32);
+
+        let salsa_box = SalsaBox::new(&public_key, &ephemeral_secret_key);
+        let nonce = SalsaBox::generate_nonce(&mut rng);
+        let p = b"test";
+        let ciphertext: Vec<u8> = salsa_box.encrypt(&nonce, &p[..]).unwrap().to_vec();
+
+        // to decrypt, the account associated with the public_key needs to know:
+        // (nonce, ciphertext, ephermeral public_key)
+        // so we should return some object? like...
+        EncryptedFragment{ 
+            nonce: nonce.as_slice().to_vec(),
+            ciphertext: ciphertext,
+            public_key: ephemeral_secret_key.public_key().as_bytes().to_vec()
+        }
+    }
+
+    
+    fn slice_to_array_32(slice: &[u8]) -> Result<&[u8; 32], Error<T>> {
+        if slice.len() == 32 {
+            let ptr = slice.as_ptr() as *const [u8; 32];
+            unsafe {Ok(&*ptr)}
+        } else {
+            Err(Error::<T>::PublicKeyConversionFailure)
+        }
+    }
 }
 
 pub trait MetadataProvider<AssetId> {
@@ -625,10 +661,13 @@ pub trait QueueProvider<AccountId, Balance> {
     fn ingestion_requests(gateway: AccountId) -> Vec<IngestionCommand<AccountId, Balance>>;
     /// request that the kfrag holder recovers the capsule fragment associated with the given public key
     fn add_capsule_recovery_request(kfrag_holder: &AccountId, public_key: Vec<u8>);
+    fn get_capsule_recovery_requests(account: AccountId) -> Vec<Vec<u8>>;
     /// remove the specified public key from the collection of fragments to recover
     fn remove_capsule_recovery_request(kfrag_holder: AccountId, public_key: Vec<u8>);
     /// get the holder of kfrags as identified by public key
     fn get_fragment_holders(public_key: Vec<u8>) -> Vec<AccountId>;
+    fn get_kfrags(public_key: Vec<u8>, account: AccountId) -> Option<EncryptedFragment>;
+    fn get_capsule(public_key: Vec<u8>) -> Option<SecretStuff>;
 }
 
 impl<T: Config> QueueProvider<T::AccountId, T::Balance> for Pallet<T> {
@@ -642,12 +681,24 @@ impl<T: Config> QueueProvider<T::AccountId, T::Balance> for Pallet<T> {
         });
     }
 
+    fn get_capsule_recovery_requests(account: T::AccountId) -> Vec<Vec<u8>> {
+        CapsuleRecoveryRequests::<T>::get(account)
+    }
+
     fn remove_capsule_recovery_request(kfrag_holder: T::AccountId, public_key: Vec<u8>) {
         // TODO
     }
  
     fn get_fragment_holders(public_key: Vec<u8>) -> Vec<T::AccountId> {
         FragmentOwnerSet::<T>::get(public_key)
+    }
+    
+    fn get_kfrags(public_key: Vec<u8>, account: T::AccountId) -> Option<EncryptedFragment> {
+        Fragments::<T>::get(public_key, account)
+    }
+
+    fn get_capsule(public_key: Vec<u8>) -> Option<SecretStuff> {
+        Capsules::<T>::get(public_key)
     }
 }
 

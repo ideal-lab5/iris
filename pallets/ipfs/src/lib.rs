@@ -78,9 +78,21 @@ use sp_runtime::{
 	},
 	traits::StaticLookup,
 };
+
+use umbral_pre::*;
+
+use rand_chacha::{
+	ChaCha20Rng,
+	rand_core::SeedableRng,
+};
+
+use crypto_box::{
+    aead::{Aead, AeadCore, Payload},
+	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
+};
+
 use scale_info::prelude::format;
 use iris_primitives::IngestionCommand;
-// use pallet_authorization::EjectionCommandDelegator;
 use pallet_gateway::ProxyProvider;
 use pallet_data_assets::{MetadataProvider, ResultsHandler, QueueProvider};
 use pallet_ipfs_primitives::{IpfsResult, IpfsError};
@@ -239,6 +251,7 @@ pub mod pallet {
 
 	#[pallet::error]
 	pub enum Error<T> {
+		PublicKeyConversionFailure,
 		/// The specified multiaddress is invalid (could not be encoded as utf8)
 		InvalidMultiaddress,
 		/// The specified CID is invalid (could not be encoded as utf8)
@@ -263,18 +276,30 @@ pub mod pallet {
 					if let Err(e) = Self::ipfs_verify_identity() {
 						log::error!("Encountered an error while attempting to verify ipfs node identity: {:?}", e);
 					} else {
-						if let Err(e) = Self::ipfs_update_configs() {
-							log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
+						// TODO: properly handle error
+						let id_json = Self::fetch_identity_json().expect("IPFS should be reachable");
+						// get pubkey
+						let id = &id_json["ID"];
+						let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
+						match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
+							Some(addr) => { 
+								if let Err(e) = Self::ipfs_update_configs(addr.clone()) {
+									log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
+								} 
+								if let Err(e) = Self::handle_ingestion_queue(addr.clone()) {
+									log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
+								}
+								if let Err(e) = Self::process_capsule_recovery_requests(addr.clone()) {
+									log::error!("Encountered an error while attempting to recover capsule fragments: {:?}", e);
+								}
+							},
+							None => {
+								// TODO: Should be an error
+								log::info!("No identifiable ipfs-substrate association");
+							}
 						}
 					}
 				}
-			}
-
-			// every five blocks
-			if block_number % 5u32.into() == 0u32.into() {
-				if let Err(e) = Self::handle_ingestion_queue() {
-					log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
-				}	
 			}
 		}
 	}
@@ -414,65 +439,51 @@ impl<T: Config> Pallet<T> {
 	/// update the running ipfs daemon's configuration to be in sync
 	/// with the latest on-chain valid configuration values
 	/// 
-	fn ipfs_update_configs() -> Result<(), Error<T>> {
-		let id_json = Self::fetch_identity_json()?;
-		// get pubkey
-		let id = &id_json["ID"];
-		let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-		// 2. use id to get associated addr
-		// TODO: cleanup these nested match statements: not very pretty
-		match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
-			Some(addr) => {
-				match T::ProxyProvider::prefs(addr.clone()) {
-					Some(prefs) => {
-						let val = format!("{}", prefs.storage_max_gb).as_bytes().to_vec();
-						// 4. Make calls to update ipfs node config
-						let key = IpfsConfigKey::StorageMax.as_ref().as_bytes().to_vec();
-						let storage_size_config_item = ipfs::IpfsConfigRequest{
-							key: key.clone(),
-							value: val.clone(),
-							boolean: None,
-							json: None,
-						};
-						ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure);
-						let stat_response = ipfs::repo_stat().map_err(|_| Error::<T>::IpfsNotAvailable).unwrap();
-						// 2. get actual available storage space
-						match stat_response["SizeStat.StorageMax"].clone().as_u64() {
-							Some(actual_storage) => {
-								// 3. report result on chain
-								let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-								if !signer.can_sign() {
-									log::error!(
-										"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-									);
-								}
-								let results = signer.send_signed_transaction(|_account| { 
-									Call::submit_config_complete{
-										reported_storage_size: actual_storage.into(),
-									}
-								});
+	fn ipfs_update_configs(account: T::AccountId) -> Result<(), Error<T>> {
+		match T::ProxyProvider::prefs(account.clone()) {
+			Some(prefs) => {
+				let val = format!("{}", prefs.storage_max_gb).as_bytes().to_vec();
+				// 4. Make calls to update ipfs node config
+				let key = IpfsConfigKey::StorageMax.as_ref().as_bytes().to_vec();
+				let storage_size_config_item = ipfs::IpfsConfigRequest{
+					key: key.clone(),
+					value: val.clone(),
+					boolean: None,
+					json: None,
+				};
+				ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure);
+				let stat_response = ipfs::repo_stat().map_err(|_| Error::<T>::IpfsNotAvailable).unwrap();
+				// 2. get actual available storage space
+				match stat_response["SizeStat.StorageMax"].clone().as_u64() {
+					Some(actual_storage) => {
+						// 3. report result on chain
+						let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+						if !signer.can_sign() {
+							log::error!(
+								"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+							);
+						}
+						let results = signer.send_signed_transaction(|_account| { 
+							Call::submit_config_complete{
+								reported_storage_size: actual_storage.into(),
+							}
+						});
 
-								for (_, res) in &results {
-									match res {
-										Ok(()) => log::info!("Submitted results successfully"),
-										Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-									}
-								}
-							},
-							None => {
-								// do nothing for now
+						for (_, res) in &results {
+							match res {
+								Ok(()) => log::info!("Submitted results successfully"),
+								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
 							}
 						}
 					},
 					None => {
-						// TODO: Should be an error
-						log::info!("The node is not properly configured: call proxy_declareProxy.");
+						// do nothing for now
 					}
 				}
 			},
 			None => {
 				// TODO: Should be an error
-				log::info!("No identifiable ipfs-substrate association");
+				log::info!("The node is not properly configured: call gateway_declareProxy.");
 			}
 		}
 		Ok(())
@@ -484,7 +495,7 @@ impl<T: Config> Pallet<T> {
     /// containing the public key and multiaddresses of the embedded ipfs node.
     /// 
     /// Returns an error if communication with IPFS fails
-    fn ipfs_swarm_connection_management() -> Result<(), Error<T>> {
+    fn ipfs_swarm_connection_management(addr: T::AccountId) -> Result<(), Error<T>> {
 		// connect to a bootstrap node if one is available
         Ok(())
     }
@@ -492,59 +503,135 @@ impl<T: Config> Pallet<T> {
 	/// process requests to ingest data from offchain clients
 	/// This function fetches data from offchain clients and ingests it into IPFS
 	/// it finally sends a signed tx to create an asset class on behalf of the caller
-	fn handle_ingestion_queue() -> Result<(), Error<T>> {
-		// get IPFS node id and from there get the associated substrate address
-		// TODO: we can store this value in local storage
-		let id_json = Self::fetch_identity_json()?;
-		// get pubkey
-		let id = &id_json["ID"];
-		let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-		match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
-			// When node elections implemented => acct id will be used to get assigned reqs
-			Some(acct_id) => {
-				let queued_commands = T::QueueProvider::ingestion_requests(acct_id);
-				for cmd in queued_commands.iter() {
-					let owner = cmd.owner.clone();
-					let cid = cmd.cid.clone();
-					// must disconnect from all current peers and makes oneself undiscoverable
-					// but since we aren't connected to anyone else... this is fine.
-					// connect to multiaddress from request
-					ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
-					// ipfs get cid 
-					let response = ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID);
-					// TODO: remove these logs
-					log::info!("Fetched data with CID {:?} from multiaddress {:?}", cid.clone(), cmd.multiaddress.clone());
-					log::info!("{:?}", response);
-					// disconnect from multiaddress
-					ipfs::disconnect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
-					// Q: is there some way we can verify that the data we received is from the correct maddr? is that needed?
-					let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-					if !signer.can_sign() {
-						log::error!(
-							"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-						);
-					}
-					let results = signer.send_signed_transaction(|_acct| { 
-						Call::submit_ingestion_completed{
-							cmd: cmd.clone(),
-						}
-					});
-				
-					for (_, res) in &results {
-						match res {
-							Ok(()) => log::info!("Submitted results successfully"),
-							Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-						}
-					}
+	fn handle_ingestion_queue(account: T::AccountId) -> Result<(), Error<T>> {
+		let queued_commands = T::QueueProvider::ingestion_requests(account);
+		for cmd in queued_commands.iter() {
+			let owner = cmd.owner.clone();
+			let cid = cmd.cid.clone();
+			// must disconnect from all current peers and makes oneself undiscoverable
+			// but since we aren't connected to anyone else... this is fine.
+			// connect to multiaddress from request
+			ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
+			// ipfs get cid 
+			let response = ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID);
+			// TODO: remove these logs
+			log::info!("Fetched data with CID {:?} from multiaddress {:?}", cid.clone(), cmd.multiaddress.clone());
+			log::info!("{:?}", response);
+			// disconnect from multiaddress
+			ipfs::disconnect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
+			// Q: is there some way we can verify that the data we received is from the correct maddr? is that needed?
+			let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+			if !signer.can_sign() {
+				log::error!(
+					"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+				);
+			}
+			let results = signer.send_signed_transaction(|_acct| { 
+				Call::submit_ingestion_completed{
+					cmd: cmd.clone(),
 				}
-			},
-			None => {
-				// do nothing for now
-				log::info!("No identifiable substrate-ipfs association");
+			});
+		
+			for (_, res) in &results {
+				match res {
+					Ok(()) => log::info!("Submitted results successfully"),
+					Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+				}
 			}
 		}
 		Ok(())
 	}
+
+	fn process_capsule_recovery_requests(account: T::AccountId) -> Result<(), Error<T>> {
+		let capsule_recovery_requests = T::QueueProvider::get_capsule_recovery_requests(account.clone());
+
+		let secret_storage = StorageValueRef::persistent(b"iris::secret");
+		if let Ok(Some(local_sk)) = secret_storage.get::<[u8;32]>() {
+			let secret_key: BoxSecretKey = BoxSecretKey::from(local_sk);
+			for pk in capsule_recovery_requests {
+
+				// for each public key, find the corresponding kfrag assigned to you
+				let encrypted_kfrag_data = T::QueueProvider::get_kfrags(pk.clone(), account.clone()).unwrap();
+
+				// convert to PublicKey
+				let pubkey_slice_32 = Self::slice_to_array_32(encrypted_kfrag_data.public_key.as_slice()).unwrap();
+				let public_key = BoxPublicKey::from(*pubkey_slice_32);
+				// decrypt the kfrag
+				let kfrag = Self::recover_encrypted_kfrag(public_key, secret_key.clone(), encrypted_kfrag_data.ciphertext, encrypted_kfrag_data.nonce);
+
+				// verify kfrag
+				let rng = ChaCha20Rng::seed_from_u64(31u64);
+				let sk = SecretKey::random_with_rng(rng.clone());
+				let signer = umbral_pre::Signer::new(sk.clone());
+				let verifying_pk = signer.verifying_key();
+				
+				// now that we have they keyfrag, we can proceed to recover capsule frag
+				// TODO: unsafe
+				let  pk_umbral = PublicKey::from_bytes(&pk).unwrap();
+				// 1. verify kfrag
+				let verified_kfrag = kfrag.verify(&verifying_pk, Some(&pk_umbral), Some(&sk.public_key()));
+				// // umbral_pre::decrypt_original(&your_sk, &capsule_data.capsule_bytes);
+				// // use the public key to identify the capsule
+				// let secret_data = T::QueueProvider::get_capsule(pk.clone()).unwrap();
+
+				// let verified_kfrag = kfrag.verify(&verifying_pk, Some(&owner), Some(&consumer));
+				// re-encrypt
+				// let verified_cfrag = reencrypt(&capsule, verified_kfrag);
+				// let cfrag_bytes = verified_cfrag.to_array();
+				// let (capsule, ciphertext) = encrypt(cfrag_bytes, &consumer)
+				// submit signex tx
+				// let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+				// if !signer.can_sign() {
+				// 	log::error!(
+				// 		"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+				// 	);
+				// }
+				// let results = signer.send_signed_transaction(|_acct| { 
+				// 	Call::submit_recovered_capsule_fragment {
+				// 		capsule_bytes: capsule.to_array().as_slice().to_vec(),
+				//      ciphertext: ciphertext.to_array().as_slice().to_Vec(), 
+				// 	}
+				// });
+			
+				// for (_, res) in &results {
+				// 	match res {
+				// 		Ok(()) => log::info!("Submitted results successfully"),
+				// 		Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+				// 	}
+				// }
+			}	
+		}
+
+		
+		Ok(())
+	}
+
+	fn recover_encrypted_kfrag(
+		public_key: BoxPublicKey,
+		secret_key: BoxSecretKey, 
+		ciphertext_bytes: Vec<u8>,
+		nonce_bytes: Vec<u8>,
+	) -> KeyFrag {
+		let salsa_box = SalsaBox::new(&public_key, &secret_key);
+		// GenericArray<u8, UInt<UInt<UInt<UInt<UInt<UTerm, B1>, B1>, B0>, B0>, B0>>
+		let gen_array = generic_array::GenericArray::clone_from_slice(nonce_bytes.as_slice());
+		let plaintext = salsa_box.decrypt(&gen_array, Payload {
+			msg: &ciphertext_bytes,
+			aad: b"".as_ref(),
+		}).unwrap();
+		// convert to KeyFragment (TODO: this is insecure)
+		KeyFrag::from_bytes(plaintext).unwrap()
+	}
+
+	// TODO: put this method in a commo nplace
+	fn slice_to_array_32(slice: &[u8]) -> Result<&[u8; 32], Error<T>> {
+        if slice.len() == 32 {
+            let ptr = slice.as_ptr() as *const [u8; 32];
+            unsafe {Ok(&*ptr)}
+        } else {
+            Err(Error::<T>::PublicKeyConversionFailure)
+        }
+    }
 
 	// fn handle_ejection_queue() -> Result<(), Error<T>> {
 	// 	let id_json = Self::fetch_identity_json()?;
