@@ -2535,8 +2535,11 @@ name = "iris-primitives"
 version = "1.0.0"
 dependencies = [
  "bitflags",
+ "crypto_box",
  "frame-support",
+ "generic-array 0.14.6",
  "parity-scale-codec",
+ "rand_chacha 0.3.1",
  "scale-info",
  "serde",
  "sp-core",

@@ -24,6 +24,17 @@ use sp_std::vec::Vec;
 use scale_info::TypeInfo;
 use frame_support::pallet_prelude::MaxEncodedLen;
 
+
+use crypto_box::{
+    aead::{Aead, AeadCore, Payload},
+	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
+};
+
+use rand_chacha::{
+	ChaCha20Rng,
+	rand_core::SeedableRng,
+};
+
 #[cfg(feature = "std")]
 use sp_rpc::number::NumberOrHex;
 
@@ -68,4 +79,62 @@ pub struct AssetId<T: Copy> {
 pub struct EncryptionResult {
 	pub public_key: Bytes,
 	pub ciphertext: Bytes,
+}
+
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Clone)]
+pub struct EncryptedFragment {
+    pub nonce: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+    pub public_key: Vec<u8>,
+}
+
+pub fn encrypt_crypto_box(
+    recipient_public_key: BoxPublicKey, 
+    sender_secret_key: BoxSecretKey, 
+    plaintext: Vec<u8>
+) -> EncryptedFragment {
+    let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+    let salsa_box = SalsaBox::new(&recipient_public_key, &sender_secret_key);
+    let nonce = SalsaBox::generate_nonce(&mut rng);
+    let ciphertext: Vec<u8> = salsa_box.encrypt(&nonce, Payload {
+        msg: &plaintext,
+        aad: b"".as_ref(),
+    }).unwrap().to_vec();
+    // to decrypt, the account associated with the public_key needs to know:
+    // (nonce, ciphertext, ephermeral public_key)
+    // so we should return some object? like...
+    EncryptedFragment{ 
+        nonce: nonce.as_slice().to_vec(),
+        ciphertext: ciphertext,
+        public_key: sender_secret_key.public_key().as_bytes().to_vec()
+    }
+}
+
+// pub fn encrypt_crypto_box_ephemeral(public_key_bytes: Vec<u8>, plaintext: Vec<u8>) -> EncryptedFragment {
+//     let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+//     let ephemeral_secret_key = BoxSecretKey::generate(&mut rng);
+//     let pubkey_slice_32 = Self::slice_to_array_32(public_key_bytes.as_slice()).unwrap();
+//     let public_key = BoxPublicKey::from(*pubkey_slice_32);
+
+//     let salsa_box = SalsaBox::new(&public_key, &plaintext);
+//     let nonce = SalsaBox::generate_nonce(&mut rng);
+//     let ciphertext: Vec<u8> = salsa_box.encrypt(&nonce, &p[..]).unwrap().to_vec();
+
+//     // to decrypt, the account associated with the public_key needs to know:
+//     // (nonce, ciphertext, ephermeral public_key)
+//     // so we should return some object? like...
+//     EncryptedFragment{ 
+//         nonce: nonce.as_slice().to_vec(),
+//         ciphertext: ciphertext,
+//         public_key: ephemeral_secret_key.public_key().as_bytes().to_vec()
+//     }
+// }
+
+pub fn slice_to_array_32(slice: &[u8]) -> Option<&[u8; 32]> {
+    if slice.len() == 32 {
+        let ptr = slice.as_ptr() as *const [u8; 32];
+        unsafe {Some(&*ptr)}
+    } else {
+        None
+    }
 }

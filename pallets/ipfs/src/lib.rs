@@ -365,6 +365,21 @@ pub mod pallet {
 		}
 
 		#[pallet::weight(100)]
+		pub fn submit_recovered_capsule_fragment(
+			origin: OriginFor<T>,
+			data_consumer: T::AccountId,
+			encrypted_cfrag_data: iris_primitives::EncryptedFragment,
+		) -> DispatchResult {
+			// write to runtime storage
+			// VerifiedCapsules::<T>::
+			// needs to be s.t. if i am the consumer
+			// i can easily collect them all
+			// could be by asset id? or public key?
+			// VerifiedCapsules::<T>::get(data_consumer_acct_id, asset_id)
+			Ok(())
+		}
+
+		#[pallet::weight(100)]
 		pub fn submit_data_ready(
 			origin: OriginFor<T>,
 		) -> DispatchResult {
@@ -554,42 +569,48 @@ impl<T: Config> Pallet<T> {
 				let encrypted_kfrag_data = T::QueueProvider::get_kfrags(pk.clone(), account.clone()).unwrap();
 
 				// convert to PublicKey
-				let pubkey_slice_32 = Self::slice_to_array_32(encrypted_kfrag_data.public_key.as_slice()).unwrap();
+				let pubkey_slice_32 = iris_primitives::slice_to_array_32(encrypted_kfrag_data.public_key.as_slice()).unwrap();
 				let public_key = BoxPublicKey::from(*pubkey_slice_32);
 				// decrypt the kfrag
-				let kfrag = Self::recover_encrypted_kfrag(public_key, secret_key.clone(), encrypted_kfrag_data.ciphertext, encrypted_kfrag_data.nonce);
+				let kfrag = Self::recover_encrypted_kfrag(
+					public_key, secret_key.clone(), encrypted_kfrag_data.ciphertext, encrypted_kfrag_data.nonce
+				);
 
 				// verify kfrag
-				let rng = ChaCha20Rng::seed_from_u64(31u64);
+				let mut rng = ChaCha20Rng::seed_from_u64(31u64);
 				let sk = SecretKey::random_with_rng(rng.clone());
 				let signer = umbral_pre::Signer::new(sk.clone());
 				let verifying_pk = signer.verifying_key();
 				
 				// now that we have they keyfrag, we can proceed to recover capsule frag
 				// TODO: unsafe
-				let  pk_umbral = PublicKey::from_bytes(&pk).unwrap();
+				let pk_umbral = PublicKey::from_bytes(&pk).unwrap();
+				let secret_data = T::QueueProvider::get_capsule(pk.clone()).unwrap();
+				let capsule = Capsule::from_bytes(&secret_data.sk_capsule).unwrap();
 				// 1. verify kfrag
-				let verified_kfrag = kfrag.verify(&verifying_pk, Some(&pk_umbral), Some(&sk.public_key()));
-				// // umbral_pre::decrypt_original(&your_sk, &capsule_data.capsule_bytes);
-				// // use the public key to identify the capsule
-				// let secret_data = T::QueueProvider::get_capsule(pk.clone()).unwrap();
-
-				// let verified_kfrag = kfrag.verify(&verifying_pk, Some(&owner), Some(&consumer));
-				// re-encrypt
-				// let verified_cfrag = reencrypt(&capsule, verified_kfrag);
-				// let cfrag_bytes = verified_cfrag.to_array();
-				// let (capsule, ciphertext) = encrypt(cfrag_bytes, &consumer)
-				// submit signex tx
-				// let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-				// if !signer.can_sign() {
-				// 	log::error!(
-				// 		"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-				// 	);
-				// }
+				let verified_kfrag = kfrag.verify(&verifying_pk, Some(&pk_umbral), Some(&sk.public_key())).unwrap();
+				let verified_cfrag = reencrypt_with_rng(&mut rng, &capsule, verified_kfrag);
+				let cfrag_bytes = verified_cfrag.to_array().as_slice().to_vec();
+				// now that we have the cfrag bytes, we need to encrypt the bytes for the requested account
+				// this encryption will be done with cryptobox, not umbral
+				// so now we need a cryptobox public key of the data owner						
+				// for this, we can even generate new keys.. but we don't need to so nvm
+				// fetch crypto_box pubkey of recipient (data consumer)
+				let encrypted_cfrag_data = iris_primitives::encrypt_crypto_box(
+					secret_key.public_key(), // <-- this parameter should be the recipient pk, which we don't have yet
+					secret_key.clone(),
+					cfrag_bytes,
+				);
+				
+				let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+				if !signer.can_sign() {
+					log::error!(
+						"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+					);
+				}
 				// let results = signer.send_signed_transaction(|_acct| { 
 				// 	Call::submit_recovered_capsule_fragment {
-				// 		capsule_bytes: capsule.to_array().as_slice().to_vec(),
-				//      ciphertext: ciphertext.to_array().as_slice().to_Vec(), 
+				// 		encrypted_cfrag_data,
 				// 	}
 				// });
 			
@@ -622,16 +643,6 @@ impl<T: Config> Pallet<T> {
 		// convert to KeyFragment (TODO: this is insecure)
 		KeyFrag::from_bytes(plaintext).unwrap()
 	}
-
-	// TODO: put this method in a commo nplace
-	fn slice_to_array_32(slice: &[u8]) -> Result<&[u8; 32], Error<T>> {
-        if slice.len() == 32 {
-            let ptr = slice.as_ptr() as *const [u8; 32];
-            unsafe {Ok(&*ptr)}
-        } else {
-            Err(Error::<T>::PublicKeyConversionFailure)
-        }
-    }
 
 	// fn handle_ejection_queue() -> Result<(), Error<T>> {
 	// 	let id_json = Self::fetch_identity_json()?;
