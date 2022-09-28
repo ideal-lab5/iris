@@ -101,6 +101,8 @@ pub struct AssetMetadata {
     pub public_key: Vec<u8>,
 }
 
+// TODO: These structs are really getting out of hand
+
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 pub struct SecretStuff {
     pub data_capsule: Vec<u8>,
@@ -114,11 +116,18 @@ pub struct EncryptedData {
     pub ciphertext: Vec<u8>,
 }
 
-#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Default)]
 pub struct EncryptedFragment {
     pub nonce: Vec<u8>,
     pub ciphertext: Vec<u8>,
     pub public_key: Vec<u8>,
+}
+
+// it would make a lot of sense to make two type aliases to identify the two different keys
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+pub struct CapsuleRecoveryPublicKeys {
+    pub capsule_encryption_pk: Vec<u8>,
+    pub ciphertext_encryption_pk: Vec<u8>
 }
 
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"iris");
@@ -275,7 +284,18 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         T::AccountId,
-        Vec<Vec<u8>>,
+        Vec<CapsuleRecoveryPublicKeys>,
+        ValueQuery,
+    >;
+
+    #[pallet::storage]
+    pub type VerifiedCapsules<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        T::AssetId,
+        Vec<EncryptedFragment>, // <-- TODO: should rename this struct to something more generic
         ValueQuery,
     >;
 
@@ -656,12 +676,14 @@ impl<T: Config> Convert<T::ValidatorId, Option<T::ValidatorId>> for ValidatorOf<
 }
 
 /// a trait to provide the ingestion queue to other modules
-pub trait QueueProvider<AccountId, Balance> {
+pub trait QueueProvider<AccountId, AssetId, Balance> {
     /// read ingestion requests issued for a specific gateway
     fn ingestion_requests(gateway: AccountId) -> Vec<IngestionCommand<AccountId, Balance>>;
     /// request that the kfrag holder recovers the capsule fragment associated with the given public key
-    fn add_capsule_recovery_request(kfrag_holder: &AccountId, public_key: Vec<u8>);
-    fn get_capsule_recovery_requests(account: AccountId) -> Vec<Vec<u8>>;
+    fn add_capsule_recovery_request(kfrag_holder: &AccountId, public_key: Vec<u8>, cfrag_recovery_pk: Vec<u8>);
+    /// add a verified capsule to the verified capsules storage map
+    fn add_verified_capsule(account: AccountId, asset_id: AssetId, encrypted_capsule_framgent_data: EncryptedFragment);
+    fn get_capsule_recovery_requests(account: AccountId) -> Vec<CapsuleRecoveryPublicKeys>;
     /// remove the specified public key from the collection of fragments to recover
     fn remove_capsule_recovery_request(kfrag_holder: AccountId, public_key: Vec<u8>);
     /// get the holder of kfrags as identified by public key
@@ -670,18 +692,27 @@ pub trait QueueProvider<AccountId, Balance> {
     fn get_capsule(public_key: Vec<u8>) -> Option<SecretStuff>;
 }
 
-impl<T: Config> QueueProvider<T::AccountId, T::Balance> for Pallet<T> {
+impl<T: Config> QueueProvider<T::AccountId, T::AssetId, T::Balance> for Pallet<T> {
     fn ingestion_requests(gateway: T::AccountId) -> Vec<IngestionCommand<T::AccountId, T::Balance>> {
         IngestionCommands::<T>::get(gateway)
     }
 
-    fn add_capsule_recovery_request(kfrag_holder: &T::AccountId, public_key: Vec<u8>) {
+    fn add_capsule_recovery_request(kfrag_holder: &T::AccountId, public_key: Vec<u8>, cfrag_recovery_pk: Vec<u8>) {
         CapsuleRecoveryRequests::<T>::mutate(kfrag_holder, |mut pks| {
-            pks.push(public_key);
+            pks.push(CapsuleRecoveryPublicKeys {
+                capsule_encryption_pk: cfrag_recovery_pk,
+                ciphertext_encryption_pk: public_key,
+            });
         });
     }
 
-    fn get_capsule_recovery_requests(account: T::AccountId) -> Vec<Vec<u8>> {
+    fn add_verified_capsule(account: T::AccountId, asset_id: T::AssetId, verified_cfrag_data: EncryptedFragment) {
+        VerifiedCapsules::<T>::mutate(account, asset_id, |mut cfrags| {
+            cfrags.push(verified_cfrag_data);
+        });
+    }
+
+    fn get_capsule_recovery_requests(account: T::AccountId) -> Vec<CapsuleRecoveryPublicKeys> {
         CapsuleRecoveryRequests::<T>::get(account)
     }
 

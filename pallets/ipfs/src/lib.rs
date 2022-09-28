@@ -370,19 +370,9 @@ pub mod pallet {
 			data_consumer: T::AccountId,
 			encrypted_cfrag_data: iris_primitives::EncryptedFragment,
 		) -> DispatchResult {
-			// write to runtime storage
-			// VerifiedCapsules::<T>::
-			// needs to be s.t. if i am the consumer
-			// i can easily collect them all
-			// could be by asset id? or public key?
-			// VerifiedCapsules::<T>::get(data_consumer_acct_id, asset_id)
-			Ok(())
-		}
-
-		#[pallet::weight(100)]
-		pub fn submit_data_ready(
-			origin: OriginFor<T>,
-		) -> DispatchResult {
+			// this really doesn't seem appropriate to place here, whatever for now it's fine
+			T::QueueProvider::add_verified_capsule(data_consumer, asset_id, encrypted_cfrag_data);
+			// deposit event
 			Ok(())
 		}
 	}
@@ -563,7 +553,9 @@ impl<T: Config> Pallet<T> {
 		let secret_storage = StorageValueRef::persistent(b"iris::secret");
 		if let Ok(Some(local_sk)) = secret_storage.get::<[u8;32]>() {
 			let secret_key: BoxSecretKey = BoxSecretKey::from(local_sk);
-			for pk in capsule_recovery_requests {
+			for cap_recovery_request in capsule_recovery_requests {
+
+				let pk = cap_recovery_request.ciphertext_encryption_pk;
 
 				// for each public key, find the corresponding kfrag assigned to you
 				let encrypted_kfrag_data = T::QueueProvider::get_kfrags(pk.clone(), account.clone()).unwrap();
@@ -597,7 +589,7 @@ impl<T: Config> Pallet<T> {
 				// for this, we can even generate new keys.. but we don't need to so nvm
 				// fetch crypto_box pubkey of recipient (data consumer)
 				let encrypted_cfrag_data = iris_primitives::encrypt_crypto_box(
-					secret_key.public_key(), // <-- this parameter should be the recipient pk, which we don't have yet
+					cap_recovery_request.capsule_encryption_pk,
 					secret_key.clone(),
 					cfrag_bytes,
 				);
@@ -608,18 +600,18 @@ impl<T: Config> Pallet<T> {
 						"No local accounts available. Consider adding one via `author_insertKey` RPC.",
 					);
 				}
-				// let results = signer.send_signed_transaction(|_acct| { 
-				// 	Call::submit_recovered_capsule_fragment {
-				// 		encrypted_cfrag_data,
-				// 	}
-				// });
+				let results = signer.send_signed_transaction(|_acct| { 
+					Call::submit_recovered_capsule_fragment {
+						encrypted_cfrag_data,
+					}
+				});
 			
-				// for (_, res) in &results {
-				// 	match res {
-				// 		Ok(()) => log::info!("Submitted results successfully"),
-				// 		Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-				// 	}
-				// }
+				for (_, res) in &results {
+					match res {
+						Ok(()) => log::info!("Submitted results successfully"),
+						Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+					}
+				}
 			}	
 		}
 

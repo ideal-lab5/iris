@@ -153,8 +153,12 @@ pub mod pallet {
         /// which allows them to submit results of execution
         /// 
         /// * `origin`: The origin of a contract
+        /// * `asset_id`: The id of the asset for which execution is submitted
         /// * `data_consumer_address`: The address of the caller of the contract
-        /// * `id`: The id of the asset for which execution is submitted
+        /// * `data_consumer_ephemeral_pk`: A public key submitted by the data consumer. 
+        ///                                 They will be able to decrypt the recovered cfrags using the
+        ///                                 associated secret key.
+        /// * `gateway`: The gateway node for which the command will be issued
         /// * `execution_result`: The result of the execute function as reported
         ///                       by the calling contract. A 'true' value implies
         ///                       access is granted, a 'false' implies it is not.
@@ -164,6 +168,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             #[pallet::compact] asset_id: T::AssetId,
             data_consumer_address: T::AccountId,
+            data_consumer_ephemeral_pk: Vec<u8>,
             gateway: T::AccountId,
             execution_result: bool,
         ) -> DispatchResult {
@@ -200,7 +205,7 @@ pub mod pallet {
                                         for f in frag_holders.iter() {
                                             if validators.contains(f) {
                                                 T::QueueProvider::add_capsule_recovery_request(
-                                                    f, metadata.public_key.clone(),
+                                                    f, metadata.public_key.clone(), data_consumer_ephemeral_pk,
                                                 );
                                                 // TODO: need to stop after we have selected 'threshold' validators
                                             }
