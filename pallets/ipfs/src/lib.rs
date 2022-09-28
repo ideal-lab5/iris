@@ -183,7 +183,7 @@ pub mod pallet {
 		/// provides proxy nodes
 		type ProxyProvider: pallet_gateway::ProxyProvider<Self::AccountId, Self::Balance>;
 		/// provide queued requests to vote on
-		type QueueProvider: pallet_data_assets::QueueProvider<Self::AccountId, Self::Balance>;
+		type QueueProvider: pallet_data_assets::QueueProvider<Self::AccountId, Self::AssetId, Self::Balance>;
 		/// provides asset metadata
 		type MetadataProvider: pallet_data_assets::MetadataProvider<Self::AssetId>;
 		/// provides ejection commands 

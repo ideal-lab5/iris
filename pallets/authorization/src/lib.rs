@@ -70,7 +70,7 @@ pub mod pallet {
         /// A type for retrieving the validators supposed to be online in a session.
 		type ValidatorSet: ValidatorSetWithIdentification<Self::AccountId>;
         /// provide queued requests to vote on
-		type QueueProvider: pallet_data_assets::QueueProvider<Self::AccountId, Self::Balance>;
+		type QueueProvider: pallet_data_assets::QueueProvider<Self::AccountId, Self::AssetId, Self::Balance>;
         /// provides asset metadata
 		type MetadataProvider: pallet_data_assets::MetadataProvider<Self::AssetId>;
 	}
@@ -205,7 +205,7 @@ pub mod pallet {
                                         for f in frag_holders.iter() {
                                             if validators.contains(f) {
                                                 T::QueueProvider::add_capsule_recovery_request(
-                                                    f, metadata.public_key.clone(), data_consumer_ephemeral_pk,
+                                                    f, metadata.public_key.clone(), data_consumer_ephemeral_pk.clone(),
                                                 );
                                                 // TODO: need to stop after we have selected 'threshold' validators
                                             }
