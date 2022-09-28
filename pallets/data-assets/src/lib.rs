@@ -90,7 +90,7 @@ use crypto_box::{
 
 use core::convert::TryInto;
 use pallet_vesting::VestingInfo;
-use iris_primitives::{IngestionCommand, EncryptionResult};
+use iris_primitives::{IngestionCommand, EncryptionResult, EncryptedFragment};
 
 /// struct to store metadata of an asset class
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
@@ -116,16 +116,11 @@ pub struct EncryptedData {
     pub ciphertext: Vec<u8>,
 }
 
-#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Default)]
-pub struct EncryptedFragment {
-    pub nonce: Vec<u8>,
-    pub ciphertext: Vec<u8>,
-    pub public_key: Vec<u8>,
-}
-
 // it would make a lot of sense to make two type aliases to identify the two different keys
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-pub struct CapsuleRecoveryPublicKeys {
+pub struct CapsuleRecoveryRequest<AccountId, AssetId> {
+    pub caller: AccountId,
+    pub asset_id: AssetId,
     pub capsule_encryption_pk: Vec<u8>,
     pub ciphertext_encryption_pk: Vec<u8>
 }
@@ -284,7 +279,7 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         T::AccountId,
-        Vec<CapsuleRecoveryPublicKeys>,
+        Vec<CapsuleRecoveryRequest<T::AccountId, T::AssetId>>,
         ValueQuery,
     >;
 
@@ -680,10 +675,16 @@ pub trait QueueProvider<AccountId, AssetId, Balance> {
     /// read ingestion requests issued for a specific gateway
     fn ingestion_requests(gateway: AccountId) -> Vec<IngestionCommand<AccountId, Balance>>;
     /// request that the kfrag holder recovers the capsule fragment associated with the given public key
-    fn add_capsule_recovery_request(kfrag_holder: &AccountId, public_key: Vec<u8>, cfrag_recovery_pk: Vec<u8>);
+    fn add_capsule_recovery_request(
+        account: AccountId, 
+        asset_id: AssetId,
+        kfrag_holder: &AccountId, 
+        public_key: Vec<u8>, 
+        cfrag_recovery_pk: Vec<u8>
+    );
     /// add a verified capsule to the verified capsules storage map
     fn add_verified_capsule(account: AccountId, asset_id: AssetId, encrypted_capsule_framgent_data: EncryptedFragment);
-    fn get_capsule_recovery_requests(account: AccountId) -> Vec<CapsuleRecoveryPublicKeys>;
+    fn get_capsule_recovery_requests(account: AccountId) -> Vec<CapsuleRecoveryRequest<AccountId, AssetId>>;
     /// remove the specified public key from the collection of fragments to recover
     fn remove_capsule_recovery_request(kfrag_holder: AccountId, public_key: Vec<u8>);
     /// get the holder of kfrags as identified by public key
@@ -697,9 +698,17 @@ impl<T: Config> QueueProvider<T::AccountId, T::AssetId, T::Balance> for Pallet<T
         IngestionCommands::<T>::get(gateway)
     }
 
-    fn add_capsule_recovery_request(kfrag_holder: &T::AccountId, public_key: Vec<u8>, cfrag_recovery_pk: Vec<u8>) {
+    fn add_capsule_recovery_request(
+        account: T::AccountId, 
+        asset_id: T::AssetId, 
+        kfrag_holder: &T::AccountId, 
+        public_key: Vec<u8>, 
+        cfrag_recovery_pk: Vec<u8>
+    ) {
         CapsuleRecoveryRequests::<T>::mutate(kfrag_holder, |mut pks| {
-            pks.push(CapsuleRecoveryPublicKeys {
+            pks.push(CapsuleRecoveryRequest {
+                caller: account,
+                asset_id: asset_id,
                 capsule_encryption_pk: cfrag_recovery_pk,
                 ciphertext_encryption_pk: public_key,
             });
@@ -712,7 +721,7 @@ impl<T: Config> QueueProvider<T::AccountId, T::AssetId, T::Balance> for Pallet<T
         });
     }
 
-    fn get_capsule_recovery_requests(account: T::AccountId) -> Vec<CapsuleRecoveryPublicKeys> {
+    fn get_capsule_recovery_requests(account: T::AccountId) -> Vec<CapsuleRecoveryRequest<T::AccountId, T::AssetId>> {
         CapsuleRecoveryRequests::<T>::get(account)
     }
 

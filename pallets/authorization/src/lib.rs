@@ -205,6 +205,8 @@ pub mod pallet {
                                         for f in frag_holders.iter() {
                                             if validators.contains(f) {
                                                 T::QueueProvider::add_capsule_recovery_request(
+                                                    data_consumer_address.clone(),
+                                                    asset_id.clone(),
                                                     f, metadata.public_key.clone(), data_consumer_ephemeral_pk.clone(),
                                                 );
                                                 // TODO: need to stop after we have selected 'threshold' validators

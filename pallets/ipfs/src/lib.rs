@@ -368,6 +368,7 @@ pub mod pallet {
 		pub fn submit_recovered_capsule_fragment(
 			origin: OriginFor<T>,
 			data_consumer: T::AccountId,
+			asset_id: T::AssetId,
 			encrypted_cfrag_data: iris_primitives::EncryptedFragment,
 		) -> DispatchResult {
 			// this really doesn't seem appropriate to place here, whatever for now it's fine
@@ -587,9 +588,13 @@ impl<T: Config> Pallet<T> {
 				// this encryption will be done with cryptobox, not umbral
 				// so now we need a cryptobox public key of the data owner						
 				// for this, we can even generate new keys.. but we don't need to so nvm
+
+
+				let consumer_ephemeral_pubkey_slice_32 = iris_primitives::slice_to_array_32(cap_recovery_request.capsule_encryption_pk.as_slice()).unwrap();
+				let ephemeral_public_key = BoxPublicKey::from(*consumer_ephemeral_pubkey_slice_32);
 				// fetch crypto_box pubkey of recipient (data consumer)
 				let encrypted_cfrag_data = iris_primitives::encrypt_crypto_box(
-					cap_recovery_request.capsule_encryption_pk,
+					ephemeral_public_key,
 					secret_key.clone(),
 					cfrag_bytes,
 				);
@@ -602,7 +607,9 @@ impl<T: Config> Pallet<T> {
 				}
 				let results = signer.send_signed_transaction(|_acct| { 
 					Call::submit_recovered_capsule_fragment {
-						encrypted_cfrag_data,
+						data_consumer: cap_recovery_request.caller.clone(),
+						asset_id: cap_recovery_request.asset_id,
+						encrypted_cfrag_data: encrypted_cfrag_data.clone(),
 					}
 				});
 			
