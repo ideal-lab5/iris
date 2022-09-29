@@ -100,9 +100,6 @@ pub fn encrypt_crypto_box(
         msg: &plaintext,
         aad: b"".as_ref(),
     }).unwrap().to_vec();
-    // to decrypt, the account associated with the public_key needs to know:
-    // (nonce, ciphertext, ephermeral public_key)
-    // so we should return some object? like...
     EncryptedFragment{ 
         nonce: nonce.as_slice().to_vec(),
         ciphertext: ciphertext,

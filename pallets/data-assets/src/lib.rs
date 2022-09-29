@@ -464,30 +464,38 @@ pub mod pallet {
             public_key: Vec<u8>,
             sk_capsule: Vec<u8>,
             sk_ciphertext: Vec<u8>,
-            encrypted_kfrags: Vec<Vec<u8>>,
+            kfrag_assignments: Vec<(T::AccountId, EncryptedFragment)>
         ) -> DispatchResult {
             ensure_none(origin)?;
-            // assign and distribute encrypted_kfrags
-            let rng = ChaCha20Rng::seed_from_u64(17u64);
-            let required_authorities_count = encrypted_kfrags.len();
-            // TODO: should move this encryption offchain
-            let authorities: Vec<T::AccountId> = pallet_authorities::Pallet::<T>::validators();
-            let mut frag_holders = Vec::new();
-            for i in vec![0, required_authorities_count] {
-                let authority = authorities[i].clone();
-                frag_holders.push(authority.clone());
+            // // assign and distribute encrypted_kfrags
+            // let rng = ChaCha20Rng::seed_from_u64(17u64);
+            // let required_authorities_count = encrypted_kfrags.len();
+            // // TODO: move this encryption offchain
+            // let authorities: Vec<T::AccountId> = pallet_authorities::Pallet::<T>::validators();
+            // let mut frag_holders = Vec::new();
+            // for i in vec![0, required_authorities_count] {
+            //     let authority = authorities[i].clone();
+            //     frag_holders.push(authority.clone());
                 
-                let pk_bytes: Vec<u8> = pallet_authorities::Pallet::<T>::public_keys(authority.clone());
-                let pk_slice = Self::slice_to_array_32(&pk_bytes)?;
-                let pk = BoxPublicKey::from(*pk_slice);
-                let key_fragment = encrypted_kfrags[i].as_slice().to_vec();
+            //     let pk_bytes: Vec<u8> = pallet_authorities::Pallet::<T>::public_keys(authority.clone());
+            //     let pk_slice = iris_primitives::slice_to_array_32(&pk_bytes)?;
+            //     let pk = BoxPublicKey::from(*pk_slice);
+            //     let key_fragment = encrypted_kfrags[i].as_slice().to_vec();
 
-                let encrypted_kfrag_data = Self::encrypt_kfrag_ephemeral(
-                    pk_bytes.clone(), key_fragment,
+            //     let encrypted_kfrag_data = Self::encrypt_kfrag_ephemeral(
+            //         pk_bytes.clone(), key_fragment,
+            //     );
+            //     Fragments::<T>::insert(public_key.clone(), authority.clone(), encrypted_kfrag_data);
+            // }
+            // FragmentOwnerSet::<T>::insert(public_key.clone(), frag_holders);
+
+            for assignment in kfrag_assignments.iter() {
+                Fragments::<T>::insert(
+                    public_key.clone(), 
+                    assignment.0.clone(), 
+                    assignment.1.clone()
                 );
-                Fragments::<T>::insert(public_key.clone(), authority.clone(), encrypted_kfrag_data);
             }
-            FragmentOwnerSet::<T>::insert(public_key.clone(), frag_holders);
 
             Capsules::<T>::insert(public_key.clone(), 
                 SecretStuff {
@@ -568,11 +576,11 @@ impl<T: Config> Pallet<T> {
     ) -> Option<Bytes> {
         let mut rng = ChaCha20Rng::seed_from_u64(17u64);
         // generate keys
-        let sk = SecretKey::random_with_rng(rng.clone());
-        let pk = sk.public_key();
+        let data_owner_umbral_sk = SecretKey::random_with_rng(rng.clone());
+        let data_owner_umbral_pk = data_owner_umbral_sk.public_key();
 
         let (data_capsule, data_ciphertext) = match umbral_pre::encrypt_with_rng(
-            &mut rng.clone(), &pk, plaintext)
+            &mut rng.clone(), &data_owner_umbral_pk, plaintext)
         {
             Ok((capsule, ciphertext)) => (capsule, ciphertext),
             Err(error) => {
@@ -582,7 +590,7 @@ impl<T: Config> Pallet<T> {
 
         // encrypt the secret key
         let (sk_capsule, sk_ciphertext) = match umbral_pre::encrypt_with_rng(
-            &mut rng.clone(), &pk, sk.to_string().as_bytes(),
+            &mut rng.clone(), &data_owner_umbral_pk, data_owner_umbral_sk.to_string().as_bytes(),
         ) {
             Ok((capsule, ciphertext)) => (capsule, ciphertext),
             Err(error) => {
@@ -593,24 +601,28 @@ impl<T: Config> Pallet<T> {
         let signer = Signer::new(SecretKey::random_with_rng(rng.clone()));
 
         let verified_kfrags = generate_kfrags_with_rng(
-            &mut rng.clone(), &sk, &pk, &signer, threshold, shares, true, true
+            &mut rng.clone(), &data_owner_umbral_sk, &data_owner_umbral_pk, &signer, threshold, shares, true, true
         );
 
-        let kfrag_bytes: Vec<Vec<u8>> =
-            verified_kfrags.iter().map(|k| { k.to_array().as_slice().to_vec() }).collect();
-        let capsule_vec: Vec<u8> = data_capsule.to_array().as_slice().to_vec();
-        let pk_vec: Vec<u8> = pk.to_array().as_slice().to_vec();
-
+        // let kfrag_bytes: Vec<Vec<u8>> =
+        //     verified_kfrags.iter().map(|k| { k.to_array().as_slice().to_vec() }).collect();
+        let data_capsule_vec: Vec<u8> = data_capsule.to_array().as_slice().to_vec();
         let sk_capsule_vec: Vec<u8> = sk_capsule.to_array().as_slice().to_vec();
         let sk_ciphertext_vec: Vec<u8> = sk_ciphertext.to_vec();
 
+        let pk_vec: Vec<u8> = data_owner_umbral_pk.to_array().as_slice().to_vec();
+        // let pubkey_slice_32 = iris_primitives::slice_to_array_32(public_key_bytes.as_slice()).unwrap();
+        // let public_key = BoxPublicKey::from(*pubkey_slice_32);
+
+        let kfrag_assignments: Vec<(T::AccountId, EncryptedFragment)> = Self::choose_kfrag_holders(verified_kfrags.into_vec());
+
         let call = Call::submit_capsule_and_kfrags { 
             owner: owner,
-            data_capsule: capsule_vec,
+            data_capsule: data_capsule_vec,
             public_key: pk_vec.clone(),
             sk_capsule: sk_capsule_vec,
             sk_ciphertext: sk_ciphertext_vec,
-            encrypted_kfrags: kfrag_bytes,
+            kfrag_assignments: kfrag_assignments,
         };
 
 		SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
@@ -619,20 +631,18 @@ impl<T: Config> Pallet<T> {
         Some(Bytes::from(data_ciphertext.to_vec()))
     }
 
-    fn encrypt_kfrag_ephemeral(public_key_bytes: Vec<u8>, key_fragment_bytes: Vec<u8>) -> EncryptedFragment {
+    fn encrypt_kfrag_ephemeral(public_key: BoxPublicKey, key_fragment_bytes: Vec<u8>) -> EncryptedFragment {
         let mut rng = ChaCha20Rng::seed_from_u64(31u64);
         let ephemeral_secret_key = BoxSecretKey::generate(&mut rng);
-        let pubkey_slice_32 = Self::slice_to_array_32(public_key_bytes.as_slice()).unwrap();
-        let public_key = BoxPublicKey::from(*pubkey_slice_32);
 
         let salsa_box = SalsaBox::new(&public_key, &ephemeral_secret_key);
         let nonce = SalsaBox::generate_nonce(&mut rng);
-        let p = b"test";
-        let ciphertext: Vec<u8> = salsa_box.encrypt(&nonce, &p[..]).unwrap().to_vec();
+        // TODO
+        // let p = b"test";
+        let ciphertext: Vec<u8> = salsa_box.encrypt(&nonce, &key_fragment_bytes[..]).unwrap().to_vec();
 
-        // to decrypt, the account associated with the public_key needs to know:
-        // (nonce, ciphertext, ephermeral public_key)
-        // so we should return some object? like...
+        // TODO: really need to make it clearer exactly which public key this is
+        // the public key should be the pk of the ephemeral secret key
         EncryptedFragment{ 
             nonce: nonce.as_slice().to_vec(),
             ciphertext: ciphertext,
@@ -640,14 +650,35 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    
-    fn slice_to_array_32(slice: &[u8]) -> Result<&[u8; 32], Error<T>> {
-        if slice.len() == 32 {
-            let ptr = slice.as_ptr() as *const [u8; 32];
-            unsafe {Ok(&*ptr)}
-        } else {
-            Err(Error::<T>::PublicKeyConversionFailure)
+    pub fn choose_kfrag_holders(key_fragments: Vec<VerifiedKeyFrag>) -> Vec<(T::AccountId, EncryptedFragment)> {
+        // assign and distribute encrypted_kfrags
+        let mut assignments = Vec::new();
+        let rng = ChaCha20Rng::seed_from_u64(17u64);
+        // could probably just enumerate over the key fragments..
+        let required_authorities_count = key_fragments.len();
+        // TODO: move this encryption offchain
+        let authorities: Vec<T::AccountId> = pallet_authorities::Pallet::<T>::validators();
+        // let mut frag_holders = Vec::new();
+        for i in vec![0, required_authorities_count] {
+            let authority = authorities[i].clone();
+            // frag_holders.push(authority.clone());
+            
+            let pk_bytes: Vec<u8> = pallet_authorities::Pallet::<T>::public_keys(authority.clone());
+            match iris_primitives::slice_to_array_32(&pk_bytes) {
+                Some(pk_slice) => {
+                    let pk = BoxPublicKey::from(*pk_slice);
+                    let key_fragment = key_fragments[i].clone().unverify().to_array().as_slice().to_vec();
+                    let encrypted_kfrag_data = Self::encrypt_kfrag_ephemeral(
+                        pk.clone(), key_fragment,
+                    );
+                    assignments.push((authority.clone(), encrypted_kfrag_data.clone()));
+                },
+                None => {
+                    // idk yet
+                }
+            }
         }
+        assignments
     }
 }
 
