@@ -467,43 +467,24 @@ pub mod pallet {
             kfrag_assignments: Vec<(T::AccountId, EncryptedFragment)>
         ) -> DispatchResult {
             ensure_none(origin)?;
-            // // assign and distribute encrypted_kfrags
-            // let rng = ChaCha20Rng::seed_from_u64(17u64);
-            // let required_authorities_count = encrypted_kfrags.len();
-            // // TODO: move this encryption offchain
-            // let authorities: Vec<T::AccountId> = pallet_authorities::Pallet::<T>::validators();
-            // let mut frag_holders = Vec::new();
-            // for i in vec![0, required_authorities_count] {
-            //     let authority = authorities[i].clone();
-            //     frag_holders.push(authority.clone());
-                
-            //     let pk_bytes: Vec<u8> = pallet_authorities::Pallet::<T>::public_keys(authority.clone());
-            //     let pk_slice = iris_primitives::slice_to_array_32(&pk_bytes)?;
-            //     let pk = BoxPublicKey::from(*pk_slice);
-            //     let key_fragment = encrypted_kfrags[i].as_slice().to_vec();
-
-            //     let encrypted_kfrag_data = Self::encrypt_kfrag_ephemeral(
-            //         pk_bytes.clone(), key_fragment,
-            //     );
-            //     Fragments::<T>::insert(public_key.clone(), authority.clone(), encrypted_kfrag_data);
-            // }
-            // FragmentOwnerSet::<T>::insert(public_key.clone(), frag_holders);
-
+            // TODO: try to get rid of this
+            let mut frag_holders = Vec::new();
             for assignment in kfrag_assignments.iter() {
                 Fragments::<T>::insert(
                     public_key.clone(), 
                     assignment.0.clone(), 
                     assignment.1.clone()
                 );
+                frag_holders.push(assignment.0.clone());
             }
 
+            FragmentOwnerSet::<T>::insert(public_key.clone(), frag_holders);
             Capsules::<T>::insert(public_key.clone(), 
                 SecretStuff {
                     data_capsule,
                     sk_capsule,
                     sk_ciphertext,
             });
-
             IngestionStaging::<T>::insert(owner.clone(), public_key.clone());
 
             // TODO: emit event

@@ -17,8 +17,16 @@
 
 use super::*;
 use frame_support::{assert_ok, assert_err};
-use mock::*;
+use crate::mock::*;
 use sp_core::Pair;
+use rand_chacha::{
+    ChaCha20Rng,
+    rand_core::SeedableRng,
+};
+use crypto_box::{
+    aead::{ AeadCore, Aead },
+	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
+};
 
 #[test]
 fn authorization_can_register_rule_executor_when_caller_is_asset_owner() {
@@ -35,7 +43,7 @@ fn authorization_can_register_rule_executor_when_caller_is_asset_owner() {
 			Origin::signed(p.clone().public()), id.clone(), p.public().clone(), balance,
 		));
 		// WHEN: I try to register a rule
-		assert_ok!(IrisEjection::register_rule(
+		assert_ok!(Authorization::register_rule(
 			Origin::signed(p.clone().public()),
 			id.clone(),
 			contract_address.public().clone(),
@@ -59,7 +67,7 @@ fn authorization_cant_register_rules_when_not_owned() {
 	new_test_ext_funded(pairs).execute_with(|| {
 		// AND: I don't own the asset class
 		// THEN: I receive an error when I try to register a rule
-		assert_err!(IrisEjection::register_rule(
+		assert_err!(Authorization::register_rule(
 			Origin::signed(p.clone().public()),
 			id.clone(),
 			contract_address.public().clone(),
@@ -75,6 +83,8 @@ fn authorization_can_submit_execution_results() {
 	let pairs = vec![(p.clone().public(), 10)];
 	let id: u32 = 1;
 	let balance = 1;
+	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+    let sk = BoxSecretKey::generate(&mut rng);
 
 	new_test_ext_funded(pairs).execute_with(|| {
 		// AND: I own some asset class
@@ -92,15 +102,17 @@ fn authorization_can_submit_execution_results() {
 		));
 
 		// WHEN: I try to register a rule
-		assert_ok!(IrisEjection::register_rule(
+		assert_ok!(Authorization::register_rule(
 			Origin::signed(p.clone().public()),
 			id.clone(),
 			contract_address.public().clone(),
 		));
 		// AND: I submit execution results
-		assert_ok!(IrisEjection::submit_execution_results(
+		assert_ok!(Authorization::submit_execution_results(
 			Origin::signed(contract_address.public().clone()),
 			id.clone(),
+			p.public().clone(),
+			sk.public_key().as_bytes().to_vec(),
 			p.public().clone(),
 			true,
 		));
@@ -110,6 +122,7 @@ fn authorization_can_submit_execution_results() {
 			p.public().clone(), id.clone()
 		);
 		assert_eq!(true, result);
+		// AND: A new capsule recovery request is created for each assigned frag holder
 	});
 }
 
@@ -121,6 +134,8 @@ fn authorization_cant_submit_execution_results_when_contract_not_registered_for_
 	let pairs = vec![(p.clone().public(), 10)];
 	let id = 1;
 	let balance = 1;
+	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+    let sk = BoxSecretKey::generate(&mut rng);
 
 	new_test_ext_funded(pairs).execute_with(|| {
 		// AND: I own some asset class
@@ -138,9 +153,11 @@ fn authorization_cant_submit_execution_results_when_contract_not_registered_for_
 		));
 		// WHEN: I don't register a rule
 		// AND: I submit execution results
-		assert_ok!(IrisEjection::submit_execution_results(
+		assert_ok!(Authorization::submit_execution_results(
 			Origin::signed(contract_address.public().clone()),
 			id.clone(),
+			p.public().clone(),
+			sk.public_key().as_bytes().to_vec(),
 			p.public().clone(),
 			true,
 		));
@@ -160,6 +177,8 @@ fn authorization_cant_submit_execution_results_when_consumer_owns_no_asset() {
 	let pairs = vec![(p.clone().public(), 10)];
 	let id = 1;
 	let balance = 1;
+	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+    let sk = BoxSecretKey::generate(&mut rng);
 
 	new_test_ext_funded(pairs).execute_with(|| {
 		// AND: I own some asset class
@@ -168,9 +187,11 @@ fn authorization_cant_submit_execution_results_when_consumer_owns_no_asset() {
 		));
 		// WHEN: I don't register a rule
 		// AND: I submit execution results
-		assert_err!(IrisEjection::submit_execution_results(
+		assert_err!(Authorization::submit_execution_results(
 			Origin::signed(contract_address.public().clone()),
 			id.clone(),
+			p.public().clone(),
+			sk.public_key().as_bytes().to_vec(),
 			p.public().clone(),
 			true,
 		), crate::Error::<Test>::InsufficientBalance);

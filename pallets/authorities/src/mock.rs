@@ -19,7 +19,6 @@
 
 use super::*;
 use crate::{self as pallet_authorities, Config};
-// use pallet_data_assets;
 use frame_support::{
 	parameter_types, 
 	traits::{GenesisBuild, ConstU32},

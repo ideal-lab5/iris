@@ -197,12 +197,14 @@ pub mod pallet {
                             if execution_result {
                                 match T::MetadataProvider::get(asset_id.clone()) {
                                     Some(metadata) => {
+                                        // Do I need this 'fragment owners'? is there some other way I can do this>
                                         let frag_holders = T::QueueProvider::get_fragment_holders(metadata.public_key.clone());
                                         // here we make the assumption that validators do not go offline during the duration of a session
                                         // this could be made more precise by relying on the heartbeat delivered via imonline
                                         let validators = <pallet_authorities::Pallet<T>>::validators();
                                         // we only need to find 'threshold' fragment holders
                                         for f in frag_holders.iter() {
+                                            // if in validators set, we assume the node is active and can process the request
                                             if validators.contains(f) {
                                                 T::QueueProvider::add_capsule_recovery_request(
                                                     data_consumer_address.clone(),

@@ -4134,16 +4134,21 @@ dependencies = [
 name = "pallet-authorization"
 version = "1.0.0"
 dependencies = [
+ "crypto_box",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "generic-array 0.14.6",
  "iris-primitives",
  "log",
  "pallet-assets",
  "pallet-authorities",
  "pallet-balances",
  "pallet-data-assets",
+ "pallet-session",
+ "pallet-vesting",
  "parity-scale-codec",
+ "rand_chacha 0.3.1",
  "scale-info",
  "sp-core",
  "sp-io",
