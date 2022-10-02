@@ -218,7 +218,6 @@ impl pallet_session::Config for Test {
 	type Event = Event;
 }
 
-
 parameter_types! {
 	pub const MinVestedTransfer: Balance = 1 * MILLICENTS;
 }

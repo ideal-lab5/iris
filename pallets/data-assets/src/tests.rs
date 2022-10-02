@@ -15,6 +15,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+// tests scenarios to cover:
+// 1. Encryption
+// 2. Asset Id Generation
+// 3. Ingestion/Verification/AssetClassCreation Request
+
 use super::*;
 use frame_support::{assert_ok, assert_err};
 use mock::*;
@@ -46,19 +51,47 @@ fn data_assets_can_request_ingestion() {
 	let cid_vec = "QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9".as_bytes().to_vec();
 	let name: Vec<u8> = "test.txt".as_bytes().to_vec();
 	let id = 1;
-	let balance = 1;
+	let balance = 100;
 	let min_asset_balance: u64 = 1;
-	let size = 10;
+	let size: u128 = 1;
+
+	let expected_ingestion_cmd = crate::IngestionCommand {
+		owner: p.clone().public(),
+		cid: cid_vec.clone(),
+		multiaddress: multiaddr_vec.clone(),
+		estimated_size_gb: size.clone(),
+		balance: balance.clone(),
+	};
 
 	new_test_ext_funded(pairs).execute_with(|| {
-		// assert_ok!(Iris::request_ingestion(
-		// 	Origin::signed(p.clone().public()),
-		// 	g.clone().public(),
-		// 	balance,
-		// 	cid_vec,
-		// 	multiaddr_vec,
-		// 	size, 
-		// 	min_asset_balance.into(),
-		// ));
+		// When: I call to create a new ingestion request
+		assert_ok!(DataAssets::create_request(
+			Origin::signed(p.clone().public()),
+			p.clone().public(),
+			balance.clone(),
+			cid_vec.clone(),
+			multiaddr_vec.clone(),
+			size, // needed?
+			balance.clone().try_into().unwrap(),
+		));
+		
+		// Then: A new entry is added to the IngestionCommands map
+		let ingestion_cmds = crate::IngestionCommands::<Test>::get(p.clone().public());
+		assert_eq!(ingestion_cmds.len(), 1);
+		let cmd = &ingestion_cmds[0];
+		assert_eq!(cmd.owner, p.clone().public());
+		assert_eq!(cmd.cid, cid_vec.clone());
+		assert_eq!(cmd.multiaddress, multiaddr_vec.clone());
+		assert_eq!(cmd.balance, balance.clone() as u32);
 	});
+}
+
+#[test]
+fn data_assets_can_encrypt_data_and_submit_tx() {
+
+}
+
+#[test]
+fn data_assets_can_submit_capsule_and_kfrags() {
+
 }

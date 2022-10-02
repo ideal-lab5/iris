@@ -48,8 +48,6 @@ pub trait EncryptionApi<BlockHash, Balance> {
         signature: Bytes,
         signer: Bytes,
         message: Bytes,
-        // shares: usize,
-        // threshold: usize,
 		at: Option<BlockHash>,
 	) -> RpcResult<Option<Bytes>>;
 

@@ -43,6 +43,9 @@ rand_chacha = { version = "0.3.1", default-features = false }
 generic-array = "0.14.6"
 crypto_box = { version = "0.8.1", default-features = false, features = ["alloc"] }
 
+[dev-dependencies]
+pallet-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
+
 [features]
 default = ['std']
 std = [
@@ -58,6 +61,7 @@ std = [
 	'pallet-assets/std',
 	'pallet-authorities/std',
 	'pallet-balances/std',
+	'pallet-session/std',
 	'pallet-vesting/std',
 	'iris-primitives/std',
 	'umbral-pre/std',

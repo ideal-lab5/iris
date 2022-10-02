@@ -4282,6 +4282,7 @@ dependencies = [
  "pallet-assets",
  "pallet-authorities",
  "pallet-balances",
+ "pallet-session",
  "pallet-vesting",
  "parity-scale-codec",
  "rand_chacha 0.3.1",

@@ -37,7 +37,7 @@ use std::sync::Arc;
 BOND extrinsic tests
 */
 #[test]
-fn proxy_simple_setup_should_work() {
+fn gateway_simple_setup_should_work() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -58,7 +58,7 @@ fn proxy_simple_setup_should_work() {
 }
 
 #[test]
-fn proxy_bond_with_valid_values_should_work() {
+fn gateway_bond_with_valid_values_should_work() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -93,7 +93,7 @@ fn proxy_bond_with_valid_values_should_work() {
 }
 
 #[test]
-fn proxy_bond_not_validator_err_when_not_validator() {
+fn gateway_bond_not_validator_err_when_not_validator() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -152,7 +152,7 @@ fn proxy_bond_already_bonded_err_when_bonded() {
 }
 
 #[test]
-fn proxy_bond_already_paired_when_controller_in_ledger() {
+fn gateway_bond_already_paired_when_controller_in_ledger() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -185,7 +185,7 @@ fn proxy_bond_already_paired_when_controller_in_ledger() {
 }
 
 #[test]
-fn proxy_bond_insufficient_balance_err_when_value_too_low() {
+fn gateway_bond_insufficient_balance_err_when_value_too_low() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -215,7 +215,7 @@ BOND and DECLARE_PROXY tests
 */
 
 #[test]
-fn proxy_declare_proxy_works() {
+fn gateway_declare_proxy_works() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -250,7 +250,7 @@ fn proxy_declare_proxy_works() {
 }
 
 #[test]
-fn proxy_declare_proxy_err_when_not_controller() {
+fn gateway_declare_proxy_err_when_not_controller() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -293,7 +293,7 @@ fn proxy_declare_proxy_err_when_not_controller() {
 */
 
 #[test]
-fn proxy_bond_extra_works_with_valid_values() {
+fn gateway_bond_extra_works_with_valid_values() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -334,38 +334,38 @@ fn proxy_bond_extra_works_with_valid_values() {
 	unbond tests
 */
 #[test]
-fn proxy_unbond_works_with_valid_values() {
+fn gateway_unbond_works_with_valid_values() {
 // GIVEN: There are two validator nodes
 let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 	sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-	UintAuthorityId(0)
-);
-let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-	sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-	UintAuthorityId(1)
-);
-// AND: I have properly setup the mock runtime
-new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
-	// WHEN: I have properly setup the runtime
-	// AND: I attempt to bond my controller to my stash
-	// AND: My controller is my stash (wlog)
-	// THEN: the bonding is successful
-	assert_ok!(Proxy::bond(
-		Origin::signed(v0.0.clone()),
-		v0.0.clone(),
-		1,
-	));
-	let expect_staking_ledger = crate::StakingLedger {
-		stash: v0.0.clone(),
-		total: 1,
-		active: 0,
-		unlocking: bounded_vec![UnlockChunk { value: 1, era: 3 }],
-	};
-	assert_ok!(Proxy::unbond(
-		Origin::signed(v0.0.clone()),
-		1,
-	));
-	// AND: the ledger is updated
-	assert_eq!(Some(expect_staking_ledger), crate::Ledger::<Test>::get(v0.0.clone()));
-});
+		UintAuthorityId(0)
+	);
+	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+		UintAuthorityId(1)
+	);
+	// AND: I have properly setup the mock runtime
+	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
+		// WHEN: I have properly setup the runtime
+		// AND: I attempt to bond my controller to my stash
+		// AND: My controller is my stash (wlog)
+		// THEN: the bonding is successful
+		assert_ok!(Proxy::bond(
+			Origin::signed(v0.0.clone()),
+			v0.0.clone(),
+			1,
+		));
+		let expect_staking_ledger = crate::StakingLedger {
+			stash: v0.0.clone(),
+			total: 1,
+			active: 0,
+			unlocking: bounded_vec![UnlockChunk { value: 1, era: 3 }],
+		};
+		assert_ok!(Proxy::unbond(
+			Origin::signed(v0.0.clone()),
+			1,
+		));
+		// AND: the ledger is updated
+		assert_eq!(Some(expect_staking_ledger), crate::Ledger::<Test>::get(v0.0.clone()));
+	});
 }
