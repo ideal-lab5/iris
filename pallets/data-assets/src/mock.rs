@@ -17,6 +17,7 @@
 #![cfg(test)]
 use crate::{self as pallet_data_assets, Config};
 use frame_support::{
+	BasicExternalities,
 	construct_runtime, 
 	parameter_types,
 	traits::ConstU32
@@ -321,12 +322,16 @@ impl Config for Test {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
-pub fn new_test_ext() -> sp_io::TestExternalities {
+pub fn new_test_ext(
+	validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>
+) -> sp_io::TestExternalities {
 	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
 
 	let (pair1, _) = sp_core::sr25519::Pair::generate();
 	let (pair2, _) = sp_core::sr25519::Pair::generate();
 	let (pair3, _) = sp_core::sr25519::Pair::generate();
+
+	
 
 	pallet_balances::GenesisConfig::<Test> {
 		balances: vec![(pair1.public(), 10), (pair2.public(), 20), (pair3.public(), 30)],
@@ -342,8 +347,29 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 
 
 // Build genesis storage according to the mock runtime.
-pub fn new_test_ext_funded(pairs: Vec<(sp_core::sr25519::Public, u64)>) -> sp_io::TestExternalities {
+pub fn new_test_ext_funded(
+	pairs: Vec<(sp_core::sr25519::Public, u64)>,
+	validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>
+) -> sp_io::TestExternalities {
 	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
+
+	let keys: Vec<_> = validators.clone().iter()
+		.map(|i| (i.0, i.0, i.1.clone().into())).collect();
+	BasicExternalities::execute_with_storage(&mut t, || {
+		for (ref k, ..) in &keys {
+			frame_system::Pallet::<Test>::inc_providers(k);
+		}
+	});
+
+	pallet_authorities::GenesisConfig::<Test> {
+		initial_validators: keys.iter().map(|x| x.0).collect::<Vec<_>>(),
+	}
+	.assimilate_storage(&mut t)
+	.unwrap();
+	
+	pallet_session::GenesisConfig::<Test> { keys: keys.clone() }
+		.assimilate_storage(&mut t)
+		.unwrap();
 
 	pallet_balances::GenesisConfig::<Test> {
 		balances: pairs,

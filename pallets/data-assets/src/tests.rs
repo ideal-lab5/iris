@@ -15,19 +15,27 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// tests scenarios to cover:
-// 1. Encryption
-// 2. Asset Id Generation
-// 3. Ingestion/Verification/AssetClassCreation Request
-
 use super::*;
 use frame_support::{assert_ok, assert_err};
 use mock::*;
 use sp_core::Pair;
+use sp_runtime::testing::UintAuthorityId;
+use sp_core::{
+	offchain::{testing, OffchainWorkerExt, TransactionPoolExt, OffchainDbExt}
+};
+use umbral_pre::*;
+use rand_chacha::{
+    ChaCha20Rng,
+    rand_core::SeedableRng,
+};
+use crypto_box::{
+    aead::{ AeadCore, Aead },
+	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
+};
 
 #[test]
 fn data_assets_initial_state() {
-	new_test_ext().execute_with(|| {
+	new_test_ext(validators()).execute_with(|| {
 		// Given: The node is initialized at block 0 with default config
 		// When: I check the initial asset id and delay storage values
 		let next_asset_id = crate::NextAssetId::<Test>::get();
@@ -63,7 +71,7 @@ fn data_assets_can_request_ingestion() {
 		balance: balance.clone(),
 	};
 
-	new_test_ext_funded(pairs).execute_with(|| {
+	new_test_ext_funded(pairs, validators()).execute_with(|| {
 		// When: I call to create a new ingestion request
 		assert_ok!(DataAssets::create_request(
 			Origin::signed(p.clone().public()),
@@ -87,11 +95,128 @@ fn data_assets_can_request_ingestion() {
 }
 
 #[test]
-fn data_assets_can_encrypt_data_and_submit_tx() {
+fn data_assets_can_submit_capsule_and_kfrags() {
+	// Given: I am a valid node with a positive balance
+	let (p, _) = sp_core::sr25519::Pair::generate();
+	let (g, _) = sp_core::sr25519::Pair::generate();
+	let pairs = vec![(p.clone().public(), 10)];
+	
+	let test_vec = "test".as_bytes().to_vec();
+	let encrypted_kfrag = EncryptedFragment {
+		nonce: test_vec.clone(),
+		ciphertext: test_vec.clone(),
+		public_key: test_vec.clone(),
+	};
 
+	let kfrag_assignments = vec![(p.public().clone(), encrypted_kfrag.clone())];
+
+	new_test_ext_funded(pairs, validators()).execute_with(|| {
+		// When: I submit key fragments
+		assert_ok!(DataAssets::submit_capsule_and_kfrags(
+			Origin::signed(p.clone().public()),
+			p.clone().public(),
+			test_vec.clone(),
+			test_vec.clone(),
+			test_vec.clone(),
+			test_vec.clone(),
+			kfrag_assignments,
+		));
+
+		// Then: A new entry is added to the fragments map
+		let assigned_kfrag = Fragments::<Test>::get(test_vec.clone(), p.public().clone());
+		assert_eq!(assigned_kfrag, Some(encrypted_kfrag.clone()));
+
+		let frag_holders = FragmentOwnerSet::<Test>::get(test_vec.clone());
+		assert_eq!(1, frag_holders.len());
+		assert_eq!(vec![p.public().clone()], frag_holders);
+
+		let secret_data = Capsules::<Test>::get(test_vec.clone()).unwrap();
+		assert_eq!(test_vec.clone(), secret_data.data_capsule);
+		assert_eq!(test_vec.clone(), secret_data.sk_capsule);
+		assert_eq!(test_vec.clone(), secret_data.sk_ciphertext);
+
+		let pk = IngestionStaging::<Test>::get(p.public().clone()).unwrap();
+		assert_eq!(test_vec.clone(), pk);
+	}); 
 }
 
 #[test]
-fn data_assets_can_submit_capsule_and_kfrags() {
+fn can_encrypt_kfrag_ephemeral() {
+	// Given: I am a valid node with a positive balance
+	let (p, _) = sp_core::sr25519::Pair::generate();
+	let pairs = vec![(p.clone().public(), 10)];
 
+	let test_vec = "test".as_bytes().to_vec();
+	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+	let sk = BoxSecretKey::generate(&mut rng);
+	let pk = sk.public_key();
+
+	let encrypted_frag = DataAssets::encrypt_kfrag_ephemeral(pk, test_vec);
+	assert_eq!(true, encrypted_frag.nonce.len() > 0);
+	assert_eq!(true, encrypted_frag.ciphertext.len() > 0);
+	assert_eq!(true, encrypted_frag.public_key.len() > 0);
 }
+
+#[test]
+fn encryption_can_encrypt() {
+	// Given: I am a valid node with a positive balance
+	let (p, _) = sp_core::sr25519::Pair::generate();
+	let pairs = vec![(p.clone().public(), 10)];
+
+	let plaintext = "plaintext".as_bytes();
+	let shares: usize = 3;
+	let threshold: usize = 3;
+
+	let mut t = new_test_ext_funded(pairs, validators());
+	let (offchain, state) = testing::TestOffchainExt::new();
+	let (pool, _) = testing::TestTransactionPoolExt::new();
+	t.register_extension(OffchainWorkerExt::new(offchain));
+	t.register_extension(TransactionPoolExt::new(pool));
+
+	t.execute_with(|| {
+		let ciphertext = DataAssets::do_encrypt(plaintext, shares, threshold, p.public().clone()).unwrap();
+		assert_eq!(49, ciphertext.len());
+	});
+}
+
+#[test]
+fn encryption_fails_when_kfrag_shares_exceed_available_validators() {
+	// Given: I am a valid node with a positive balance
+	let (p, _) = sp_core::sr25519::Pair::generate();
+	let pairs = vec![(p.clone().public(), 10)];
+
+	let plaintext = "plaintext".as_bytes();
+	let shares: usize = 5;
+	let threshold: usize = 3;
+
+	let mut t = new_test_ext_funded(pairs, validators());
+	let (offchain, state) = testing::TestOffchainExt::new();
+	let (pool, _) = testing::TestTransactionPoolExt::new();
+	t.register_extension(OffchainWorkerExt::new(offchain));
+	t.register_extension(TransactionPoolExt::new(pool));
+
+	t.execute_with(|| {
+		let ciphertext = DataAssets::do_encrypt(plaintext, shares, threshold, p.public().clone()).unwrap();
+		assert_eq!(0, ciphertext.len());
+	});
+}
+
+fn validators() -> Vec<(sp_core::sr25519::Public, UintAuthorityId)> {
+	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
+		UintAuthorityId(0)
+	);
+	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+		UintAuthorityId(1)
+	);
+	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
+		UintAuthorityId(2)
+	);
+
+	vec![v0.clone(), v1.clone(), v2.clone()]
+}
+
+// TODO: Test QueueProvider functions
+// TODO: Test ResultsHandler:create_asset_class function

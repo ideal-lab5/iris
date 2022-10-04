@@ -170,7 +170,6 @@ impl frame_system::Config for Test {
 	type Hash = H256;
 	type Hashing = BlakeTwo256;
 	type AccountId = sp_core::sr25519::Public;
-	// type AccountId = u64;
 	type Lookup = IdentityLookup<Self::AccountId>;
 	type Header = Header;
 	type Event = Event;
@@ -178,7 +177,6 @@ impl frame_system::Config for Test {
 	type Version = ();
 	type PalletInfo = PalletInfo;
 	type AccountData = pallet_balances::AccountData<u64>;
-	// type AccountData = sp_core::sr25519::Public;
 	type OnNewAccount = ();
 	type OnKilledAccount = ();
 	type SystemWeightInfo = ();
@@ -305,8 +303,6 @@ pub fn new_test_ext_funded(pair1_funded: sp_core::sr25519::Pair) -> sp_io::TestE
 		for (ref k, ..) in &keys {
 			frame_system::Pallet::<Test>::inc_providers(k);
 		}
-		// frame_system::Pallet::<Test>::inc_providers(&4);
-		// frame_system::Pallet::<Test>::inc_providers(&69);
 	});
 
 	pallet_authorities::GenesisConfig::<Test> {

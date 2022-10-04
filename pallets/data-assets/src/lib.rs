@@ -315,6 +315,7 @@ pub mod pallet {
 
 	#[pallet::error]
 	pub enum Error<T> {
+        InsufficientAuthorities,
         PublicKeyConversionFailure,
         /// could not build the ipfs request
 		CantCreateRequest,
@@ -466,7 +467,7 @@ pub mod pallet {
             sk_ciphertext: Vec<u8>,
             kfrag_assignments: Vec<(T::AccountId, EncryptedFragment)>
         ) -> DispatchResult {
-            ensure_none(origin)?;
+            // ensure_none(origin)?;
             // TODO: try to get rid of this
             let mut frag_holders = Vec::new();
             for assignment in kfrag_assignments.iter() {
@@ -585,41 +586,45 @@ impl<T: Config> Pallet<T> {
             &mut rng.clone(), &data_owner_umbral_sk, &data_owner_umbral_pk, &signer, threshold, shares, true, true
         );
 
-        // let kfrag_bytes: Vec<Vec<u8>> =
-        //     verified_kfrags.iter().map(|k| { k.to_array().as_slice().to_vec() }).collect();
         let data_capsule_vec: Vec<u8> = data_capsule.to_array().as_slice().to_vec();
         let sk_capsule_vec: Vec<u8> = sk_capsule.to_array().as_slice().to_vec();
         let sk_ciphertext_vec: Vec<u8> = sk_ciphertext.to_vec();
-
         let pk_vec: Vec<u8> = data_owner_umbral_pk.to_array().as_slice().to_vec();
-        // let pubkey_slice_32 = iris_primitives::slice_to_array_32(public_key_bytes.as_slice()).unwrap();
-        // let public_key = BoxPublicKey::from(*pubkey_slice_32);
 
-        let kfrag_assignments: Vec<(T::AccountId, EncryptedFragment)> = Self::choose_kfrag_holders(verified_kfrags.into_vec());
+        match Self::choose_kfrag_holders(verified_kfrags.into_vec()) {
+            Ok(kfrag_assignments) => {
+                let call = Call::submit_capsule_and_kfrags { 
+                    owner: owner,
+                    data_capsule: data_capsule_vec,
+                    public_key: pk_vec.clone(),
+                    sk_capsule: sk_capsule_vec,
+                    sk_ciphertext: sk_ciphertext_vec,
+                    kfrag_assignments: kfrag_assignments,
+                };
+    
+                SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
+                    .map_err(|()| "Unable to submit unsigned transaction.");
+        
+                Some(Bytes::from(data_ciphertext.to_vec()))
+            },
+            Err(e) => {
+                Some(Bytes::from("".as_bytes().to_vec()))
+            }
+        }
 
-        let call = Call::submit_capsule_and_kfrags { 
-            owner: owner,
-            data_capsule: data_capsule_vec,
-            public_key: pk_vec.clone(),
-            sk_capsule: sk_capsule_vec,
-            sk_ciphertext: sk_ciphertext_vec,
-            kfrag_assignments: kfrag_assignments,
-        };
-
-		SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
-			.map_err(|()| "Unable to submit unsigned transaction.");
-
-        Some(Bytes::from(data_ciphertext.to_vec()))
+        
     }
 
+    /**
+    * Encrypt the bytes with an ephemeral secret key and your provided public key.
+    * This performs asymmetric encryption
+    */
     fn encrypt_kfrag_ephemeral(public_key: BoxPublicKey, key_fragment_bytes: Vec<u8>) -> EncryptedFragment {
         let mut rng = ChaCha20Rng::seed_from_u64(31u64);
         let ephemeral_secret_key = BoxSecretKey::generate(&mut rng);
 
         let salsa_box = SalsaBox::new(&public_key, &ephemeral_secret_key);
         let nonce = SalsaBox::generate_nonce(&mut rng);
-        // TODO
-        // let p = b"test";
         let ciphertext: Vec<u8> = salsa_box.encrypt(&nonce, &key_fragment_bytes[..]).unwrap().to_vec();
 
         // TODO: really need to make it clearer exactly which public key this is
@@ -631,19 +636,20 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    pub fn choose_kfrag_holders(key_fragments: Vec<VerifiedKeyFrag>) -> Vec<(T::AccountId, EncryptedFragment)> {
-        // assign and distribute encrypted_kfrags
+    /**
+    * Assign each verified key fragment to a specific validator account
+    * `key_fragments`: A Vec of VerifiedKeyFrag to assign to validators
+    */
+    pub fn choose_kfrag_holders(
+        key_fragments: Vec<VerifiedKeyFrag>
+    ) -> Result<Vec<(T::AccountId, EncryptedFragment)>, Error<T>> {
         let mut assignments = Vec::new();
         let rng = ChaCha20Rng::seed_from_u64(17u64);
-        // could probably just enumerate over the key fragments..
-        let required_authorities_count = key_fragments.len();
-        // TODO: move this encryption offchain
+        let required_authorities_count = key_fragments.len() - 1;
         let authorities: Vec<T::AccountId> = pallet_authorities::Pallet::<T>::validators();
-        // let mut frag_holders = Vec::new();
+        ensure!(authorities.len() >= required_authorities_count, Error::<T>::InsufficientAuthorities);
         for i in vec![0, required_authorities_count] {
             let authority = authorities[i].clone();
-            // frag_holders.push(authority.clone());
-            
             let pk_bytes: Vec<u8> = pallet_authorities::Pallet::<T>::public_keys(authority.clone());
             match iris_primitives::slice_to_array_32(&pk_bytes) {
                 Some(pk_slice) => {
@@ -659,7 +665,7 @@ impl<T: Config> Pallet<T> {
                 }
             }
         }
-        assignments
+        Ok(assignments)
     }
 }
 
