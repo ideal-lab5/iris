@@ -42,7 +42,7 @@ use iris_primitives::EncryptedFragment;
 ///
 /// return encryption artifacts (Capsule, ciphertext, and public key) if successful, otherwise returns None
 ///
-pub fn do_encrypt(
+pub fn encrypt(
     plaintext: &[u8], 
     shares: usize, 
     threshold: usize,
@@ -87,10 +87,10 @@ pub fn do_encrypt(
     ))
 }
 
-/**
-* Encrypt the bytes with an ephemeral secret key and your provided public key.
-* This performs asymmetric encryption
-*/
+///
+/// Encrypt the bytes with an ephemeral secret key and your provided public key.
+/// This performs asymmetric encryption
+///
 pub fn encrypt_kfrag_ephemeral(public_key: BoxPublicKey, key_fragment_bytes: Vec<u8>) -> EncryptedFragment {
     let mut rng = ChaCha20Rng::seed_from_u64(31u64);
     let ephemeral_secret_key = BoxSecretKey::generate(&mut rng);
@@ -107,6 +107,12 @@ pub fn encrypt_kfrag_ephemeral(public_key: BoxPublicKey, key_fragment_bytes: Vec
         public_key: ephemeral_secret_key.public_key().as_bytes().to_vec()
     }
 }
+
+// pub fn decrypt() {
+//     let plaintext = umbral_pre::decrypt_reencrypted(
+//         &my_sk, &data_owner_pk, &sk_capsule, [verified_kfrags], &sk_ciphertext
+//     );
+// }
 
 mod tests {
     use super::*;
@@ -136,7 +142,7 @@ mod tests {
         let shares: usize = 3;
         let threshold: usize = 3;
 
-        let result = do_encrypt(plaintext, shares, threshold).unwrap();
+        let result = encrypt(plaintext, shares, threshold).unwrap();
         assert_eq!(49, result.3.len());
     }
 

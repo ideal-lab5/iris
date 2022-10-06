@@ -88,6 +88,7 @@ pub struct EncryptedFragment {
     pub public_key: Vec<u8>,
 }
 
+// TODO: move this
 pub fn encrypt_crypto_box(
     recipient_public_key: BoxPublicKey, 
     sender_secret_key: BoxSecretKey, 

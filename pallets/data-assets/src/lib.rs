@@ -290,7 +290,7 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
-    pub type VerifiedCapsules<T: Config> = StorageDoubleMap<
+    pub type VerifiedCapsuleFrags<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
         T::AccountId,
@@ -541,7 +541,7 @@ impl<T: Config> Pallet<T> {
             // let plaintext_as_slice: &[u8] = &plaintext.to_vec();
             // return Self::do_encrypt(plaintext_as_slice, shares, threshold, acct_id);
             let plaintext_as_slice: &[u8] = &plaintext.to_vec();
-                match encryption::do_encrypt(plaintext_as_slice, shares, threshold) {
+                match encryption::encrypt(plaintext_as_slice, shares, threshold) {
                 Ok(result) => {
                     let data_capsule_vec: Vec<u8> = result.1.to_array().as_slice().to_vec();
                     let sk_capsule_vec: Vec<u8> = result.2.to_array().as_slice().to_vec();
@@ -578,6 +578,76 @@ impl<T: Config> Pallet<T> {
         }
 
         None 
+    }
+
+    /// Attempt to decrypt the ciphertext
+    /// 
+    /// * `signature`: 
+    /// * `signer`:
+    /// * `message`:
+    /// * `ciphertext`:
+    /// * `asset_id`: 
+    /// * `secret_key`: This is the secret key that corresponds to the public key passed as an argument
+    ///                 when requesting authorization through the rule executor. This is used to decrypt
+    ///                 the encrypted capsule fragments
+    /// 
+    pub fn decrypt(
+        signature: Bytes,
+        signer: Bytes,
+        message: Bytes,
+        ciphertext: Bytes,
+        asset_id: u32,
+        secret_key: Bytes,
+    ) -> Option<Bytes> {
+        let acct_bytes: [u8;32] = signer.to_vec().try_into().unwrap();
+        let acct_pubkey = Public::from_raw(acct_bytes);
+        let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
+        let msg: Vec<u8> = message.to_vec();
+
+        let acct_id: T::AccountId = T::AccountId::decode(&mut &acct_bytes[..]).unwrap();
+
+        // WARNING: this won't compile as is
+        if sig.verify(msg.as_slice(), &acct_pubkey) {
+            // recover encrypted capsules
+            let asset_id_converted = TryInto::<T::AssetId>::try_into(asset_id).ok().unwrap();
+            let verified_capsule_fragments = VerifiedCapsuleFrags::<T>::get(acct_id, asset_id_converted);
+            // decrypt capsules
+            // let capsule_fragments = Self::decrypt_capsule_fragments(verified_capsule_fragments);
+            // use capsule fragments to re-encrypt secret key for yourself
+            // verify each one 
+            // let verified_fragments = capsule_fragments.iter().map(|cfrag| cfrag.verify(
+            //     &capsule, & verifying_pk, &alice_pk, &bob_pk,
+            // ));
+            // // use reencrypted key to decrypt the ciphertext
+            // let sk_plaintext_bob = umbral_pre::decrypt_reencrypted(
+            //     &my_sk, &alice_pk, &capsule, verified_fragments, &sk_ciphertext,
+            // ).unwrap().to_vec();
+
+            // let recovered_sk = SecretKey::from(sk_plaintext_bob);
+            // let plaintext = umbral_pre::decrypt_original(&recovered_sk, &data_capsule, &ciphertext).unwrap();
+
+            // return ciphertext
+            // encryption::decrypt(acct_id, ciphertext, asset_id)
+        }
+        Some(Bytes::from(Vec::new()))
+
+    }
+    // an interesting thought: any way to make an implementation of from/into that lets us encrypt/decrypt?
+    pub fn decrypt_capsule_fragments(
+        encrypted_cfrags: Vec<EncryptedFragment>,
+        secret_key: BoxSecretKey,
+    ) -> Vec<VerifiedCapsuleFrag> {
+        encrypted_cfrags.iter().map(|frag| {
+            let pubkey_slice_32 = iris_primitives::slice_to_array_32(frag.public_key.as_slice()).unwrap();
+            let ephemeral_pk = BoxPublicKey::from(*pubkey_slice_32);
+            // use the ephemeral public key used to encrypt the cfrag
+            let ephemeral_box = SalsaBox::new(&ephemeral_pk, &secret_key);
+            let gen_array = generic_array::GenericArray::clone_from_slice(frag.nonce.as_slice());
+            let decrypted_frag_vec = ephemeral_box.decrypt(&gen_array, &frag.ciphertext[..]).unwrap().to_vec();
+            // hmm... I may have to UNVERIFY the frags first? otherwise this should work, though 
+            // I'm not really sure how safe this is
+            VerifiedCapsuleFrag::from_verified_bytes(decrypted_frag_vec).unwrap()
+        }).collect::<Vec<_>>()
     }
 
     ///
@@ -646,7 +716,7 @@ pub trait QueueProvider<AccountId, AssetId, Balance> {
         cfrag_recovery_pk: Vec<u8>
     );
     /// add a verified capsule to the verified capsules storage map
-    fn add_verified_capsule(account: AccountId, asset_id: AssetId, encrypted_capsule_framgent_data: EncryptedFragment);
+    fn add_verified_capsule_frag(account: AccountId, asset_id: AssetId, encrypted_capsule_framgent_data: EncryptedFragment);
     fn get_capsule_recovery_requests(account: AccountId) -> Vec<CapsuleRecoveryRequest<AccountId, AssetId>>;
     /// remove the specified public key from the collection of fragments to recover
     fn remove_capsule_recovery_request(kfrag_holder: AccountId, public_key: Vec<u8>);
@@ -678,8 +748,8 @@ impl<T: Config> QueueProvider<T::AccountId, T::AssetId, T::Balance> for Pallet<T
         });
     }
 
-    fn add_verified_capsule(account: T::AccountId, asset_id: T::AssetId, verified_cfrag_data: EncryptedFragment) {
-        VerifiedCapsules::<T>::mutate(account, asset_id, |mut cfrags| {
+    fn add_verified_capsule_frag(account: T::AccountId, asset_id: T::AssetId, verified_cfrag_data: EncryptedFragment) {
+        VerifiedCapsuleFrags::<T>::mutate(account, asset_id, |mut cfrags| {
             cfrags.push(verified_cfrag_data);
         });
     }

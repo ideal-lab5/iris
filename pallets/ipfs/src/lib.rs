@@ -374,7 +374,7 @@ pub mod pallet {
 			encrypted_cfrag_data: iris_primitives::EncryptedFragment,
 		) -> DispatchResult {
 			// this really doesn't seem appropriate to place here, whatever for now it's fine
-			T::QueueProvider::add_verified_capsule(data_consumer, asset_id, encrypted_cfrag_data);
+			T::QueueProvider::add_verified_capsule_frag(data_consumer, asset_id, encrypted_cfrag_data);
 			// deposit event
 			Ok(())
 		}

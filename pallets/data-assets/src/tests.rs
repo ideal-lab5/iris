@@ -155,104 +155,25 @@ fn data_assets_can_submit_capsule_and_kfrags() {
 }
 
 #[test]
-pub fn rpc_can_encrypt() {
-	// 	// Given: I am a valid node with a positive balance
-// 	let (p, _) = sp_core::sr25519::Pair::generate();
-// 	let pairs = vec![(p.clone().public(), 10)];
-
-// 	let test_vec = "test".as_bytes().to_vec();
-// 	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-// 	let sk = BoxSecretKey::generate(&mut rng);
-// 	let pk = sk.public_key();
-
-// 	let encrypted_frag = DataAssets::encrypt_kfrag_ephemeral(pk, test_vec);
-// 	assert_eq!(true, encrypted_frag.nonce.len() > 0);
-// 	assert_eq!(true, encrypted_frag.ciphertext.len() > 0);
-// 	assert_eq!(true, encrypted_frag.public_key.len() > 0);
-// }
-
-// #[test]
-// fn encryption_can_encrypt() {
-// 	// Given: I am a valid node with a positive balance
-// 	let (p, _) = sp_core::sr25519::Pair::generate();
-// 	let pairs = vec![(p.clone().public(), 10)];
-
-// 	let plaintext = "plaintext".as_bytes();
-// 	let shares: usize = 3;
-// 	let threshold: usize = 3;
-
-// 	let mut t = new_test_ext_funded(pairs, validators());
-// 	let (offchain, state) = testing::TestOffchainExt::new();
-// 	let (pool, _) = testing::TestTransactionPoolExt::new();
-// 	t.register_extension(OffchainWorkerExt::new(offchain));
-// 	t.register_extension(TransactionPoolExt::new(pool));
-
-// 	t.execute_with(|| {
-// 		let ciphertext = DataAssets::do_encrypt(plaintext, shares, threshold, p.public().clone()).unwrap();
-// 		assert_eq!(49, ciphertext.len());
-// 	});
+pub fn rpc_encrypt_can_encrypt_and_submit_signed_tx() {
 }
 
-// #[test]
-// fn can_encrypt_kfrag_ephemeral() {
-// 	// Given: I am a valid node with a positive balance
-// 	let (p, _) = sp_core::sr25519::Pair::generate();
-// 	let pairs = vec![(p.clone().public(), 10)];
+#[test]
+pub fn rpc_encrypt_fails_if_shares_exceeds_validator_count() {
+	
+}
 
-// 	let test_vec = "test".as_bytes().to_vec();
-// 	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-// 	let sk = BoxSecretKey::generate(&mut rng);
-// 	let pk = sk.public_key();
+#[test]
+pub fn rpc_decrypt_can_decrypt() {
 
-// 	let encrypted_frag = DataAssets::encrypt_kfrag_ephemeral(pk, test_vec);
-// 	assert_eq!(true, encrypted_frag.nonce.len() > 0);
-// 	assert_eq!(true, encrypted_frag.ciphertext.len() > 0);
-// 	assert_eq!(true, encrypted_frag.public_key.len() > 0);
-// }
+}
 
-// #[test]
-// fn encryption_can_encrypt() {
-// 	// Given: I am a valid node with a positive balance
-// 	let (p, _) = sp_core::sr25519::Pair::generate();
-// 	let pairs = vec![(p.clone().public(), 10)];
+#[test]
+pub fn rpc_decrypt_fail_if_no_cfrags() {
 
-// 	let plaintext = "plaintext".as_bytes();
-// 	let shares: usize = 3;
-// 	let threshold: usize = 3;
+}
 
-// 	let mut t = new_test_ext_funded(pairs, validators());
-// 	let (offchain, state) = testing::TestOffchainExt::new();
-// 	let (pool, _) = testing::TestTransactionPoolExt::new();
-// 	t.register_extension(OffchainWorkerExt::new(offchain));
-// 	t.register_extension(TransactionPoolExt::new(pool));
 
-// 	t.execute_with(|| {
-// 		let ciphertext = DataAssets::do_encrypt(plaintext, shares, threshold, p.public().clone()).unwrap();
-// 		assert_eq!(49, ciphertext.len());
-// 	});
-// }
-
-// #[test]
-// fn encryption_fails_when_kfrag_shares_exceed_available_validators() {
-// 	// Given: I am a valid node with a positive balance
-// 	let (p, _) = sp_core::sr25519::Pair::generate();
-// 	let pairs = vec![(p.clone().public(), 10)];
-
-// 	let plaintext = "plaintext".as_bytes();
-// 	let shares: usize = 5;
-// 	let threshold: usize = 3;
-
-// 	let mut t = new_test_ext_funded(pairs, validators());
-// 	let (offchain, state) = testing::TestOffchainExt::new();
-// 	let (pool, _) = testing::TestTransactionPoolExt::new();
-// 	t.register_extension(OffchainWorkerExt::new(offchain));
-// 	t.register_extension(TransactionPoolExt::new(pool));
-
-// 	t.execute_with(|| {
-// 		let ciphertext = DataAssets::do_encrypt(plaintext, shares, threshold, p.public().clone()).unwrap();
-// 		assert_eq!(0, ciphertext.len());
-// 	});
-// }
 
 fn validators() -> Vec<(sp_core::sr25519::Public, UintAuthorityId)> {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
