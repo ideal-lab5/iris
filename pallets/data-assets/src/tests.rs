@@ -33,6 +33,28 @@ use crypto_box::{
 	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
 };
 
+struct TestData {
+	pub p: sp_core::sr25519::Pair,
+	pub q: sp_core::sr25519::Pair,
+	pub cid_vec: Vec<u8>,
+	pub multiaddr_vec: Vec<u8>,
+	pub name: Vec<u8>,
+	pub id: u32,
+	pub balance: u64,
+	pub size: u128,
+}
+
+thread_local!(static TEST_CONSTANTS: TestData = TestData {
+	p: sp_core::sr25519::Pair::generate().0,
+	q: sp_core::sr25519::Pair::generate().0,
+	cid_vec: "QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9".as_bytes().to_vec(),
+	multiaddr_vec: "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWMvyvKxYcy9mjbFbXcogFSCvENzQ62ogRxHKZaksFCkAp".as_bytes().to_vec()
+	name: "test space".as_bytes().to_vec(),
+	id: 1,
+	balance: 1,
+	size: 1,
+});
+
 #[test]
 fn data_assets_initial_state() {
 	new_test_ext(validators()).execute_with(|| {
@@ -52,46 +74,38 @@ fn data_assets_initial_state() {
 #[test]
 fn data_assets_can_request_ingestion() {
 	// Given: I am a valid node with a positive balance
-	let (p, _) = sp_core::sr25519::Pair::generate();
-	let (g, _) = sp_core::sr25519::Pair::generate();
-	let pairs = vec![(p.clone().public(), 10)];
-	let multiaddr_vec = "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWMvyvKxYcy9mjbFbXcogFSCvENzQ62ogRxHKZaksFCkAp".as_bytes().to_vec();
-	let cid_vec = "QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9".as_bytes().to_vec();
-	let name: Vec<u8> = "test.txt".as_bytes().to_vec();
-	let id = 1;
-	let balance = 100;
-	let min_asset_balance: u64 = 1;
-	let size: u128 = 1;
-
-	let expected_ingestion_cmd = crate::IngestionCommand {
-		owner: p.clone().public(),
-		cid: cid_vec.clone(),
-		multiaddress: multiaddr_vec.clone(),
-		estimated_size_gb: size.clone(),
-		balance: balance.clone(),
-	};
-
-	new_test_ext_funded(pairs, validators()).execute_with(|| {
-		// When: I call to create a new ingestion request
-		assert_ok!(DataAssets::create_request(
-			Origin::signed(p.clone().public()),
-			p.clone().public(),
-			balance.clone(),
-			cid_vec.clone(),
-			multiaddr_vec.clone(),
-			size, // needed?
-			balance.clone().try_into().unwrap(),
-		));
-		
-		// Then: A new entry is added to the IngestionCommands map
-		let ingestion_cmds = crate::IngestionCommands::<Test>::get(p.clone().public());
-		assert_eq!(ingestion_cmds.len(), 1);
-		let cmd = &ingestion_cmds[0];
-		assert_eq!(cmd.owner, p.clone().public());
-		assert_eq!(cmd.cid, cid_vec.clone());
-		assert_eq!(cmd.multiaddress, multiaddr_vec.clone());
-		assert_eq!(cmd.balance, balance.clone() as u32);
-	});
+	TEST_CONSTANTS.with(|test_data| {
+		let min_asset_balance: u64 = 1;
+		let expected_ingestion_cmd = crate::IngestionCommand {
+			owner: test_data.p.clone().public(),
+			cid: test_data.cid_vec.clone(),
+			multiaddress: test_data.multiaddr_vec.clone(),
+			estimated_size_gb: test_data.size.clone(),
+			balance: test_data.balance.clone(),
+		};
+		new_test_ext_funded(pairs, validators()).execute_with(|| {
+			// When: I call to create a new ingestion request
+			assert_ok!(DataAssets::create_request(
+				Origin::signed(test_data.p.clone().public()),
+				test_data.p.clone().public(),
+				test_data.balance.clone(),
+				test_data.cid_vec.clone(),
+				test_data.multiaddr_vec.clone(),
+				test_data.size, // needed?
+				test_data.balance.clone().try_into().unwrap(),
+			));
+			
+			// Then: A new entry is added to the IngestionCommands map
+			let ingestion_cmds = crate::IngestionCommands::<Test>::get(test_data.p.clone().public());
+			assert_eq!(ingestion_cmds.len(), 1);
+			let cmd = &ingestion_cmds[0];
+			assert_eq!(cmd.owner, test_data.p.clone().public());
+			assert_eq!(cmd.cid, test_data.cid_vec.clone());
+			assert_eq!(cmd.multiaddress, test_data.multiaddr_vec.clone());
+			assert_eq!(cmd.balance, test_data.balance.clone() as u32);
+		});
+	})
+	
 }
 
 #[test]
@@ -141,65 +155,104 @@ fn data_assets_can_submit_capsule_and_kfrags() {
 }
 
 #[test]
-fn can_encrypt_kfrag_ephemeral() {
-	// Given: I am a valid node with a positive balance
-	let (p, _) = sp_core::sr25519::Pair::generate();
-	let pairs = vec![(p.clone().public(), 10)];
+pub fn rpc_can_encrypt() {
+	// 	// Given: I am a valid node with a positive balance
+// 	let (p, _) = sp_core::sr25519::Pair::generate();
+// 	let pairs = vec![(p.clone().public(), 10)];
 
-	let test_vec = "test".as_bytes().to_vec();
-	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-	let sk = BoxSecretKey::generate(&mut rng);
-	let pk = sk.public_key();
+// 	let test_vec = "test".as_bytes().to_vec();
+// 	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+// 	let sk = BoxSecretKey::generate(&mut rng);
+// 	let pk = sk.public_key();
 
-	let encrypted_frag = DataAssets::encrypt_kfrag_ephemeral(pk, test_vec);
-	assert_eq!(true, encrypted_frag.nonce.len() > 0);
-	assert_eq!(true, encrypted_frag.ciphertext.len() > 0);
-	assert_eq!(true, encrypted_frag.public_key.len() > 0);
+// 	let encrypted_frag = DataAssets::encrypt_kfrag_ephemeral(pk, test_vec);
+// 	assert_eq!(true, encrypted_frag.nonce.len() > 0);
+// 	assert_eq!(true, encrypted_frag.ciphertext.len() > 0);
+// 	assert_eq!(true, encrypted_frag.public_key.len() > 0);
+// }
+
+// #[test]
+// fn encryption_can_encrypt() {
+// 	// Given: I am a valid node with a positive balance
+// 	let (p, _) = sp_core::sr25519::Pair::generate();
+// 	let pairs = vec![(p.clone().public(), 10)];
+
+// 	let plaintext = "plaintext".as_bytes();
+// 	let shares: usize = 3;
+// 	let threshold: usize = 3;
+
+// 	let mut t = new_test_ext_funded(pairs, validators());
+// 	let (offchain, state) = testing::TestOffchainExt::new();
+// 	let (pool, _) = testing::TestTransactionPoolExt::new();
+// 	t.register_extension(OffchainWorkerExt::new(offchain));
+// 	t.register_extension(TransactionPoolExt::new(pool));
+
+// 	t.execute_with(|| {
+// 		let ciphertext = DataAssets::do_encrypt(plaintext, shares, threshold, p.public().clone()).unwrap();
+// 		assert_eq!(49, ciphertext.len());
+// 	});
 }
 
-#[test]
-fn encryption_can_encrypt() {
-	// Given: I am a valid node with a positive balance
-	let (p, _) = sp_core::sr25519::Pair::generate();
-	let pairs = vec![(p.clone().public(), 10)];
+// #[test]
+// fn can_encrypt_kfrag_ephemeral() {
+// 	// Given: I am a valid node with a positive balance
+// 	let (p, _) = sp_core::sr25519::Pair::generate();
+// 	let pairs = vec![(p.clone().public(), 10)];
 
-	let plaintext = "plaintext".as_bytes();
-	let shares: usize = 3;
-	let threshold: usize = 3;
+// 	let test_vec = "test".as_bytes().to_vec();
+// 	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+// 	let sk = BoxSecretKey::generate(&mut rng);
+// 	let pk = sk.public_key();
 
-	let mut t = new_test_ext_funded(pairs, validators());
-	let (offchain, state) = testing::TestOffchainExt::new();
-	let (pool, _) = testing::TestTransactionPoolExt::new();
-	t.register_extension(OffchainWorkerExt::new(offchain));
-	t.register_extension(TransactionPoolExt::new(pool));
+// 	let encrypted_frag = DataAssets::encrypt_kfrag_ephemeral(pk, test_vec);
+// 	assert_eq!(true, encrypted_frag.nonce.len() > 0);
+// 	assert_eq!(true, encrypted_frag.ciphertext.len() > 0);
+// 	assert_eq!(true, encrypted_frag.public_key.len() > 0);
+// }
 
-	t.execute_with(|| {
-		let ciphertext = DataAssets::do_encrypt(plaintext, shares, threshold, p.public().clone()).unwrap();
-		assert_eq!(49, ciphertext.len());
-	});
-}
+// #[test]
+// fn encryption_can_encrypt() {
+// 	// Given: I am a valid node with a positive balance
+// 	let (p, _) = sp_core::sr25519::Pair::generate();
+// 	let pairs = vec![(p.clone().public(), 10)];
 
-#[test]
-fn encryption_fails_when_kfrag_shares_exceed_available_validators() {
-	// Given: I am a valid node with a positive balance
-	let (p, _) = sp_core::sr25519::Pair::generate();
-	let pairs = vec![(p.clone().public(), 10)];
+// 	let plaintext = "plaintext".as_bytes();
+// 	let shares: usize = 3;
+// 	let threshold: usize = 3;
 
-	let plaintext = "plaintext".as_bytes();
-	let shares: usize = 5;
-	let threshold: usize = 3;
+// 	let mut t = new_test_ext_funded(pairs, validators());
+// 	let (offchain, state) = testing::TestOffchainExt::new();
+// 	let (pool, _) = testing::TestTransactionPoolExt::new();
+// 	t.register_extension(OffchainWorkerExt::new(offchain));
+// 	t.register_extension(TransactionPoolExt::new(pool));
 
-	let mut t = new_test_ext_funded(pairs, validators());
-	let (offchain, state) = testing::TestOffchainExt::new();
-	let (pool, _) = testing::TestTransactionPoolExt::new();
-	t.register_extension(OffchainWorkerExt::new(offchain));
-	t.register_extension(TransactionPoolExt::new(pool));
+// 	t.execute_with(|| {
+// 		let ciphertext = DataAssets::do_encrypt(plaintext, shares, threshold, p.public().clone()).unwrap();
+// 		assert_eq!(49, ciphertext.len());
+// 	});
+// }
 
-	t.execute_with(|| {
-		let ciphertext = DataAssets::do_encrypt(plaintext, shares, threshold, p.public().clone()).unwrap();
-		assert_eq!(0, ciphertext.len());
-	});
-}
+// #[test]
+// fn encryption_fails_when_kfrag_shares_exceed_available_validators() {
+// 	// Given: I am a valid node with a positive balance
+// 	let (p, _) = sp_core::sr25519::Pair::generate();
+// 	let pairs = vec![(p.clone().public(), 10)];
+
+// 	let plaintext = "plaintext".as_bytes();
+// 	let shares: usize = 5;
+// 	let threshold: usize = 3;
+
+// 	let mut t = new_test_ext_funded(pairs, validators());
+// 	let (offchain, state) = testing::TestOffchainExt::new();
+// 	let (pool, _) = testing::TestTransactionPoolExt::new();
+// 	t.register_extension(OffchainWorkerExt::new(offchain));
+// 	t.register_extension(TransactionPoolExt::new(pool));
+
+// 	t.execute_with(|| {
+// 		let ciphertext = DataAssets::do_encrypt(plaintext, shares, threshold, p.public().clone()).unwrap();
+// 		assert_eq!(0, ciphertext.len());
+// 	});
+// }
 
 fn validators() -> Vec<(sp_core::sr25519::Public, UintAuthorityId)> {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (

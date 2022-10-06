@@ -32,6 +32,8 @@
 //! #### Permissioned Functions
 //! * mint_tickets
 //!
+//! 
+//! 
 
 use scale_info::TypeInfo;
 use codec::{Encode, Decode};
@@ -168,6 +170,8 @@ mod mock;
 
 #[cfg(test)]
 mod tests;
+
+pub mod encryption;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -534,114 +538,52 @@ impl<T: Config> Pallet<T> {
         let acct_id: T::AccountId = T::AccountId::decode(&mut &acct_bytes[..]).unwrap();
 
         if sig.verify(msg.as_slice(), &acct_pubkey) {
+            // let plaintext_as_slice: &[u8] = &plaintext.to_vec();
+            // return Self::do_encrypt(plaintext_as_slice, shares, threshold, acct_id);
             let plaintext_as_slice: &[u8] = &plaintext.to_vec();
-            return Self::do_encrypt(plaintext_as_slice, shares, threshold, acct_id);
+                match encryption::do_encrypt(plaintext_as_slice, shares, threshold) {
+                Ok(result) => {
+                    let data_capsule_vec: Vec<u8> = result.1.to_array().as_slice().to_vec();
+                    let sk_capsule_vec: Vec<u8> = result.2.to_array().as_slice().to_vec();
+                    let sk_ciphertext_vec: Vec<u8> = result.4.to_vec();
+                    let pk: Vec<u8> = result.5.to_array().as_slice().to_vec();
+
+                    match Self::choose_kfrag_holders(result.0) {
+                        Ok(kfrag_assignments) => {
+                            let call = Call::submit_capsule_and_kfrags { 
+                                owner: acct_id,
+                                data_capsule: data_capsule_vec,
+                                public_key: pk.clone(),
+                                sk_capsule: sk_capsule_vec,
+                                sk_ciphertext: sk_ciphertext_vec,
+                                kfrag_assignments: kfrag_assignments,
+                            };
+                
+                            SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
+                                .map_err(|()| "Unable to submit unsigned transaction.");
+                    
+                            Some(Bytes::from(result.3.to_vec()))
+                        },
+                        Err(e) => {
+                            // TODO: Define some error response?
+                            Some(Bytes::from("".as_bytes().to_vec()))
+                        }
+                    }
+
+                },
+                Err(e) => {
+                    Some(Bytes::from("".as_bytes().to_vec()))
+                }
+            };
         }
 
         None 
     }
 
-    /// generates a new keypair and uses it to encrypt the plaintext
-    /// also encrypts the secret key with itself and generates 'shares' keyfragments
-    /// of which 'threshold' pieces are needed to re-encrypt the encrypted secret key
     ///
-    /// * 'plaintext': the plaintext to encrypt
-    /// * 'shares': The number of shares to create (i.e. key fragments to create and distribute)
-    /// * 'threshold': The number of key fragments needed to re-encrypt the encrypted secret key
-    /// * 'owner': The account id of the address that owns the plaintext
+    /// Assign each verified key fragment to a specific validator account
+    /// `key_fragments`: A Vec of VerifiedKeyFrag to assign to validators
     ///
-    /// return the plaintext if successful, otherwise returns None
-    ///
-    pub fn do_encrypt(
-        plaintext: &[u8], 
-        shares: usize, 
-        threshold: usize,
-        owner: T::AccountId,
-    ) -> Option<Bytes> {
-        let mut rng = ChaCha20Rng::seed_from_u64(17u64);
-        // generate keys
-        let data_owner_umbral_sk = SecretKey::random_with_rng(rng.clone());
-        let data_owner_umbral_pk = data_owner_umbral_sk.public_key();
-
-        let (data_capsule, data_ciphertext) = match umbral_pre::encrypt_with_rng(
-            &mut rng.clone(), &data_owner_umbral_pk, plaintext)
-        {
-            Ok((capsule, ciphertext)) => (capsule, ciphertext),
-            Err(error) => {
-                return None;
-            },
-        };
-
-        // encrypt the secret key
-        let (sk_capsule, sk_ciphertext) = match umbral_pre::encrypt_with_rng(
-            &mut rng.clone(), &data_owner_umbral_pk, data_owner_umbral_sk.to_string().as_bytes(),
-        ) {
-            Ok((capsule, ciphertext)) => (capsule, ciphertext),
-            Err(error) => {
-                return None;
-            },
-        };
-
-        let signer = Signer::new(SecretKey::random_with_rng(rng.clone()));
-
-        let verified_kfrags = generate_kfrags_with_rng(
-            &mut rng.clone(), &data_owner_umbral_sk, &data_owner_umbral_pk, &signer, threshold, shares, true, true
-        );
-
-        let data_capsule_vec: Vec<u8> = data_capsule.to_array().as_slice().to_vec();
-        let sk_capsule_vec: Vec<u8> = sk_capsule.to_array().as_slice().to_vec();
-        let sk_ciphertext_vec: Vec<u8> = sk_ciphertext.to_vec();
-        let pk_vec: Vec<u8> = data_owner_umbral_pk.to_array().as_slice().to_vec();
-
-        match Self::choose_kfrag_holders(verified_kfrags.into_vec()) {
-            Ok(kfrag_assignments) => {
-                let call = Call::submit_capsule_and_kfrags { 
-                    owner: owner,
-                    data_capsule: data_capsule_vec,
-                    public_key: pk_vec.clone(),
-                    sk_capsule: sk_capsule_vec,
-                    sk_ciphertext: sk_ciphertext_vec,
-                    kfrag_assignments: kfrag_assignments,
-                };
-    
-                SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
-                    .map_err(|()| "Unable to submit unsigned transaction.");
-        
-                Some(Bytes::from(data_ciphertext.to_vec()))
-            },
-            Err(e) => {
-                Some(Bytes::from("".as_bytes().to_vec()))
-            }
-        }
-
-        
-    }
-
-    /**
-    * Encrypt the bytes with an ephemeral secret key and your provided public key.
-    * This performs asymmetric encryption
-    */
-    fn encrypt_kfrag_ephemeral(public_key: BoxPublicKey, key_fragment_bytes: Vec<u8>) -> EncryptedFragment {
-        let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-        let ephemeral_secret_key = BoxSecretKey::generate(&mut rng);
-
-        let salsa_box = SalsaBox::new(&public_key, &ephemeral_secret_key);
-        let nonce = SalsaBox::generate_nonce(&mut rng);
-        let ciphertext: Vec<u8> = salsa_box.encrypt(&nonce, &key_fragment_bytes[..]).unwrap().to_vec();
-
-        // TODO: really need to make it clearer exactly which public key this is
-        // the public key should be the pk of the ephemeral secret key
-        EncryptedFragment{ 
-            nonce: nonce.as_slice().to_vec(),
-            ciphertext: ciphertext,
-            public_key: ephemeral_secret_key.public_key().as_bytes().to_vec()
-        }
-    }
-
-    /**
-    * Assign each verified key fragment to a specific validator account
-    * `key_fragments`: A Vec of VerifiedKeyFrag to assign to validators
-    */
     pub fn choose_kfrag_holders(
         key_fragments: Vec<VerifiedKeyFrag>
     ) -> Result<Vec<(T::AccountId, EncryptedFragment)>, Error<T>> {
@@ -657,7 +599,7 @@ impl<T: Config> Pallet<T> {
                 Some(pk_slice) => {
                     let pk = BoxPublicKey::from(*pk_slice);
                     let key_fragment = key_fragments[i].clone().unverify().to_array().as_slice().to_vec();
-                    let encrypted_kfrag_data = Self::encrypt_kfrag_ephemeral(
+                    let encrypted_kfrag_data = encryption::encrypt_kfrag_ephemeral(
                         pk.clone(), key_fragment,
                     );
                     assignments.push((authority.clone(), encrypted_kfrag_data.clone()));

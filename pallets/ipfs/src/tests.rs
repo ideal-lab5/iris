@@ -627,15 +627,6 @@ pub fn ipfs_offchain_can_process_capsule_recovery_requests() {
 			// And: a signed tx is added on chain
 			let tx = pool_state.write().transactions.pop().unwrap();
 			assert!(pool_state.read().transactions.is_empty());
-			// we can't exactly verify the signed tx is sent due to the non-deterministic nature
-			// of the encrypted cfrags (and it would just be a lot of effort)
-			// let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
-			// assert_eq!(tx.signature.unwrap().0, 0);
-			// assert_eq!(tx.call, mock::Call::Ipfs(crate::Call::submit_recovered_capsule_fragment { 
-			// 	data_consumer: test_data.p.clone().public(),
-			// 	asset_id: test_data.id.clone(),
-			// 	..
-			// }));
 		});
 	});
 }

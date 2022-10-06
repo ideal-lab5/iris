@@ -28,6 +28,8 @@ use sp_rpc::number::NumberOrHex;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 
+// TODO: Is this file even needed?
+
 /// Used to track errors as a result of calls to IPFS
 #[derive(Eq, Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]

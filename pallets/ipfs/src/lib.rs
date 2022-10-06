@@ -577,19 +577,15 @@ impl<T: Config> Pallet<T> {
 				let verifying_pk = signer.verifying_key();
 				
 				// now that we have they keyfrag, we can proceed to recover capsule frag
-				// TODO: unsafe
+				// TODO: unsafe?
 				let pk_umbral = PublicKey::from_bytes(&pk).unwrap();
 				let secret_data = T::QueueProvider::get_capsule(pk.clone()).unwrap();
 				let capsule = Capsule::from_bytes(&secret_data.sk_capsule).unwrap();
 				// 1. verify kfrag
 				let verified_kfrag = kfrag.verify(&verifying_pk, Some(&pk_umbral), Some(&sk.public_key())).unwrap();
+				// reencrypt
 				let verified_cfrag = reencrypt_with_rng(&mut rng, &capsule, verified_kfrag);
 				let cfrag_bytes = verified_cfrag.to_array().as_slice().to_vec();
-				// now that we have the cfrag bytes, we need to encrypt the bytes for the requested account
-				// this encryption will be done with cryptobox, not umbral
-				// so now we need a cryptobox public key of the data owner						
-				// for this, we can even generate new keys.. but we don't need to so nvm
-
 
 				let consumer_ephemeral_pubkey_slice_32 = iris_primitives::slice_to_array_32(cap_recovery_request.capsule_encryption_pk.as_slice()).unwrap();
 				let ephemeral_public_key = BoxPublicKey::from(*consumer_ephemeral_pubkey_slice_32);
@@ -640,7 +636,7 @@ impl<T: Config> Pallet<T> {
 			msg: &ciphertext_bytes,
 			aad: b"".as_ref(),
 		}).unwrap();
-		// convert to KeyFragment (TODO: this is insecure)
+		// convert to KeyFragment (TODO: safe?)
 		KeyFrag::from_bytes(plaintext).unwrap()
 	}
 }
