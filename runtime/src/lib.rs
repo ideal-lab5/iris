@@ -532,7 +532,6 @@ impl pallet_ipfs::Config for Runtime {
 	type ProxyProvider = Gateway;
 	type QueueProvider = DataAssets;
 	type MetadataProvider = DataAssets;
-	// type EjectionCommandDelegator = Authorization;
 	type ResultsHandler = DataAssets;
 }
 

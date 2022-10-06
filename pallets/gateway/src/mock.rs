@@ -31,7 +31,8 @@ use pallet_session::*;
 use sp_runtime::{
 	impl_opaque_keys,
 	testing::{Header, UintAuthorityId, TestXt},
-	traits::{BlakeTwo256, IdentityLookup, OpaqueKeys, IdentifyAccount, Verify, Extrinsic as ExtrinsicT},
+	traits::{BlakeTwo256, IdentityLookup, OpaqueKeys, IdentifyAccount, 
+		Verify, Extrinsic as ExtrinsicT, ConvertInto},
 	KeyTypeId, RuntimeAppPublic, Perbill,
 };
 use sp_core::{
@@ -42,6 +43,8 @@ use sp_core::{
 };
 use core::convert::{TryInto, TryFrom};
 use std::cell::RefCell;
+
+pub type Balance = u64;
 
 impl_opaque_keys! {
 	pub struct MockSessionKeys {
@@ -90,11 +93,12 @@ frame_support::construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
 		System: frame_system,
+		Sesion: pallet_session,
+		Vesting: pallet_vesting,
 		Balances: pallet_balances,
 		Assets: pallet_assets,
 		Authorities: pallet_authorities,
 		DataAssets: pallet_data_assets,
-		Session: pallet_session,
 		Gateway: pallet_gateway,
 	}
 );
@@ -206,6 +210,37 @@ impl pallet_balances::Config for Test {
 	type WeightInfo = ();
 }
 
+parameter_types! {
+	pub const MinVestedTransfer: Balance = 1;
+}
+
+impl pallet_vesting::Config for Test {
+	type Event = Event;
+	type Currency = Balances;
+	type BlockNumberToBalance = ConvertInto;
+	type MinVestedTransfer = MinVestedTransfer;
+	type WeightInfo = pallet_vesting::weights::SubstrateWeight<Test>;
+	// `VestingInfo` encode length is 36bytes. 28 schedules gets encoded as 1009 bytes, which is the
+	// highest number of schedules that encodes less than 2^10.
+	const MAX_VESTING_SCHEDULES: u32 = 28;
+}
+
+parameter_types! {
+	pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(33);
+}
+
+impl pallet_session::Config for Test {
+	type ValidatorId = <Self as frame_system::Config>::AccountId;
+	type ValidatorIdOf = pallet_authorities::ValidatorOf<Self>;
+	type ShouldEndSession = TestShouldEndSession;
+	type NextSessionRotation = ();
+	type SessionManager = Authorities;
+	type SessionHandler = TestSessionHandler;
+	type Keys = MockSessionKeys;
+	type WeightInfo = ();
+	type Event = Event;
+}
+
 // implement assets pallet for iris_assets 
 parameter_types! {
 	pub const AssetDeposit: u64 = 1;
@@ -233,26 +268,11 @@ impl pallet_assets::Config for Test {
 	type Extra = ();
 }
 
-/// configure the iris assets pallet
 impl pallet_data_assets::Config for Test {
-	type Event = Event;
 	type Call = Call;
-}
-
-parameter_types! {
-	pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(33);
-}
-
-impl pallet_session::Config for Test {
-	type ValidatorId = <Self as frame_system::Config>::AccountId;
-	type ValidatorIdOf = pallet_authorities::ValidatorOf<Self>;
-	type ShouldEndSession = TestShouldEndSession;
-	type NextSessionRotation = ();
-	type SessionManager = Authorities;
-	type SessionHandler = TestSessionHandler;
-	type Keys = MockSessionKeys;
-	type WeightInfo = ();
 	type Event = Event;
+	type Currency = Balances;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
 parameter_types! {
@@ -277,8 +297,9 @@ impl Config for Test {
 	type Event = Event;
 	type Call = Call;
 	type Currency = Balances;
-	type CurrencyBalance = <Self as pallet_balances::Config>::Balance;
+	type Balance = <Self as pallet_balances::Config>::Balance;
 	type BondingDuration = BondingDuration;
+	type EraProvider = Authorities;
 }
 
 type Extrinsic = TestXt<Call, ()>;

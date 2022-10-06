@@ -33,6 +33,11 @@ pallet-balances = { version = "4.0.0-dev", default-features = false, git = "http
 pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = false }
 pallet-data-assets = { version = "1.0.0", default-features = false, path = "../data-assets" }
 
+[dev-dependencies]
+pallet-authorities = { version = "1.0.0", path = "../authorities", default-features = false }
+pallet-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
+pallet-vesting = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
+
 [features]
 default = ['std']
 std = [
@@ -49,6 +54,9 @@ std = [
 	'pallet-assets/std',
 	'pallet-balances/std',
 	'pallet-data-assets/std',
+	'pallet-authorities/std',
+	'pallet-session/std',
+	'pallet-vesting/std',
 ]
 
 runtime-benchmarks = ["frame-benchmarking"]

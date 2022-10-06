@@ -102,14 +102,14 @@ pub const LOG_TARGET: &'static str = "runtime::proxy";
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
 
 pub mod crypto {
-	// use crate::KEY_TYPE;
+	use super::KEY_TYPE;
 	use sp_core::crypto::KeyTypeId;
 	use sp_core::sr25519::Signature as Sr25519Signature;
 	use sp_runtime::app_crypto::{app_crypto, sr25519};
 	use sp_runtime::{traits::Verify, MultiSignature, MultiSigner};
 	use sp_std::convert::TryFrom;
 
-	pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
+	// pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
 
 	app_crypto!(sr25519, KEY_TYPE);
 
@@ -228,6 +228,7 @@ pub mod pallet {
 	pub enum Event<T: Config> {
 		IdentitySubmitted(T::AccountId),
 		ConfigurationSyncSubmitted(T::AccountId),
+		IngestionComplete(),
 	}
 
 	
@@ -252,6 +253,7 @@ pub mod pallet {
 	#[pallet::error]
 	pub enum Error<T> {
 		PublicKeyConversionFailure,
+		InvalidPublicKey,
 		/// The specified multiaddress is invalid (could not be encoded as utf8)
 		InvalidMultiaddress,
 		/// The specified CID is invalid (could not be encoded as utf8)
@@ -324,7 +326,7 @@ pub mod pallet {
 			// we need to find the puiblic key as well..
 			let new_origin = system::RawOrigin::Signed(who.clone()).into();
 			T::ResultsHandler::create_asset_class(new_origin, cmd)?;
-			// emit event
+			Self::deposit_event(Event::IngestionComplete());
             Ok(())
         }
 
@@ -345,7 +347,7 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 			if <SubstrateIpfsBridge::<T>>::contains_key(public_key.clone()) {
 				let existing_association = <SubstrateIpfsBridge::<T>>::get(public_key.clone()).unwrap();
-				ensure!(who == existing_association, Error::<T>::InvalidMultiaddress);
+				ensure!(who == existing_association, Error::<T>::InvalidPublicKey);
 			}
 			<BootstrapNodes::<T>>::insert(public_key.clone(), multiaddresses.clone());
 			<SubstrateIpfsBridge::<T>>::insert(public_key.clone(), who.clone());
@@ -401,8 +403,8 @@ impl<T: Config> Pallet<T> {
 			}
 		};
 
-		let body = sp_std::str::from_utf8(&id_res).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
-		let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure).unwrap();
+		let body = sp_std::str::from_utf8(&id_res).map_err(|_| Error::<T>::ResponseParsingFailure)?;
+		let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure)?;
 		Ok(json)
 	}
 
@@ -427,12 +429,11 @@ impl<T: Config> Pallet<T> {
 			);
 		}
 		let results = signer.send_signed_transaction(|_account| { 
-			Call::submit_ipfs_identity{
+			Call::submit_ipfs_identity {
 				public_key: pubkey.clone(),
 				multiaddresses: addrs_vec.clone(),
 			}
 		});
-	
 		for (_, res) in &results {
 			match res {
 				Ok(()) => log::info!("Submitted results successfully"),
@@ -460,7 +461,7 @@ impl<T: Config> Pallet<T> {
 				ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure);
 				let stat_response = ipfs::repo_stat().map_err(|_| Error::<T>::IpfsNotAvailable).unwrap();
 				// 2. get actual available storage space
-				match stat_response["SizeStat.StorageMax"].clone().as_u64() {
+				match stat_response["StorageMax"].clone().as_u64() {
 					Some(actual_storage) => {
 						// 3. report result on chain
 						let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
@@ -641,112 +642,5 @@ impl<T: Config> Pallet<T> {
 		}).unwrap();
 		// convert to KeyFragment (TODO: this is insecure)
 		KeyFrag::from_bytes(plaintext).unwrap()
-	}
-
-	// fn handle_ejection_queue() -> Result<(), Error<T>> {
-	// 	let id_json = Self::fetch_identity_json()?;
-	// 	// get pubkey
-	// 	let id = &id_json["ID"];
-	// 	let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-	// 	match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
-	// 		// When node elections implemented => acct id will be used to get assigned reqs
-	// 		Some(acct_id) => {
-	// 			let queued_commands = T::EjectionCommandDelegator::ejection_commands(acct_id);
-	// 			for cmd in queued_commands.iter() {
-	// 				let caller = cmd.caller.clone();
-	// 				let asset_id = cmd.asset_id.clone();
-	// 				match T::MetadataProvider::get(asset_id.clone()) {
-	// 					Some(metadata) => {
-	// 						let cid = metadata.cid;
-
-	// 						let data = match ipfs::cat(&cid.clone()) {
-	// 							Ok(res) => {
-	// 								res.body().collect::<Vec<u8>>()
-	// 							} 
-	// 							Err(e) => {
-	// 								return Err(Error::<T>::IpfsNotAvailable);
-	// 							}
-	// 						};
-
-	// 						log::info!("FETCHED DATA: {:?}", data);
-	// 						// now need to re-encrypt and add to IPFS
-	// 						let reencrypted = Self::reencrypt_data(data);
-	// 						log::info!("Reencrypted and publishing new CID");
-	// 						// add to IPFS
-	// 						let _ipfs_add_res = ipfs::add(ipfs::IpfsAddRequest{
-	// 							bytes: reencrypted,
-	// 						}).map_err(|e| Error::<T>::IpfsError).ok().unwrap();
-
-	// 						let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-	// 						if !signer.can_sign() {
-	// 							log::error!(
-	// 								"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-	// 							);
-	// 						}
-	// 						// TODO:
-	// 						let results = signer.send_signed_transaction(|_acct| { 
-	// 							Call::submit_data_ready{
-									
-	// 							}
-	// 						});
-						
-	// 						for (_, res) in &results {
-	// 							match res {
-	// 								Ok(()) => log::info!("Submitted results successfully"),
-	// 								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-	// 							}
-	// 						}
-	// 					}, 
-	// 					None => {
-	// 						// do nothing
-	// 					}
-	// 				}
-	// 			}
-	// 		},
-	// 		None => {
-	// 			// do nothing for now
-	// 			log::info!("No identifiable substrate-ipfs association");
-	// 		}
-	// 	}
-	// 	Ok(())
-	// }
-
-	fn reencrypt_data(data: Vec<u8>) -> Vec<u8> {
-		data
-	}
-
-	// RPC endpoint implementations for data ingestion and ejection
-	
-	/// Acts as a permissioned gateway to the proxy node's IPFS instance
-	/// 
-	/// * byte_stream: A stream of bytes to be ingested
-	/// * asset_id: the desired id to assign to the asset class after ingestion is complete
-	/// * signature: The signature of the caller
-	/// * signer: The account id of the caller
-	/// * message: A signed message
-	/// TODO: abstract this into smaller functions
-	pub fn handle_add_bytes(
-		byte_stream: Bytes,
-		asset_id: u32,
-		dataspace_id: u32,
-		balance: BalanceOf<T>,
-		signature: Bytes,
-		signer: Bytes,
-		message: Bytes,
-	) -> IpfsResult
-		where <T as pallet_assets::pallet::Config>::AssetId: From<u32> {
-		let bytes_vec: Vec<u8> = byte_stream.to_vec();
-		IpfsResult{
-			response: Bytes(Vec::new()),
-			error: None,
-		}
-	}
-
-	/// Placeholder for now, to be called by RPC
-	pub fn handle_retrieve_bytes(asset_id: u32) -> Bytes 
-		where <T as pallet_assets::pallet::Config>::AssetId: From<u32> {
-		// TODO: map asset id to occ id -> store in metadata
-		// let data: Vec<u8> = offchain_client::interface::read(occ_id);
-		Bytes(Vec::new())
 	}
 }

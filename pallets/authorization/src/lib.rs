@@ -163,7 +163,8 @@ pub mod pallet {
         ///                       by the calling contract. A 'true' value implies
         ///                       access is granted, a 'false' implies it is not.
         /// TODO: Cleanup, break into smaller functions as needed
-        #[pallet::weight(100)]
+        /// leaving weight as 0 since otherwise contracts need to be funded
+        #[pallet::weight(0)]
         pub fn submit_execution_results(
             origin: OriginFor<T>,
             #[pallet::compact] asset_id: T::AssetId,
@@ -174,19 +175,21 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // verify that the data_consumer holds an asset from the asset class
-            let balance = <pallet_assets::Pallet<T>>::balance(asset_id.clone(), data_consumer_address.clone());
-            let balance_primitive = TryInto::<u64>::try_into(balance).ok();
+            // TODO: REVISIT THIS CONCEPTUALLY
+            // let balance = <pallet_assets::Pallet<T>>::balance(asset_id.clone(), data_consumer_address.clone());
+            // let balance_primitive = TryInto::<u64>::try_into(balance).ok();
             // this check is potentially going to go away in the near future
             // as we may no longer enforce that you need to own an asset id to access the data
             // (instead asset ownership implies partial ownership, rewards, providing availability, etc)
             match <pallet_assets::Pallet<T>>::asset(asset_id.clone()) {
                 Some(asset) => {
-                    match balance_primitive {
-                        Some(b) => ensure!(balance >= asset.min_balance, Error::<T>::InsufficientBalance),
-                        None => {
-                            return Ok(());
-                        }
-                    }
+                    // TODO: REVISIT THIS
+                    // match balance_primitive {
+                    //     Some(b) => ensure!(balance >= asset.min_balance, Error::<T>::InsufficientBalance),
+                    //     None => {
+                    //         return Ok(());
+                    //     }
+                    // }
                     // verify the caller is the registered rule executor contract
                     match <Registry::<T>>::get(asset_id.clone()) {
                         Some(addr) => {

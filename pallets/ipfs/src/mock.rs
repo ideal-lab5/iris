@@ -30,7 +30,8 @@ use pallet_session::*;
 use sp_runtime::{
 	impl_opaque_keys,
 	testing::{Header, UintAuthorityId, TestXt},
-	traits::{BlakeTwo256, IdentityLookup, OpaqueKeys, IdentifyAccount, Verify, Extrinsic as ExtrinsicT},
+	traits::{BlakeTwo256, IdentityLookup, OpaqueKeys, ConvertInto,
+		IdentifyAccount, Verify, Extrinsic as ExtrinsicT},
 	KeyTypeId, RuntimeAppPublic, Perbill,
 };
 use sp_core::{
@@ -41,6 +42,8 @@ use sp_core::{
 };
 use core::convert::{TryInto, TryFrom};
 use std::cell::RefCell;
+
+pub type Balance = u64;
 
 impl_opaque_keys! {
 	pub struct MockSessionKeys {
@@ -89,6 +92,12 @@ frame_support::construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
 		System: frame_system,
+		Authorities: pallet_authorities,
+		Authorization: pallet_authorization,
+		Session: pallet_session,
+		Vesting: pallet_vesting,
+		Gateway: pallet_gateway,
+		DataAssets: pallet_data_assets,
         Balances: pallet_balances,
         Assets: pallet_assets,
 		Ipfs: pallet_ipfs,
@@ -203,10 +212,27 @@ impl frame_system::Config for Test {
 	type MaxConsumers = ConstU32<2>;
 }
 
+parameter_types! {
+	pub const NodeConfigBlockDuration: u32 = 10;
+}
+
 impl Config for Test {
 	type Call = Call;
 	type Event = Event;
-    type AuthorityId = pallet_authorities::crypto::TestAuthId;
+    type AuthorityId = crypto::TestAuthId;
+	type Currency = Balances;
+	type ProxyProvider = Gateway;
+	type QueueProvider = DataAssets;
+	type MetadataProvider = DataAssets;
+	type ResultsHandler = DataAssets;
+	type NodeConfigBlockDuration = NodeConfigBlockDuration;
+}
+
+impl pallet_data_assets::Config for Test {
+	type Call = Call;
+	type Event = Event;
+	type Currency = Balances;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
 parameter_types! {
@@ -223,6 +249,43 @@ impl pallet_session::Config for Test {
 	type Keys = MockSessionKeys;
 	type WeightInfo = ();
 	type Event = Event;
+}
+
+impl pallet_authorization::Config for Test {
+	type Event = Event;
+	type Call = Call;
+	type QueueProvider = DataAssets;
+	type MetadataProvider = DataAssets;
+	type ValidatorSet = Authorities;
+}
+
+parameter_types! {
+	pub const MinAuthorities: u32 = 2;
+	pub const MaxDeadSession: u32 = 3;
+}
+
+impl pallet_authorities::Config for Test {
+	type AddRemoveOrigin = EnsureRoot<sp_core::sr25519::Public>;
+	type Call = Call;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type Event = Event;
+	type MinAuthorities = MinAuthorities;
+	type MaxDeadSession = MaxDeadSession;
+}
+
+parameter_types! {
+	pub const MinVestedTransfer: Balance = 1;
+}
+
+impl pallet_vesting::Config for Test {
+	type Event = Event;
+	type Currency = Balances;
+	type BlockNumberToBalance = ConvertInto;
+	type MinVestedTransfer = MinVestedTransfer;
+	type WeightInfo = pallet_vesting::weights::SubstrateWeight<Test>;
+	// `VestingInfo` encode length is 36bytes. 28 schedules gets encoded as 1009 bytes, which is the
+	// highest number of schedules that encodes less than 2^10.
+	const MAX_VESTING_SCHEDULES: u32 = 28;
 }
 
 // implement assets pallet for iris_assets 
@@ -252,7 +315,20 @@ impl pallet_assets::Config for Test {
 	type Extra = ();
 }
 
-type Extrinsic = TestXt<Call, ()>;
+parameter_types! {
+	pub const BondingDuration: pallet_authorities::EraIndex = 3;
+}
+
+impl pallet_gateway::Config for Test {
+	type Event = Event;
+	type Call = Call;
+	type Currency = Balances;
+	type Balance = <Self as pallet_balances::Config>::Balance;
+	type BondingDuration = BondingDuration;
+	type EraProvider = Authorities;
+}
+
+pub type Extrinsic = TestXt<Call, ()>;
 type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 impl frame_system::offchain::SigningTypes for Test {
@@ -283,24 +359,24 @@ where
 }
 
 pub fn new_test_ext(validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>) -> sp_io::TestExternalities {
-	// let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
-	// let keys: Vec<_> = validators.clone().iter()
-	// 	.map(|i| (i.0, i.0, i.1.clone().into())).collect();
-	// BasicExternalities::execute_with_storage(&mut t, || {
-	// 	for (ref k, ..) in &keys {
-	// 		frame_system::Pallet::<Test>::inc_providers(k);
-	// 	}
-	// });
+	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
+	let keys: Vec<_> = validators.clone().iter()
+		.map(|i| (i.0, i.0, i.1.clone().into())).collect();
+	BasicExternalities::execute_with_storage(&mut t, || {
+		for (ref k, ..) in &keys {
+			frame_system::Pallet::<Test>::inc_providers(k);
+		}
+	});
 
-	// pallet_authorities::GenesisConfig::<Test> {
-	// 	initial_validators: keys.iter().map(|x| x.0).collect::<Vec<_>>(),
-	// }
-	// .assimilate_storage(&mut t)
-	// .unwrap();
+	pallet_authorities::GenesisConfig::<Test> {
+		initial_validators: keys.iter().map(|x| x.0).collect::<Vec<_>>(),
+	}
+	.assimilate_storage(&mut t)
+	.unwrap();
 	
-	// pallet_session::GenesisConfig::<Test> { keys: keys.clone() }
-	// 	.assimilate_storage(&mut t)
-	// 	.unwrap();
+	pallet_session::GenesisConfig::<Test> { keys: keys.clone() }
+		.assimilate_storage(&mut t)
+		.unwrap();
 
 	let (pair1, _) = sp_core::sr25519::Pair::generate();
 	let (pair2, _) = sp_core::sr25519::Pair::generate();
@@ -311,39 +387,51 @@ pub fn new_test_ext(validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>
 	.assimilate_storage(&mut t)
 	.unwrap();
 
-	sp_io::TestExternalities::new(t)
+	t.into()
 }
 
 // Build genesis storage according to the mock runtime.
 pub fn new_test_ext_funded(pair1_funded: sp_core::sr25519::Pair) -> sp_io::TestExternalities {
-	// let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
-	// let keys: Vec<_> = NEXT_VALIDATORS
-	// 	.with(|l| l.borrow().iter().cloned().map(|i| (i.0, i.0, i.1.into())).collect());
-	// BasicExternalities::execute_with_storage(&mut t, || {
-	// 	for (ref k, ..) in &keys {
-	// 		frame_system::Pallet::<Test>::inc_providers(k);
-	// 	}
-	// 	// frame_system::Pallet::<Test>::inc_providers(&4);
-	// 	// frame_system::Pallet::<Test>::inc_providers(&69);
-	// });
+	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
+	let mut keys: Vec<_> = NEXT_VALIDATORS
+		.with(|l| l.borrow().iter().cloned().map(|i| (i.0, i.0, i.1.into())).collect());
+	keys.push((pair1_funded.clone().public(), pair1_funded.clone().public(), UintAuthorityId(4).into()));
+	BasicExternalities::execute_with_storage(&mut t, || {
+		for (ref k, ..) in &keys {
+			frame_system::Pallet::<Test>::inc_providers(k);
+		}
+	});
 
-	// pallet_authorities::GenesisConfig::<Test> {
-	// 	initial_validators: keys.iter().map(|x| x.0).collect::<Vec<_>>(),
-	// }
-	// .assimilate_storage(&mut t)
-	// .unwrap();
+	pallet_authorities::GenesisConfig::<Test> {
+		initial_validators: keys.iter().map(|x| x.0).collect::<Vec<_>>(),
+	}
+	.assimilate_storage(&mut t)
+	.unwrap();
 	
-	// pallet_session::GenesisConfig::<Test> { keys: keys.clone() }
-	// 	.assimilate_storage(&mut t)
-	// 	.unwrap();
+	pallet_session::GenesisConfig::<Test> { keys: keys.clone() }
+		.assimilate_storage(&mut t)
+		.unwrap();
 
 	let (pair2, _) = sp_core::sr25519::Pair::generate();
 	let (pair3, _) = sp_core::sr25519::Pair::generate();
 	pallet_balances::GenesisConfig::<Test> {
-		balances: vec![(pair1_funded.public(), 10), (pair2.public(), 20), (pair3.public(), 30)],
+		balances: vec![(pair1_funded.public().clone(), 100), (pair2.public(), 200), (pair3.public(), 300)],
 	}
 	.assimilate_storage(&mut t)
 	.unwrap();
 
-	sp_io::TestExternalities::new(t)
+	pallet_gateway::GenesisConfig::<Test> {
+		initial_proxies: vec![
+			(
+				pair1_funded.public().clone(), 
+				pair1_funded.public().clone(), 
+				10, pallet_gateway::ProxyStatus::Proxy
+			)
+		],
+		min_proxy_bond: 1,
+		max_proxy_count: Some(256),
+	}.assimilate_storage(&mut t)
+	.unwrap();
+
+	t.into()
 }

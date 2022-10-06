@@ -203,6 +203,7 @@ pub mod pallet {
 	pub struct Pallet<T>(_);
 
     #[pallet::storage]
+    #[pallet::getter(fn ingestion_commands)]
     pub(super) type IngestionCommands<T: Config> = StorageMap<
         _, 
         Blake2_128Concat,
@@ -212,6 +213,7 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
+    #[pallet::getter(fn next_asset_id)]
     pub(super) type NextAssetId<T: Config> = StorageValue<_, T::AssetId, ValueQuery>;
 
     // map asset id to (cid, dataspaces)
@@ -497,7 +499,7 @@ pub mod pallet {
 impl<T: Config> Pallet<T> {
     // a super simple asset id generator and mutator
     // needs to be modified so we don't have duplicate asset ids
-    fn next_asset_id() -> T::AssetId {
+    fn get_and_increment_asset_id() -> T::AssetId {
         let next = NextAssetId::<T>::get();
         let primitive = TryInto::<u32>::try_into(next).ok().unwrap();
         let new_id = primitive + 1u32;
@@ -550,7 +552,7 @@ impl<T: Config> Pallet<T> {
     ///
     /// return the plaintext if successful, otherwise returns None
     ///
-    fn do_encrypt(
+    pub fn do_encrypt(
         plaintext: &[u8], 
         shares: usize, 
         threshold: usize,
@@ -692,6 +694,7 @@ impl<T: Config> Convert<T::ValidatorId, Option<T::ValidatorId>> for ValidatorOf<
 pub trait QueueProvider<AccountId, AssetId, Balance> {
     /// read ingestion requests issued for a specific gateway
     fn ingestion_requests(gateway: AccountId) -> Vec<IngestionCommand<AccountId, Balance>>;
+    /// TODO: these may be more appropriate if in the Authorization pallet
     /// request that the kfrag holder recovers the capsule fragment associated with the given public key
     fn add_capsule_recovery_request(
         account: AccountId, 
@@ -783,7 +786,7 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
         // verify that capsule exists (i.e. data is 'decryptable')
         match IngestionStaging::<T>::get(cmd.owner.clone()) {
             Some(pubkey) => {
-                let asset_id = Self::next_asset_id();
+                let asset_id = Self::get_and_increment_asset_id();
                 let admin = T::Lookup::unlookup(cmd.clone().owner);
                 let new_origin = system::RawOrigin::Signed(who.clone()).into();
                 <pallet_assets::Pallet<T>>::create(new_origin, asset_id.clone(), admin.clone(), cmd.balance.clone())
@@ -806,6 +809,7 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
                 Ok(())
             },
             None => {
+                // Error instead?
                 Ok(())
             }
         }

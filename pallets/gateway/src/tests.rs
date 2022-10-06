@@ -18,10 +18,7 @@
 #![cfg(test)]
 
 use super::*;
-use crate::mock::{
-	authorities, new_test_ext_default, new_test_ext_default_funded_validators,
-	Origin, Session, Test, DataAssets, Assets, Proxy,
-};
+use crate::mock::*;
 use frame_support::{
 	assert_noop, assert_ok, assert_err, bounded_vec, pallet_prelude::*
 };
@@ -74,7 +71,7 @@ fn gateway_bond_with_valid_values_should_work() {
 		// AND: I attempt to bond my controller to my stash
 		// AND: My controller is my stash (wlog)
 		// THEN: the bonding is successful
-		assert_ok!(Proxy::bond(
+		assert_ok!(Gateway::bond(
 			Origin::signed(v0.0.clone()),
 			v0.0.clone(),
 			1,
@@ -87,6 +84,7 @@ fn gateway_bond_with_valid_values_should_work() {
 			total: 1,
 			active: 1,
 			unlocking: Default::default(),
+			reserved: Default::default(),
 		};
 		assert_eq!(Some(expect_staking_ledger), crate::Ledger::<Test>::get(v0.0.clone()));
 	});
@@ -110,7 +108,7 @@ fn gateway_bond_not_validator_err_when_not_validator() {
 		// AND: I attempt to bond my controller to my stash
 		// AND: I am NOT a validator
 		// THEN: The bond fails
-		assert_err!(Proxy::bond(
+		assert_err!(Gateway::bond(
 			Origin::signed(not_validator.clone().public()),
 			not_validator.clone().public(),
 			1,
@@ -136,14 +134,14 @@ fn proxy_bond_already_bonded_err_when_bonded() {
 		// AND: I attempt to bond my controller to my stash
 		// AND: My controller is my stash (wlog)
 		// THEN: the bonding is successful
-		assert_ok!(Proxy::bond(
+		assert_ok!(Gateway::bond(
 			Origin::signed(v0.0.clone()),
 			v0.0.clone(),
 			1,
 		));
 		// AND: If I try to bond again
 		// THEN: The bond fails
-		assert_err!(Proxy::bond(
+		assert_err!(Gateway::bond(
 			Origin::signed(v0.0.clone()), 
 			v0.0.clone(),
 			1,
@@ -169,14 +167,14 @@ fn gateway_bond_already_paired_when_controller_in_ledger() {
 		// AND: I attempt to bond my controller to my stash
 		// AND: My controller is my stash (wlog)
 		// THEN: the bonding is successful
-		assert_ok!(Proxy::bond(
+		assert_ok!(Gateway::bond(
 			Origin::signed(v0.0.clone()),
 			v0.0.clone(),
 			1,
 		));
 		// AND: If I try to bond the same controller to a different stash
 		// THEN: I receive an AlreadyPaired error
-		assert_err!(Proxy::bond(
+		assert_err!(Gateway::bond(
 			Origin::signed(v1.0.clone()), 
 			v0.0.clone(),
 			1,
@@ -202,7 +200,7 @@ fn gateway_bond_insufficient_balance_err_when_value_too_low() {
 		// AND: I attempt to bond my controller to my stash with a low balance
 		// AND: My controller is my stash (wlog)
 		// THEN: the bonding fails with an InsufficientBond error
-		assert_err!(Proxy::bond(
+		assert_err!(Gateway::bond(
 			Origin::signed(v1.0.clone()), 
 			v1.0.clone(),
 			0,
@@ -215,7 +213,7 @@ BOND and DECLARE_PROXY tests
 */
 
 #[test]
-fn gateway_declare_proxy_works() {
+fn gateway_declare_gateway_works() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -231,7 +229,7 @@ fn gateway_declare_proxy_works() {
 		// AND: I attempt to bond my controller to my stash
 		// AND: My controller is my stash (wlog)
 		// THEN: the bonding is successful
-		assert_ok!(Proxy::bond(
+		assert_ok!(Gateway::bond(
 			Origin::signed(v0.0.clone()),
 			v0.0.clone(),
 			1,
@@ -240,17 +238,17 @@ fn gateway_declare_proxy_works() {
 			max_mbps: 100,
 			storage_max_gb: 100,
 		};
-		assert_ok!(Proxy::declare_proxy(
+		assert_ok!(Gateway::declare_gateway(
 			Origin::signed(v0.0.clone()),
 			proxy_prefs.clone(),
 		));
 		// AND: the address is added to the proxies list
-		assert_eq!(proxy_prefs.clone(), crate::Proxies::<Test>::get(v0.0.clone()));
+		assert_eq!(Some(proxy_prefs.clone()), crate::Proxies::<Test>::get(v0.0.clone()));
 	});
 }
 
 #[test]
-fn gateway_declare_proxy_err_when_not_controller() {
+fn gateway_declare_gateway_err_when_not_controller() {
 	// GIVEN: There are two validator nodes
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
@@ -266,7 +264,7 @@ fn gateway_declare_proxy_err_when_not_controller() {
 		// AND: I attempt to bond my controller to my stash
 		// AND: My controller is my stash (wlog)
 		// THEN: the bonding is successful
-		assert_ok!(Proxy::bond(
+		assert_ok!(Gateway::bond(
 			Origin::signed(v0.0.clone()),
 			v0.0.clone(),
 			1,
@@ -275,7 +273,7 @@ fn gateway_declare_proxy_err_when_not_controller() {
 			max_mbps: 100,
 			storage_max_gb: 100,
 		};
-		assert_err!(Proxy::declare_proxy(
+		assert_err!(Gateway::declare_gateway(
 			Origin::signed(v1.0.clone()),
 			proxy_prefs.clone(),
 		), crate::Error::<Test>::NotController);
@@ -284,7 +282,7 @@ fn gateway_declare_proxy_err_when_not_controller() {
 
 // TODO: test setup with genesis config
 // #[test]
-// fn proxy_bond_and_declare_proxy_err_when_max_proxy_count_exceeded() {
+// fn proxy_bond_and_declare_gateway_err_when_max_proxy_count_exceeded() {
 
 // }
 
@@ -309,7 +307,7 @@ fn gateway_bond_extra_works_with_valid_values() {
 		// AND: I attempt to bond my controller to my stash
 		// AND: My controller is my stash (wlog)
 		// THEN: the bonding is successful
-		assert_ok!(Proxy::bond(
+		assert_ok!(Gateway::bond(
 			Origin::signed(v0.0.clone()),
 			v0.0.clone(),
 			1,
@@ -318,10 +316,10 @@ fn gateway_bond_extra_works_with_valid_values() {
 			stash: v0.0.clone(),
 			total: 2,
 			active: 2,
-				
+			reserved: Default::default(),		
 			unlocking: Default::default(),
 		};
-		assert_ok!(Proxy::bond_extra(
+		assert_ok!(Gateway::bond_extra(
 			Origin::signed(v0.0.clone()),
 			1,
 		));
@@ -350,7 +348,7 @@ let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		// AND: I attempt to bond my controller to my stash
 		// AND: My controller is my stash (wlog)
 		// THEN: the bonding is successful
-		assert_ok!(Proxy::bond(
+		assert_ok!(Gateway::bond(
 			Origin::signed(v0.0.clone()),
 			v0.0.clone(),
 			1,
@@ -359,9 +357,10 @@ let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 			stash: v0.0.clone(),
 			total: 1,
 			active: 0,
-			unlocking: bounded_vec![UnlockChunk { value: 1, era: 3 }],
+			unlocking: bounded_vec![UnlockChunk { value: 1, era: 4 }],
+			reserved: Default::default(),
 		};
-		assert_ok!(Proxy::unbond(
+		assert_ok!(Gateway::unbond(
 			Origin::signed(v0.0.clone()),
 			1,
 		));

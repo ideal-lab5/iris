@@ -557,7 +557,7 @@ pub mod pallet {
 		/// * prefs: The proxy preferences to delcare
 		/// 
 		#[pallet::weight(100)]
-		pub fn declare_proxy(
+		pub fn declare_gateway(
 			origin: OriginFor<T>,
 			prefs: ProxyPrefs,
 		) -> DispatchResult {
@@ -618,7 +618,7 @@ impl<T: Config> Pallet<T> {
 				balance,
 			));
 			frame_support::assert_ok!(match status {
-				ProxyStatus::Proxy => <Pallet<T>>::declare_proxy(
+				ProxyStatus::Proxy => <Pallet<T>>::declare_gateway(
 					T::Origin::from(Some(controller.clone()).into()),
 					Default::default(),
 				),
