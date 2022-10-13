@@ -48,7 +48,7 @@ thread_local!(static TEST_CONSTANTS: TestData = TestData {
 	p: sp_core::sr25519::Pair::generate().0,
 	q: sp_core::sr25519::Pair::generate().0,
 	cid_vec: "QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9".as_bytes().to_vec(),
-	multiaddr_vec: "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWMvyvKxYcy9mjbFbXcogFSCvENzQ62ogRxHKZaksFCkAp".as_bytes().to_vec()
+	multiaddr_vec: "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWMvyvKxYcy9mjbFbXcogFSCvENzQ62ogRxHKZaksFCkAp".as_bytes().to_vec(),
 	name: "test space".as_bytes().to_vec(),
 	id: 1,
 	balance: 1,
@@ -75,6 +75,7 @@ fn data_assets_initial_state() {
 fn data_assets_can_request_ingestion() {
 	// Given: I am a valid node with a positive balance
 	TEST_CONSTANTS.with(|test_data| {
+		let pairs = vec![(test_data.p.clone().public(), 10)];
 		let min_asset_balance: u64 = 1;
 		let expected_ingestion_cmd = crate::IngestionCommand {
 			owner: test_data.p.clone().public(),
@@ -109,7 +110,7 @@ fn data_assets_can_request_ingestion() {
 }
 
 #[test]
-fn data_assets_can_submit_capsule_and_kfrags() {
+fn data_assets_can_submit_encryption_artifacts() {
 	// Given: I am a valid node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let (g, _) = sp_core::sr25519::Pair::generate();
@@ -126,7 +127,7 @@ fn data_assets_can_submit_capsule_and_kfrags() {
 
 	new_test_ext_funded(pairs, validators()).execute_with(|| {
 		// When: I submit key fragments
-		assert_ok!(DataAssets::submit_capsule_and_kfrags(
+		assert_ok!(DataAssets::submit_encryption_artifacts(
 			Origin::signed(p.clone().public()),
 			p.clone().public(),
 			test_vec.clone(),
@@ -172,8 +173,6 @@ pub fn rpc_decrypt_can_decrypt() {
 pub fn rpc_decrypt_fail_if_no_cfrags() {
 
 }
-
-
 
 fn validators() -> Vec<(sp_core::sr25519::Public, UintAuthorityId)> {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (

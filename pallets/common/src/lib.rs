@@ -17,19 +17,18 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 // use std::fmt;
-use codec::{Decode, Encode, CompactAs, HasCompact, Compact};
+use codec::{Decode, Encode, CompactAs, HasCompact, Compact, alloc::string::ToString};
 use sp_core::Bytes;
 use sp_runtime::RuntimeDebug;
 use sp_std::vec::Vec;
 use scale_info::TypeInfo;
 use frame_support::pallet_prelude::MaxEncodedLen;
 
-
+use umbral_pre::*;
 use crypto_box::{
     aead::{Aead, AeadCore, Payload},
 	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
 };
-
 use rand_chacha::{
 	ChaCha20Rng,
 	rand_core::SeedableRng,
@@ -88,45 +87,91 @@ pub struct EncryptedFragment {
     pub public_key: Vec<u8>,
 }
 
-// TODO: move this
-pub fn encrypt_crypto_box(
-    recipient_public_key: BoxPublicKey, 
-    sender_secret_key: BoxSecretKey, 
-    plaintext: Vec<u8>
-) -> EncryptedFragment {
+/// generates a new keypair and uses it to encrypt the plaintext
+/// also encrypts the secret key with itself and generates 'shares' keyfragments
+/// of which 'threshold' pieces are needed to re-encrypt the encrypted secret key
+///
+/// * 'plaintext': the plaintext to encrypt
+/// * 'shares': The number of shares to create (i.e. key fragments to create and distribute)
+/// * 'threshold': The number of key fragments needed to re-encrypt the encrypted secret key
+/// * 'proxy_public_key': A public key of a node who will be allowed to reencrypt the secret
+///
+/// return encryption artifacts (Capsule, ciphertext, and public key) if successful, otherwise returns None
+///
+pub fn encrypt_phase_1(
+    plaintext: &[u8], 
+    shares: usize, 
+    threshold: usize,
+    proxy_public_key: BoxPublicKey,
+) -> Result<(Capsule, Vec<u8>, PublicKey, EncryptedFragment), EncryptionError> {
+    let mut rng = ChaCha20Rng::seed_from_u64(17u64);
+    // generate keys
+    let data_owner_umbral_sk = SecretKey::random_with_rng(rng.clone());
+    let data_owner_umbral_pk = data_owner_umbral_sk.public_key();
+
+    let (data_capsule, data_ciphertext) = match umbral_pre::encrypt_with_rng(
+        &mut rng.clone(), &data_owner_umbral_pk, plaintext)
+    {
+        Ok((capsule, ciphertext)) => (capsule, ciphertext),
+        Err(error) => {
+            return Err(error);
+        },
+    };
+
+    let encrypted_sk = encrypt_x25519(proxy_public_key, data_owner_umbral_sk.to_string().as_bytes().to_vec());
+
+    Ok((
+        data_capsule,
+        data_ciphertext.to_vec(),
+        data_owner_umbral_pk,
+        encrypted_sk,
+    ))
+}
+
+///
+/// Encrypt the bytes with an ephemeral secret key and your provided public key.
+/// This performs asymmetric encryption
+///
+pub fn encrypt_x25519(public_key: BoxPublicKey, key_fragment_bytes: Vec<u8>) -> EncryptedFragment {
     let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-    let salsa_box = SalsaBox::new(&recipient_public_key, &sender_secret_key);
+    let ephemeral_secret_key = BoxSecretKey::generate(&mut rng);
+
+    let salsa_box = SalsaBox::new(&public_key, &ephemeral_secret_key);
     let nonce = SalsaBox::generate_nonce(&mut rng);
-    let ciphertext: Vec<u8> = salsa_box.encrypt(&nonce, Payload {
-        msg: &plaintext,
-        aad: b"".as_ref(),
-    }).unwrap().to_vec();
+    // TODO: should probably use encrypt_in_place for safety?
+    let ciphertext: Vec<u8> = salsa_box.encrypt(&nonce, &key_fragment_bytes[..]).unwrap().to_vec();
+
+    // TODO: really need to make it clearer exactly which public key this is
+    // the public key should be the pk of the ephemeral secret key
     EncryptedFragment{ 
         nonce: nonce.as_slice().to_vec(),
         ciphertext: ciphertext,
-        public_key: sender_secret_key.public_key().as_bytes().to_vec()
+        public_key: ephemeral_secret_key.public_key().as_bytes().to_vec()
     }
 }
 
-// pub fn encrypt_crypto_box_ephemeral(public_key_bytes: Vec<u8>, plaintext: Vec<u8>) -> EncryptedFragment {
-//     let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-//     let ephemeral_secret_key = BoxSecretKey::generate(&mut rng);
-//     let pubkey_slice_32 = Self::slice_to_array_32(public_key_bytes.as_slice()).unwrap();
-//     let public_key = BoxPublicKey::from(*pubkey_slice_32);
+/// Decrypt message encrypted with X25519 keys
+/// 
+/// * `sender_public_key`: The X25519 public key whose corresponding secret key encrypted the ciphertext.
+/// * `receiver_secret_key`: The X25519 secret key for who the ciphertext was encrypted.
+/// * `ciphertext`: The encrypted ciphertext as bytes.
+/// *  `nonce_bytes`: The nonce used when encrypting the plaintext, as bytes.
+/// 
+pub fn decrypt_x25519(
+    sender_public_key: BoxPublicKey, 
+    receiver_secret_key: BoxSecretKey,
+    ciphertext: Vec<u8>,
+    nonce_bytes: Vec<u8>,
+) -> Vec<u8> {
+    let salsa_box = SalsaBox::new(&sender_public_key, &receiver_secret_key);
+    // GenericArray<u8, UInt<UInt<UInt<UInt<UInt<UTerm, B1>, B1>, B0>, B0>, B0>>
+    let gen_array = generic_array::GenericArray::clone_from_slice(nonce_bytes.as_slice());
+    salsa_box.decrypt(&gen_array, Payload {
+        msg: &ciphertext,
+        aad: b"".as_ref(),
+    }).unwrap()
+}
 
-//     let salsa_box = SalsaBox::new(&public_key, &plaintext);
-//     let nonce = SalsaBox::generate_nonce(&mut rng);
-//     let ciphertext: Vec<u8> = salsa_box.encrypt(&nonce, &p[..]).unwrap().to_vec();
-
-//     // to decrypt, the account associated with the public_key needs to know:
-//     // (nonce, ciphertext, ephermeral public_key)
-//     // so we should return some object? like...
-//     EncryptedFragment{ 
-//         nonce: nonce.as_slice().to_vec(),
-//         ciphertext: ciphertext,
-//         public_key: ephemeral_secret_key.public_key().as_bytes().to_vec()
-//     }
-// }
 
 pub fn slice_to_array_32(slice: &[u8]) -> Option<&[u8; 32]> {
     if slice.len() == 32 {
@@ -135,4 +180,44 @@ pub fn slice_to_array_32(slice: &[u8]) -> Option<&[u8; 32]> {
     } else {
         None
     }
+}
+
+
+
+/*
+	encryption tests
+*/
+#[test]
+fn encryption_can_encrypt() {
+	// Given: I am a valid node with a positive balance
+	let (p, _) = sp_core::sr25519::Pair::generate();
+	let pairs = vec![(p.clone().public(), 10)];
+
+	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+	let sk = SecretKey::random_with_rng(rng.clone());
+	let pk = sk.public_key();
+
+	let plaintext = "plaintext".as_bytes();
+	let shares: usize = 3;
+	let threshold: usize = 3;
+
+	let result = encrypt_phase_1(plaintext, shares, threshold, pk).unwrap();
+	assert_eq!(49, result.3.len());
+}
+
+#[test]
+fn can_encrypt_x25519() {
+	// Given: I am a valid node with a positive balance
+	let (p, _) = sp_core::sr25519::Pair::generate();
+	let pairs = vec![(p.clone().public(), 10)];
+
+	let test_vec = "test".as_bytes().to_vec();
+	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+	let sk = BoxSecretKey::generate(&mut rng);
+	let pk = sk.public_key();
+
+	let encrypted_frag = encrypt_x25519(pk, test_vec);
+	assert_eq!(true, encrypted_frag.nonce.len() > 0);
+	assert_eq!(true, encrypted_frag.ciphertext.len() > 0);
+	assert_eq!(true, encrypted_frag.public_key.len() > 0);
 }

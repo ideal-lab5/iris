@@ -201,17 +201,9 @@ pub enum ProxyStatus {
 
 /// preferences for a proxy node
 #[derive(PartialEq, Eq, Clone, Encode, Decode, RuntimeDebug, TypeInfo, Default)]
-pub struct ProxyPrefs {
+pub struct GatewayPrefs {
 	pub max_mbps: u32,
 	pub storage_max_gb: u128,
-}
-
-/// Indicates the configuration phase of the proxy node
-#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-pub enum ProxyConfigState {
-	Unconfigured,
-	Identified,
-	FullyConfigured,
 }
 
 #[frame_support::pallet]
@@ -275,11 +267,11 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn proxies)]
 	pub type Proxies<T: Config> =
-		CountedStorageMap<_, Twox64Concat, T::AccountId, ProxyPrefs>;
+		CountedStorageMap<_, Twox64Concat, T::AccountId, GatewayPrefs>;
 
 	/// The minimum active bond to become and maintain the role of a nominator.
 	#[pallet::storage]
-	pub type MinProxyBond<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+	pub type MinGatewayBond<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
 	/// The maximum proxy count before we stop allowing new proxies to join.
 	///
@@ -319,7 +311,7 @@ pub mod pallet {
 		/// An account has unbonded this amount. \[stash, amount\]
 		Unbonded(T::AccountId, BalanceOf<T>),
 		/// A proxy has set their preferences.
-		ProxyPrefsSet(T::AccountId, ProxyPrefs),
+		GatewayPrefsSet(T::AccountId, GatewayPrefs),
 	}
 
 	// Errors inform users that something went wrong.
@@ -370,7 +362,7 @@ pub mod pallet {
 		fn build(&self) {
 			Pallet::<T>::initialize_proxies(&self.initial_proxies);
 			// HistoryDepth::<T>::put(self.history_depth);
-			MinProxyBond::<T>::put(self.min_proxy_bond);
+			MinGatewayBond::<T>::put(self.min_proxy_bond);
 			if let Some(x) = self.max_proxy_count {
 				MaxProxyCount::<T>::put(x);
 			}
@@ -510,7 +502,7 @@ pub mod pallet {
 					ledger.active = Zero::zero();
 				}
 
-				let min_active_bond = MinProxyBond::<T>::get();
+				let min_active_bond = MinGatewayBond::<T>::get();
 				// let min_active_bond = if Nominators::<T>::contains_key(&ledger.stash) {
 				// 	MinNominatorBond::<T>::get()
 				// } else if Validators::<T>::contains_key(&ledger.stash) {
@@ -552,19 +544,19 @@ pub mod pallet {
 			Ok(())
 		}
 
-		/// Declare your intention to proxy requests and assign preferences
+		/// Declare your intention to provide storage to the network
 		/// 
 		/// * prefs: The proxy preferences to delcare
 		/// 
 		#[pallet::weight(100)]
 		pub fn declare_gateway(
 			origin: OriginFor<T>,
-			prefs: ProxyPrefs,
+			prefs: GatewayPrefs,
 		) -> DispatchResult {
 			let controller = ensure_signed(origin)?;
 			let ledger = Self::ledger(&controller).ok_or(Error::<T>::NotController)?;
 
-			ensure!(ledger.active >= MinProxyBond::<T>::get(), Error::<T>::InsufficientBond);
+			ensure!(ledger.active >= MinGatewayBond::<T>::get(), Error::<T>::InsufficientBond);
 			let stash = &ledger.stash;
 			// ensure their commission is correct.
 			// ensure!(prefs.commission >= MinCommission::<T>::get(), Error::<T>::CommissionTooLow);
@@ -583,7 +575,7 @@ pub mod pallet {
 
 			// Self::do_remove_nominator(stash);
 			Self::do_add_proxy(stash, prefs.clone());
-			Self::deposit_event(Event::<T>::ProxyPrefsSet(ledger.stash, prefs));
+			Self::deposit_event(Event::<T>::GatewayPrefsSet(ledger.stash, prefs));
 
 			Ok(())
 		}
@@ -630,9 +622,9 @@ impl<T: Config> Pallet<T> {
 	/// Add a proxy to the proxies list, along with given preferences
 	/// 
 	/// * who: The proxy node address to insert
-	/// * prefs: The ProxyPrefs to insert
+	/// * prefs: The GatewayPrefs to insert
 	/// 
-	fn do_add_proxy(who: &T::AccountId, prefs: ProxyPrefs) {
+	fn do_add_proxy(who: &T::AccountId, prefs: GatewayPrefs) {
 		Proxies::<T>::insert(who, prefs.clone());
 		// let new_origin = system::RawOrigin::Signed(who.clone()).into();
 		// <pallet_ipfs::Pallet<T>>::update_node_config(new_origin, prefs.clone().storage_max_gb);
@@ -659,7 +651,7 @@ pub trait ProxyProvider<AccountId, Balance> {
 	/// get the slash account bonded to the controller
     fn bonded(acct: AccountId) -> Option<AccountId>;
 	///get the preferences specified by some stash account
-	fn prefs(acct: AccountId) -> Option<ProxyPrefs>;
+	fn prefs(acct: AccountId) -> Option<GatewayPrefs>;
 	/// most some active tokens to reserved
 	fn reserve(acct: AccountId, balance: Balance);
 	// fn unreserve(acct: AccountId, balance: Option<Balance>) -> Result<(), Error<T>>;
@@ -682,7 +674,7 @@ impl<T: Config> ProxyProvider<T::AccountId, T::Balance> for Pallet<T> {
         Bonded::<T>::get(acct)
     }
 
-	fn prefs(acct: T::AccountId) -> Option<ProxyPrefs> {
+	fn prefs(acct: T::AccountId) -> Option<GatewayPrefs> {
 		Proxies::<T>::get(acct)
 	}
 

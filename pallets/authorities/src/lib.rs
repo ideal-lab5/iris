@@ -86,9 +86,9 @@ use sp_runtime::{
 	traits::StaticLookup,
 };
 
+use umbral_pre::*;
 use crypto_box::{
-	// aead::{Aead, AeadCore, OsRng},
-	SalsaBox, PublicKey, SecretKey,
+	SalsaBox, PublicKey, SecretKey as BoxSecretKey,
 };
 use rand_chacha::{
 	ChaCha20Rng,
@@ -231,15 +231,29 @@ pub mod pallet {
 	pub type OfflineValidators<T: Config> = StorageValue<_, Vec<T::AccountId>, ValueQuery>;
 
 	// a map to associate an account id with a public key
+	// TODO: Need to make sure that every node generates these keys...
+	// I know the way I'm doing this is bad... but I'm doing it this way now because it's quick and easy
+	// will definitely need to revise how these keys are generated, stored, and
 	#[pallet::storage]
-	#[pallet::getter(fn public_keys)]
-	pub type PKMap<T: Config> = StorageMap<
+	#[pallet::getter(fn x25519_public_keys)]
+	pub type X25519PublicKeys<T: Config> = StorageMap<
 		_, 
 		Blake2_128Concat,
 		T::AccountId,
 		Vec<u8>,
 		ValueQuery,
 	>;
+
+	// #[pallet::storage]
+	// #[pallet::getter(fn secp251_public_keys)]
+	// pub type secp251PublicKeys<T: Config> = StorageMap<
+	// 	_, 
+	// 	Blake2_128Concat,
+	// 	T::AccountId,
+	// 	Vec<u8>,
+	// 	ValueQuery,
+	// >;
+
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -379,10 +393,6 @@ impl<T: Config> Pallet<T> {
 		let validator_set: BTreeSet<_> = <Validators<T>>::get().into_iter().collect();
 		ensure!(!validator_set.contains(&validator_id), Error::<T>::Duplicate);
 		<Validators<T>>::mutate(|v| v.push(validator_id.clone()));
-		// UnproductiveSessions::<T>::mutate(validator_id.clone(), |v| {
-		// 	*v = 0;
-		// });
-
 		Self::deposit_event(Event::ValidatorAdditionInitiated(validator_id.clone()));
 		log::debug!(target: LOG_TARGET, "Validator addition initiated.");
 
@@ -391,7 +401,6 @@ impl<T: Config> Pallet<T> {
 
 	fn do_remove_validator(validator_id: T::AccountId) -> DispatchResult {
 		let mut validators = <Validators<T>>::get();
-
 		// Ensuring that the post removal, target validator count doesn't go
 		// below the minimum.
 		ensure!(
@@ -452,16 +461,33 @@ impl<T: Config> Pallet<T> {
 	}
 
 	fn update_keys(validator_id: T::AccountId) {
+		Self::update_x25519(validator_id);
+		// Self::update_secp251(validator_id);
+	}
+
+	fn update_x25519(validator_id: T::AccountId) {
 		// generate a new keypair
 		let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-		let secret_key = SecretKey::generate(&mut rng);
-		let public_key: Vec<u8> = secret_key.public_key().as_bytes().to_vec();
+		let secret_key = BoxSecretKey::generate(&mut rng);
+		let pk: Vec<u8> = secret_key.public_key().as_bytes().to_vec();
 
-		let local_storage = StorageValueRef::persistent(b"iris::secret");
+		let local_storage = StorageValueRef::persistent(b"iris::x25519");
 		local_storage.set(&secret_key.as_bytes());
 
-		PKMap::<T>::insert(validator_id, public_key);
+		X25519PublicKeys::<T>::insert(validator_id, pk);
 	}
+
+	// fn update_secp251(validator_id: T::AccountId) {
+	// 	let mut rng = ChaCha20Rng::seed_from_u64(17u64);
+	// 	// generate keys
+	// 	let sk = SecretKey::random_with_rng(rng.clone());
+	// 	let pk: Vec<u8> = sk.public_key().to_array().as_slice().to_vec();
+
+	// 	let local_storage = StorageValueRef::persistent(b"iris::secp251");
+	// 	local_storage.set(&sk.to_secret_array());
+
+	// 	secp251PublicKeys::<T>::insert(validator_id, pk);
+	// }
 
 	fn validate_transaction_parameters() -> TransactionValidity {
 		ValidTransaction::with_tag_prefix("iris")

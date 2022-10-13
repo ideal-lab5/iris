@@ -48,6 +48,7 @@ pub trait EncryptionApi<BlockHash, Balance> {
         signature: Bytes,
         signer: Bytes,
         message: Bytes,
+		proxy: Bytes,
 		at: Option<BlockHash>,
 	) -> RpcResult<Option<Bytes>>;
 
@@ -102,13 +103,14 @@ where
         signature: Bytes,
         signer: Bytes,
         message: Bytes,
+		proxy: Bytes,
 		at: Option<<Block as BlockT>::Hash>
 	) -> RpcResult<Option<Bytes>> {
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			self.client.info().best_hash
 		));
-		api.encrypt(&at, plaintext, signature, signer, message)
+		api.encrypt(&at, plaintext, signature, signer, message, proxy)
 			.map_err(|e| {
 				CallError::Custom(ErrorObject::owned(
 					Error::RuntimeError.into(),

@@ -123,6 +123,7 @@ fn authorization_can_submit_execution_results() {
 		);
 		assert_eq!(true, result);
 		// AND: A new capsule recovery request is created for each assigned frag holder
+		// TODO! need to call create_secrets() in authorities pallet
 	});
 }
 

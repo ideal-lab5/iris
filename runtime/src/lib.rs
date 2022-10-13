@@ -866,6 +866,7 @@ impl_runtime_apis! {
 			signature: Bytes,
 			signer: Bytes,
 			message: Bytes,
+			proxy: Bytes,
 		) -> Option<Bytes> {
 			// None
 			DataAssets::encrypt(
@@ -874,6 +875,7 @@ impl_runtime_apis! {
 				signer, 
 				message, 
 				5, 3,
+				proxy,
 			)
 		}
 

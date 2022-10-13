@@ -2538,6 +2538,7 @@ dependencies = [
  "crypto_box",
  "frame-support",
  "generic-array 0.14.6",
+ "getrandom 0.2.6",
  "parity-scale-codec",
  "rand_chacha 0.3.1",
  "scale-info",
@@ -2546,6 +2547,7 @@ dependencies = [
  "sp-rpc",
  "sp-runtime",
  "sp-std",
+ "umbral-pre",
 ]
 
 [[package]]

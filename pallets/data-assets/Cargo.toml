@@ -44,6 +44,7 @@ generic-array = "0.14.6"
 crypto_box = { version = "0.8.1", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
+sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.23" }
 pallet-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
 
 [features]
@@ -56,6 +57,7 @@ std = [
 	'frame-benchmarking/std',
 	'sp-io/std',
 	'sp-std/std',
+	'sp-core/std',
 	'sp-runtime/std',
 	'log/std',
 	'pallet-assets/std',

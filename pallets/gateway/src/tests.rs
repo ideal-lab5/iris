@@ -49,7 +49,7 @@ fn gateway_simple_setup_should_work() {
 		// WHEN: The runtime is initiated with default genesis values
 		// THEN: The values of the proxy pallet match the default values
 		assert_eq!(0, crate::Proxies::<Test>::count());
-		assert_eq!(0, crate::MinProxyBond::<Test>::get());
+		assert_eq!(0, crate::MinGatewayBond::<Test>::get());
 		assert_eq!(None, crate::MaxProxyCount::<Test>::get());
 	});
 }
@@ -234,7 +234,7 @@ fn gateway_declare_gateway_works() {
 			v0.0.clone(),
 			1,
 		));
-		let proxy_prefs = crate::ProxyPrefs {
+		let proxy_prefs = crate::GatewayPrefs {
 			max_mbps: 100,
 			storage_max_gb: 100,
 		};
@@ -269,7 +269,7 @@ fn gateway_declare_gateway_err_when_not_controller() {
 			v0.0.clone(),
 			1,
 		));
-		let proxy_prefs = crate::ProxyPrefs {
+		let proxy_prefs = crate::GatewayPrefs {
 			max_mbps: 100,
 			storage_max_gb: 100,
 		};

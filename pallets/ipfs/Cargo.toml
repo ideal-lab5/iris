@@ -36,6 +36,7 @@ pallet-im-online = { version = "4.0.0-dev", default-features = false, git = "htt
 pallet-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
 
 pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = false }
+pallet-authorities = { version = "1.0.0", path = "../authorities", default-features = false }
 pallet-authorization = { version = "1.0.0", default-features = false, path = "../authorization" }
 pallet-data-assets = { version = "1.0.0", default-features = false, path = "../data-assets" }
 pallet-gateway = { version = "1.0.0", default-features = false, path = "../gateway" }
@@ -69,6 +70,7 @@ std = [
 	'sp-runtime/std',
 	'sp-staking/std',
 	'log/std',
+	'pallet-authorities/std',
 	'pallet-im-online/std',
 	'pallet-session/std',
 	'pallet-assets/std',
