@@ -21,9 +21,8 @@
 //! 
 //! ## Description 
 //! 
-//! This pallet contains the core integration and configuration
-//! with an external IPFS instance, as interfaced with via the IPFS 
-//! RPC endpoints.
+//! This pallet contains the integration and configuration
+//! with an external IPFS instance via the IPFS RPC endpoints.
 //! 
 
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -133,7 +132,7 @@ pub mod crypto {
 
 type BalanceOf<T> = <T as pallet_assets::Config>::Balance;
 
-/// keys that a proxy node is allowed to configure
+/// config items that a node is allowed to configure
 #[derive(Clone, PartialEq, Eq, RuntimeDebug)]
 pub enum IpfsConfigKey {
 	StorageMax,
@@ -233,23 +232,20 @@ pub mod pallet {
 	}
 
 	
-	#[pallet::validate_unsigned]
-	impl<T: Config> ValidateUnsigned for Pallet<T> {
-		type Call = Call<T>;
+	// #[pallet::validate_unsigned]
+	// impl<T: Config> ValidateUnsigned for Pallet<T> {
+	// 	type Call = Call<T>;
 
-		/// Validate unsigned call to this module.
-		///
-		fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-			// if let Call::submit_rpc_ready { .. } = call {
-			// 	Self::validate_transaction_parameters()
-			// }
-			if let Call::submit_ipfs_identity{ .. } = call {
-				Self::validate_transaction_parameters()
-			} else {
-				InvalidTransaction::Call.into()
-			}
-		}
-	}
+	// 	/// Validate unsigned call to this module.
+	// 	///
+	// 	fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
+	// 		if let Call::submit_ipfs_identity{ .. } = call {
+	// 			Self::validate_transaction_parameters()
+	// 		} else {
+	// 			InvalidTransaction::Call.into()
+	// 		}
+	// 	}
+	// }
 
 	#[pallet::error]
 	pub enum Error<T> {

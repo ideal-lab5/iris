@@ -64,7 +64,6 @@ pub fn ipfs_can_submit_ingestion_complete() {
 			ciphertext: test_data.name.clone(),
 			public_key: test_data.name.clone(),
 		};
-		let kfrag_assignments = vec![(test_data.p.public().clone(), encrypted_kfrag.clone())];
 	
 		let cmd = IngestionCommand {
 			owner: test_data.p.public().clone(),
@@ -81,9 +80,8 @@ pub fn ipfs_can_submit_ingestion_complete() {
 				test_data.p.clone().public(),
 				test_data.name.clone(),
 				test_data.name.clone(),
-				test_data.name.clone(),
-				test_data.name.clone(),
-				kfrag_assignments,
+				test_data.p.clone().public(),
+				encrypted_kfrag.clone(),
 			));
 			// let ingestion_cmds_1 = DataAssets::ingestion_commands(p.clone().public());
 			// assert_eq!(ingestion_cmds_1.len(), 1);

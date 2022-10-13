@@ -16,13 +16,12 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 #![cfg_attr(not(feature = "std"), no_std)]
 
-//! # Iris Assets Pallet
+//! # Data Assets Pallet
 //!
 //! ## Overview
 //!
 //! ### Goals
-//! The Iris module provides functionality for creation and 
-//! management of storage assets and access management
+//! This module provides functionality for data encryption and data asset class creation capabilities.
 //! 
 //! ### Dispatchable Functions 
 //!
@@ -269,17 +268,6 @@ pub mod pallet {
         OptionQuery,
     >;
 
-    // #[pallet::storage]
-    // pub type FragmentOwnerSet<T: Config> = StorageDoubleMap<
-    //     _,
-    //     Blake2_128Concat,
-    //     T:AccountId, // the consumer account id
-    //     Blake2_128Concat,
-    //     Vec<u8>, // public key
-    //     Vec<T::AccountId>, // collection of all fragment holders
-    //     ValueQuery,
-    // >;
-    
     #[pallet::storage]
     pub type FragmentOwnerSet<T: Config> = StorageDoubleMap<
         _,
@@ -465,7 +453,6 @@ pub mod pallet {
         /// * `id`: (temp) the unique id of the asset class -> should be generated instead
         /// * `balance`: the balance the owner is willing to use to back the asset class which will be created
         ///
-        /// could be moved to the gateway pallet
         #[pallet::weight(100)]
         pub fn create_request(
             origin: OriginFor<T>,
@@ -491,8 +478,6 @@ pub mod pallet {
 
             let current_block_number = <frame_system::Pallet<T>>::block_number();
             let target_block = current_block_number + Delay::<T>::get().into();
-            // we need to store this info somewhere...
-            // then in the OCW, check which commands are associated with (the block prior to??)the target block
             let new_origin = system::RawOrigin::Signed(who.clone()).into();
             // vest currency
             <pallet_vesting::Pallet<T>>::vested_transfer(
@@ -544,7 +529,6 @@ pub mod pallet {
             Ok(())
         }
 
-        // won't need to be here anymore (proxy)
         #[pallet::weight(0)]
         pub fn submit_encryption_artifacts(
             origin: OriginFor<T>,
@@ -554,7 +538,7 @@ pub mod pallet {
             proxy: T::AccountId,
             sk_encryption_info: EncryptedFragment,
         ) -> DispatchResult {
-            ensure_none(origin)?;
+            ensure_signed(origin)?;
             Capsules::<T>::insert(public_key.clone(), data_capsule);
             Proxy::<T>::insert(public_key.clone(), proxy.clone());
             // need to store the sk_encryption_info
@@ -616,11 +600,10 @@ impl<T: Config> Pallet<T> {
         if sig.verify(msg.as_slice(), &acct_pubkey) {
             let proxy_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(proxy_acct_id.clone());
             let proxy_pk_slice = iris_primitives::slice_to_array_32(&proxy_pk_vec).unwrap();
-            // todo: change to box public key
             let proxy_pk = BoxPublicKey::from(*proxy_pk_slice);
 
-
             let plaintext_as_slice: &[u8] = &plaintext.to_vec();
+
             match iris_primitives::encrypt_phase_1(plaintext_as_slice, shares, threshold, proxy_pk) {
                 // capsule, ciphertext, public key, encrypted secret key
                 Ok(result) => {

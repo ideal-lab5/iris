@@ -111,48 +111,35 @@ fn data_assets_can_request_ingestion() {
 
 #[test]
 fn data_assets_can_submit_encryption_artifacts() {
-	// Given: I am a valid node with a positive balance
-	let (p, _) = sp_core::sr25519::Pair::generate();
-	let (g, _) = sp_core::sr25519::Pair::generate();
-	let pairs = vec![(p.clone().public(), 10)];
-	
-	let test_vec = "test".as_bytes().to_vec();
-	let encrypted_kfrag = EncryptedFragment {
-		nonce: test_vec.clone(),
-		ciphertext: test_vec.clone(),
-		public_key: test_vec.clone(),
-	};
+	TEST_CONSTANTS.with(|t| {
+		// Given: I am a valid node with a positive balance
+		let pairs = vec![(t.p.clone().public(), 10)];
+		let encrypted_key = EncryptedFragment {
+			nonce: t.name.clone(),
+			ciphertext: t.name.clone(),
+			public_key: t.name.clone(),
+		};
 
-	let kfrag_assignments = vec![(p.public().clone(), encrypted_kfrag.clone())];
+		new_test_ext_funded(pairs, validators()).execute_with(|| {
+			// When: I submit key fragments
+			assert_ok!(DataAssets::submit_encryption_artifacts(
+				Origin::signed(t.p.clone().public()),
+				t.p.clone().public(),
+				t.name.clone(),
+				t.name.clone(),
+				t.p.clone().public(),
+				encrypted_key.clone(),
+			));
+			// check proxy
+			// check proxy codes
 
-	new_test_ext_funded(pairs, validators()).execute_with(|| {
-		// When: I submit key fragments
-		assert_ok!(DataAssets::submit_encryption_artifacts(
-			Origin::signed(p.clone().public()),
-			p.clone().public(),
-			test_vec.clone(),
-			test_vec.clone(),
-			test_vec.clone(),
-			test_vec.clone(),
-			kfrag_assignments,
-		));
+			let capsule_data = Capsules::<Test>::get(t.name.clone()).unwrap();
+			assert_eq!(t.name.clone(), capsule_data);
 
-		// Then: A new entry is added to the fragments map
-		let assigned_kfrag = Fragments::<Test>::get(test_vec.clone(), p.public().clone());
-		assert_eq!(assigned_kfrag, Some(encrypted_kfrag.clone()));
-
-		let frag_holders = FragmentOwnerSet::<Test>::get(test_vec.clone());
-		assert_eq!(1, frag_holders.len());
-		assert_eq!(vec![p.public().clone()], frag_holders);
-
-		let secret_data = Capsules::<Test>::get(test_vec.clone()).unwrap();
-		assert_eq!(test_vec.clone(), secret_data.data_capsule);
-		assert_eq!(test_vec.clone(), secret_data.sk_capsule);
-		assert_eq!(test_vec.clone(), secret_data.sk_ciphertext);
-
-		let pk = IngestionStaging::<Test>::get(p.public().clone()).unwrap();
-		assert_eq!(test_vec.clone(), pk);
-	}); 
+			let pk = IngestionStaging::<Test>::get(t.p.public().clone()).unwrap();
+			assert_eq!(t.name.clone(), pk);
+		}); 
+	});
 }
 
 #[test]
