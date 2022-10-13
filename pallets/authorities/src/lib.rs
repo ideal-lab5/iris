@@ -244,17 +244,6 @@ pub mod pallet {
 		ValueQuery,
 	>;
 
-	// #[pallet::storage]
-	// #[pallet::getter(fn secp251_public_keys)]
-	// pub type secp251PublicKeys<T: Config> = StorageMap<
-	// 	_, 
-	// 	Blake2_128Concat,
-	// 	T::AccountId,
-	// 	Vec<u8>,
-	// 	ValueQuery,
-	// >;
-
-
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {

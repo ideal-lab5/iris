@@ -31,139 +31,117 @@ use sp_core::{
 use sp_keystore::{testing::KeyStore, KeystoreExt, SyncCryptoStore};
 use std::sync::Arc;
 
+struct TestData {
+	pub validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>,
+}
+
+thread_local!(static TEST_CONSTANTS: TestData = TestData {
+	validators: vec![
+		(
+			sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
+			UintAuthorityId(0)
+		),
+		(
+			sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+			UintAuthorityId(1)
+		),
+		(
+			sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
+			UintAuthorityId(2)
+		),
+		(
+			sp_core::sr25519::Pair::generate_with_phrase(Some("3")).0.public(), 
+			UintAuthorityId(3)
+		),
+	]
+});
+
 // validator tests 
 #[test]
-fn authorities_simple_setup_should_work() {
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
-		UintAuthorityId(2)
-	);
-
-	new_test_ext(vec![v0.clone(), v1.clone(), v2.clone()]).execute_with(|| {
-		// assert_eq!(authorities(), vec![v0.1, v1.1, v2.1]);
-		assert_eq!(authorities(), vec![UintAuthorityId(0), UintAuthorityId(1), UintAuthorityId(2)]);
-		assert_eq!(crate::Validators::<Test>::get(), vec![v0.0, v1.0, v2.0]);
-		assert_eq!(Session::validators(), vec![v0.0, v1.0, v2.0]);
+fn simple_setup_should_work() {
+	TEST_CONSTANTS.with(|test_data| {
+		let v = test_data.validators.clone();
+		new_test_ext(vec![v[0].clone(), v[1].clone(), v[2].clone()]).execute_with(|| {
+			assert_eq!(authorities(), vec![UintAuthorityId(0), UintAuthorityId(1), UintAuthorityId(2)]);
+			assert_eq!(crate::Validators::<Test>::get(), vec![v[0].0, v[1].0, v[2].0]);
+			assert_eq!(Session::validators(), vec![v[0].0, v[1].0, v[2].0]);
+		});
 	});
 }
 
 #[test]
-fn authorities_add_validator_updates_validators_list() {
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
-		UintAuthorityId(2)
-	);
-	let v3: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("3")).0.public(), 
-		UintAuthorityId(3)
-	);
+fn add_validator_updates_validators_list() {
+	TEST_CONSTANTS.with(|test_data| {
+		let v = test_data.validators.clone();
+		new_test_ext(vec![v[0].clone(), v[1].clone(), v[2].clone()]).execute_with(|| {
+			assert_ok!(Authorities::add_validator(Origin::root(), v[3].0));
+			assert_eq!(crate::Validators::<Test>::get(), vec![v[0].0, v[1].0, v[2].0, v[3].0]);
+		});
+	});
 	
-	new_test_ext(vec![v0.clone(), v1.clone(), v2.clone()]).execute_with(|| {
-		assert_ok!(Authorities::add_validator(Origin::root(), v3.0));
-		assert_eq!(crate::Validators::<Test>::get(), vec![v0.0, v1.0, v2.0, v3.0]);
+}
+
+#[test]
+fn remove_validator_updates_validators_list() {
+	TEST_CONSTANTS.with(|test_data| {
+		let v = test_data.validators.clone();
+		new_test_ext(vec![v[0].clone(), v[1].clone(), v[2].clone()]).execute_with(|| {
+			assert_ok!(Authorities::remove_validator(Origin::root(), v[1].0));
+			assert_eq!(Authorities::validators(), vec![v[0].0, v[2].0]);
+		});
 	});
 }
 
 #[test]
-fn authorities_remove_validator_updates_validators_list() {
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
-		UintAuthorityId(2)
-	);
-	new_test_ext(vec![v0.clone(), v1.clone(), v2.clone()]).execute_with(|| {
-		assert_ok!(Authorities::remove_validator(Origin::root(), v1.0));
-		assert_eq!(Authorities::validators(), vec![v0.0, v2.0]);
+fn 
+add_validator_fails_with_invalid_origin() {
+	TEST_CONSTANTS.with(|test_data| {
+		let v = test_data.validators.clone();
+		new_test_ext(vec![v[0].clone(), v[1].clone(), v[2].clone()]).execute_with(|| {
+			assert_noop!(Authorities::add_validator(
+				Origin::signed(v[3].0.clone()), v[3].0), DispatchError::BadOrigin);
+		});
+	});
+	
+}
+
+#[test]
+fn remove_validator_fails_with_invalid_origin() {
+	TEST_CONSTANTS.with(|test_data| {
+		let v = test_data.validators.clone();	
+		new_test_ext(vec![v[0].clone(), v[1].clone(), v[2].clone()]).execute_with(|| {
+			assert_noop!(
+				Authorities::remove_validator(Origin::signed(v[3].0.clone()), v[3].0),
+				DispatchError::BadOrigin
+			);
+		});
 	});
 }
 
 #[test]
-fn authorities_add_validator_fails_with_invalid_origin() {
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
-		UintAuthorityId(2)
-	);
-	let v3 = sp_core::sr25519::Pair::generate_with_phrase(Some("3")).0.public();
-	new_test_ext(vec![v0.clone(), v1.clone(), v2.clone()]).execute_with(|| {
-		assert_noop!(Authorities::add_validator(Origin::signed(v3.clone()), v3), DispatchError::BadOrigin);
+fn duplicate_check() {
+	TEST_CONSTANTS.with(|test_data| {
+		let v = test_data.validators.clone();	
+		new_test_ext(vec![v[0].clone(), v[1].clone(), v[2].clone()]).execute_with(|| {
+			assert_ok!(Authorities::add_validator(Origin::root(), v[3].0));
+			assert_eq!(Authorities::validators(), vec![v[0].0, v[1].0, v[2].0, v[3].0]);
+			assert_noop!(Authorities::add_validator(Origin::root(), v[3].0), Error::<Test>::Duplicate);
+		});
 	});
 }
 
 #[test]
-fn authorities_remove_validator_fails_with_invalid_origin() {
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
-		UintAuthorityId(2)
-	);
-	let v3 = sp_core::sr25519::Pair::generate_with_phrase(Some("3")).0.public();
-	new_test_ext(vec![v0.clone(), v1.clone(), v2.clone()]).execute_with(|| {
-		assert_noop!(
-			Authorities::remove_validator(Origin::signed(v3.clone()), v3),
-			DispatchError::BadOrigin
-		);
-	});
-}
-
-#[test]
-fn authorities_duplicate_check() {
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
-		UintAuthorityId(2)
-	);
-	let v3: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("3")).0.public(), 
-		UintAuthorityId(3)
-	);
-	new_test_ext(vec![v0.clone(), v1.clone(), v2.clone()]).execute_with(|| {
-		assert_ok!(Authorities::add_validator(Origin::root(), v3.0));
-		assert_eq!(Authorities::validators(), vec![v0.0, v1.0, v2.0, v3.0]);
-		assert_noop!(Authorities::add_validator(Origin::root(), v3.0), Error::<Test>::Duplicate);
+fn can_create_secrets() {
+	TEST_CONSTANTS.with(|test_data| {
+		let v = test_data.validators.clone();
+		let mut t = new_test_ext(vec![v[0].clone(), v[1].clone(), v[2].clone()]);
+		let (offchain, state) = testing::TestOffchainExt::new();
+		t.register_extension(OffchainDbExt::new(offchain));
+		t.execute_with(|| {
+			assert_ok!(Authorities::create_secrets(Origin::signed(v[3].0.clone())));
+			// check that a key was created
+			let key = crate::X25519PublicKeys::<Test>::get(v[3].0.clone());
+			assert_eq!(key.len(), 32);
+		});
 	});
 }

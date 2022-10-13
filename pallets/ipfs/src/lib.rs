@@ -373,14 +373,14 @@ pub mod pallet {
 		}
 
 		#[pallet::weight(100)]
-		pub fn submit_recovered_capsule_fragment(
+		pub fn submit_capsule_fragment(
 			origin: OriginFor<T>,
 			data_consumer: T::AccountId,
-			asset_id: T::AssetId,
+			public_key: Vec<u8>,
 			encrypted_cfrag_data: iris_primitives::EncryptedFragment,
 		) -> DispatchResult {
 			// this really doesn't seem appropriate to place here, whatever for now it's fine
-			T::QueueProvider::add_verified_capsule_frag(data_consumer, asset_id, encrypted_cfrag_data);
+			T::QueueProvider::add_verified_capsule_frag(data_consumer, public_key, encrypted_cfrag_data);
 			// deposit event
 			Ok(())
 		}
@@ -735,29 +735,26 @@ impl<T: Config> Pallet<T> {
 					caller_pk, cfrag_bytes,
 				);
 				// send signed tx to encode this on chain (potentially acting in capacity of proxy (substrate version))
-
-
-				
-				// let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-				// if !signer.can_sign() {
-				// 	log::error!(
-				// 		"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-				// 	);
-				// }
-				// let results = signer.send_signed_transaction(|_acct| { 
-				// 	Call::submit_recovered_capsule_fragment {
-				// 		data_consumer: cap_recovery_request.caller.clone(),
-				// 		asset_id: cap_recovery_request.asset_id,
-				// 		encrypted_cfrag_data: encrypted_cfrag_data.clone(),
-				// 	}
-				// });
+				let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+				if !signer.can_sign() {
+					log::error!(
+						"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+					);
+				}
+				let results = signer.send_signed_transaction(|_acct| { 
+					Call::submit_capsule_fragment {
+						data_consumer: request.caller.clone(),
+						public_key: request.data_public_key.clone(),
+						encrypted_cfrag_data: encrypted_cfrag_data.clone(),
+					}
+				});
 			
-				// for (_, res) in &results {
-				// 	match res {
-				// 		Ok(()) => log::info!("Submitted results successfully"),
-				// 		Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-				// 	}
-				// }
+				for (_, res) in &results {
+					match res {
+						Ok(()) => log::info!("Submitted results successfully"),
+						Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
+					}
+				}
 
 
 			}

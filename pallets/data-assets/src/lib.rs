@@ -320,7 +320,7 @@ pub mod pallet {
         Blake2_128Concat,
         T::AccountId,
         Blake2_128Concat,
-        T::AssetId,
+        Vec<u8>,
         Vec<EncryptedFragment>, // <-- TODO: should rename this struct to something more generic
         ValueQuery,
     >;
@@ -668,53 +668,53 @@ impl<T: Config> Pallet<T> {
         asset_id: u32,
         secret_key_bytes: Bytes,
     ) -> Option<Bytes> {
-        let acct_bytes: [u8;32] = signer.to_vec().try_into().unwrap();
-        let acct_pubkey = Public::from_raw(acct_bytes);
-        let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
-        let msg: Vec<u8> = message.to_vec();
+        // let acct_bytes: [u8;32] = signer.to_vec().try_into().unwrap();
+        // let acct_pubkey = Public::from_raw(acct_bytes);
+        // let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
+        // let msg: Vec<u8> = message.to_vec();
 
-        let acct_id: T::AccountId = T::AccountId::decode(&mut &acct_bytes[..]).unwrap();
+        // let acct_id: T::AccountId = T::AccountId::decode(&mut &acct_bytes[..]).unwrap();
 
-        // WARNING: this won't compile as is
-        if sig.verify(msg.as_slice(), &acct_pubkey) {
-            // recover encrypted capsules
-            let asset_id_converted = TryInto::<T::AssetId>::try_into(asset_id).ok().unwrap();
-            let verified_capsule_fragments = VerifiedCapsuleFrags::<T>::get(acct_id, asset_id_converted.clone());
-            // decrypt capsules
-            let sk_vec = secret_key_bytes.clone().to_vec();
-            let sk_proto_slice = sk_vec.as_slice();
-            let secret_key_slice = iris_primitives::slice_to_array_32(sk_proto_slice).unwrap();
-            let secret_key = BoxSecretKey::from(*secret_key_slice);
-            let capsule_fragments = Self::decrypt_capsule_fragments(
-                verified_capsule_fragments, secret_key,
+        // // WARNING: this won't compile as is
+        // if sig.verify(msg.as_slice(), &acct_pubkey) {
+        //     // recover encrypted capsules
+        //     let asset_id_converted = TryInto::<T::AssetId>::try_into(asset_id).ok().unwrap();
+        //     let verified_capsule_fragments = VerifiedCapsuleFrags::<T>::get(acct_id, asset_id_converted.clone());
+        //     // decrypt capsules
+        //     let sk_vec = secret_key_bytes.clone().to_vec();
+        //     let sk_proto_slice = sk_vec.as_slice();
+        //     let secret_key_slice = iris_primitives::slice_to_array_32(sk_proto_slice).unwrap();
+        //     let secret_key = BoxSecretKey::from(*secret_key_slice);
+        //     let capsule_fragments = Self::decrypt_capsule_fragments(
+        //         verified_capsule_fragments, secret_key,
                 
-            );
-            let data_public_key = Metadata::<T>::get(asset_id_converted.clone()).unwrap().public_key;
-            // fetch the capsule
-            let capsule = Capsules::<T>::get(data_public_key).unwrap();
-            // now verify each fragment
-            // let verified_fragments = capsule_fragments.iter().map(|frag| {
-            //     frag.verify(&capsule, &verifying_pk, &original_validator_pk, &my_pk).unwrap()
-            // });
-            // let plaintext_sk = umbral_pre::decrypt_reencrypted(
+        //     );
+        //     let data_public_key = Metadata::<T>::get(asset_id_converted.clone()).unwrap().public_key;
+        //     // fetch the capsule
+        //     let capsule = Capsules::<T>::get(data_public_key).unwrap();
+        //     // now verify each fragment
+        //     // let verified_fragments = capsule_fragments.iter().map(|frag| {
+        //     //     frag.verify(&capsule, &verifying_pk, &original_validator_pk, &my_pk).unwrap()
+        //     // });
+        //     // let plaintext_sk = umbral_pre::decrypt_reencrypted(
 
-            // ).unwrap();
-            // use capsule fragments to re-encrypt secret key for yourself
-            // verify each one 
-            // let verified_fragments = capsule_fragments.iter().map(|cfrag| cfrag.verify(
-            //     &capsule, & verifying_pk, &alice_pk, &bob_pk,
-            // ));
-            // // use reencrypted key to decrypt the ciphertext
-            // let sk_plaintext_bob = umbral_pre::decrypt_reencrypted(
-            //     &my_sk, &alice_pk, &capsule, verified_fragments, &sk_ciphertext,
-            // ).unwrap().to_vec();
+        //     // ).unwrap();
+        //     // use capsule fragments to re-encrypt secret key for yourself
+        //     // verify each one 
+        //     // let verified_fragments = capsule_fragments.iter().map(|cfrag| cfrag.verify(
+        //     //     &capsule, & verifying_pk, &alice_pk, &bob_pk,
+        //     // ));
+        //     // // use reencrypted key to decrypt the ciphertext
+        //     // let sk_plaintext_bob = umbral_pre::decrypt_reencrypted(
+        //     //     &my_sk, &alice_pk, &capsule, verified_fragments, &sk_ciphertext,
+        //     // ).unwrap().to_vec();
 
-            // let recovered_sk = SecretKey::from(sk_plaintext_bob);
-            // let plaintext = umbral_pre::decrypt_original(&recovered_sk, &data_capsule, &ciphertext).unwrap();
+        //     // let recovered_sk = SecretKey::from(sk_plaintext_bob);
+        //     // let plaintext = umbral_pre::decrypt_original(&recovered_sk, &data_capsule, &ciphertext).unwrap();
 
-            // return ciphertext
-            // encryption::decrypt(acct_id, ciphertext, asset_id)
-        }
+        //     // return ciphertext
+        //     // encryption::decrypt(acct_id, ciphertext, asset_id)
+        // }
         Some(Bytes::from(Vec::new()))
 
     }
@@ -776,7 +776,7 @@ pub trait QueueProvider<AccountId, AssetId, Balance> {
     );
     // fn remove_capsule_recovery_request(account: AccountId, public_key: Vec<u8>);
     /// add a verified capsule to the verified capsules storage map
-    fn add_verified_capsule_frag(account: AccountId, asset_id: AssetId, encrypted_capsule_framgent_data: EncryptedFragment);
+    fn add_verified_capsule_frag(account: AccountId, public_key: Vec<u8>, encrypted_capsule_framgent_data: EncryptedFragment);
     fn get_capsule_recovery_requests(account: AccountId) -> Vec<CapsuleRecoveryRequest<AccountId>>;
     /// remove the specified public key from the collection of fragments to recover
     // fn remove_capsule_recovery_request(kfrag_holder: AccountId, public_key: Vec<u8>);
@@ -865,8 +865,8 @@ impl<T: Config> QueueProvider<T::AccountId, T::AssetId, T::Balance> for Pallet<T
     //     CapsuleRecoveryRequests::<T>::remove(account, public_key);
     // }
 
-    fn add_verified_capsule_frag(account: T::AccountId, asset_id: T::AssetId, verified_cfrag_data: EncryptedFragment) {
-        VerifiedCapsuleFrags::<T>::mutate(account, asset_id, |cfrags| {
+    fn add_verified_capsule_frag(account: T::AccountId, public_key: Vec<u8>, verified_cfrag_data: EncryptedFragment) {
+        VerifiedCapsuleFrags::<T>::mutate(account, public_key, |cfrags| {
             cfrags.push(verified_cfrag_data);
         });
     }
