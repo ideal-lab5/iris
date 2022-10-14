@@ -32,6 +32,7 @@ pallet-assets = { version = "4.0.0-dev", path = "../assets", default-features = 
 pallet-authorities = { version = "1.0.0", default-features = false, path = "../authorities" }
 pallet-data-assets = { version = "1.0.0", default-features = false, path = "../data-assets" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.23" }
+pallet-iris-proxy = { version = "1.0.0", default-features = false, path = "../iris-proxy" }
 
 iris-primitives = { version = "1.0.0", default-features = false, path = "../common" }
 
@@ -61,9 +62,7 @@ std = [
 	'pallet-session/std',
 	'pallet-vesting/std',
 	'iris-primitives/std',
-	# 'rand_chacha/std',
-	# 'generic-array/std',
-	# 'crypto_box/std'
+	'pallet-iris-proxy/std',
 ]
 
 runtime-benchmarks = ["frame-benchmarking"]

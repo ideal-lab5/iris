@@ -324,7 +324,6 @@ impl Config for Test {
 	type Call = Call;
 	type Event = Event;
 	type ValidatorSet = Authorities;
-	type QueueProvider = DataAssets;
 	type MetadataProvider = DataAssets;
 }
 

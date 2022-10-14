@@ -2580,6 +2580,7 @@ dependencies = [
  "pallet-im-online",
  "pallet-ipfs",
  "pallet-ipfs-primitives",
+ "pallet-iris-proxy",
  "pallet-ledger",
  "pallet-randomness-collective-flip",
  "pallet-session",
@@ -4147,6 +4148,7 @@ dependencies = [
  "pallet-authorities",
  "pallet-balances",
  "pallet-data-assets",
+ "pallet-iris-proxy",
  "pallet-session",
  "pallet-vesting",
  "parity-scale-codec",
@@ -4409,6 +4411,7 @@ dependencies = [
  "pallet-gateway",
  "pallet-im-online",
  "pallet-ipfs-primitives",
+ "pallet-iris-proxy",
  "pallet-session",
  "pallet-vesting",
  "parity-scale-codec",
@@ -4436,6 +4439,38 @@ dependencies = [
  "sp-rpc",
  "sp-runtime",
  "sp-std",
+]
+
+[[package]]
+name = "pallet-iris-proxy"
+version = "1.0.0"
+dependencies = [
+ "crypto_box",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "generic-array 0.14.6",
+ "getrandom 0.2.6",
+ "iris-primitives",
+ "log",
+ "pallet-assets",
+ "pallet-authorities",
+ "pallet-balances",
+ "pallet-data-assets",
+ "pallet-im-online",
+ "pallet-session",
+ "pallet-vesting",
+ "parity-scale-codec",
+ "rand_chacha 0.3.1",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-keystore",
+ "sp-runtime",
+ "sp-staking",
+ "sp-std",
+ "umbral-pre",
 ]
 
 [[package]]

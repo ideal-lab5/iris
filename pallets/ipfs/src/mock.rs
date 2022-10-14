@@ -222,7 +222,7 @@ impl Config for Test {
     type AuthorityId = crypto::TestAuthId;
 	type Currency = Balances;
 	type ProxyProvider = Gateway;
-	type QueueProvider = DataAssets;
+	type QueueManager = DataAssets;
 	type MetadataProvider = DataAssets;
 	type ResultsHandler = DataAssets;
 	type NodeConfigBlockDuration = NodeConfigBlockDuration;
@@ -254,7 +254,7 @@ impl pallet_session::Config for Test {
 impl pallet_authorization::Config for Test {
 	type Event = Event;
 	type Call = Call;
-	type QueueProvider = DataAssets;
+	type QueueManager = DataAssets;
 	type MetadataProvider = DataAssets;
 	type ValidatorSet = Authorities;
 }

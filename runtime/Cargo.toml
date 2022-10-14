@@ -59,6 +59,7 @@ pallet-gateway = { version = "1.0.0", default-features = false, path = "../palle
 pallet-ipfs = { version = "1.0.0", default-features = false, path = "../pallets/ipfs" }
 iris-primitives = { version = "1.0.0", default-features = false, path = "../pallets/common" }
 pallet-ipfs-primitives = { version = "1.0.0", default-features = false, path = "../pallets/ipfs/common" }
+pallet-iris-proxy = { version = "1.0.0", default-features = false, path = "../pallets/iris-proxy" }
 
 log = { version = "0.4.14", default-features = false }
 
@@ -109,6 +110,7 @@ std = [
 	"pallet-contracts/std",
 	"pallet-contracts-primitives/std",
 	"pallet-vesting/std",
+	"pallet-iris-proxy/std",
 	"iris-primitives/std",
 	"pallet-contracts-rpc-runtime-api/std",
 	"sp-api/std",

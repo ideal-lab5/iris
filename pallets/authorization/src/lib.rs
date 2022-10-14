@@ -32,12 +32,10 @@ use sp_std::{
     prelude::*,
 };
 use frame_support::traits::{ValidatorSet, ValidatorSetWithIdentification};
-
 use core::convert::TryInto;
-
 use frame_system::ensure_signed;
-use pallet_data_assets::{MetadataProvider, QueueProvider};
 
+use pallet_data_assets::MetadataProvider;
 pub use pallet::*;
 
 #[cfg(test)]
@@ -62,15 +60,13 @@ pub mod pallet {
 
 	#[pallet::config]
     /// the module configuration trait
-	pub trait Config: frame_system::Config + pallet_assets::Config + pallet_authorities::Config {
+	pub trait Config: frame_system::Config + pallet_assets::Config + pallet_authorities::Config + pallet_iris_proxy::Config {
         /// The overarching event type
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
         /// the overarching call type
 	    type Call: From<Call<Self>>;
         /// A type for retrieving the validators supposed to be online in a session.
 		type ValidatorSet: ValidatorSetWithIdentification<Self::AccountId>;
-        /// provide queued requests to vote on
-		type QueueProvider: pallet_data_assets::QueueProvider<Self::AccountId, Self::AssetId, Self::Balance>;
         /// provides asset metadata
 		type MetadataProvider: pallet_data_assets::MetadataProvider<Self::AssetId>;
 	}
@@ -200,8 +196,11 @@ pub mod pallet {
                             if execution_result {
                                 match T::MetadataProvider::get(asset_id.clone()) {
                                     Some(metadata) => {
-                                        // use the metadat to get the associated public key used to encrypt the data
-                                        T::QueueProvider::add_capsule_recovery_request(data_consumer_address.clone(), metadata.public_key);
+                                        // use the metadata to get the associated public key used to encrypt the data
+                                        <pallet_iris_proxy::Pallet<T>>::add_capsule_recovery_request(
+                                            data_consumer_address.clone(), 
+                                            metadata.public_key
+                                        );
                                     },
                                     None => { return Ok(()) }
                                 }

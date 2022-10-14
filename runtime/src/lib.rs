@@ -85,6 +85,7 @@ pub use pallet_data_spaces;
 pub use pallet_authorities;
 pub use pallet_gateway;
 pub use pallet_ipfs;
+pub use pallet_iris_proxy;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -468,7 +469,6 @@ impl pallet_data_assets::Config for Runtime {
 impl pallet_authorization::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
-	type QueueProvider = DataAssets;
 	type MetadataProvider = DataAssets;
 	type ValidatorSet = Authorities;
 }
@@ -530,9 +530,10 @@ impl pallet_ipfs::Config for Runtime {
 	type Currency = Balances;
 	type NodeConfigBlockDuration = NodeConfigBlockDuration;
 	type ProxyProvider = Gateway;
-	type QueueProvider = DataAssets;
+	type QueueManager = DataAssets;
 	type MetadataProvider = DataAssets;
 	type ResultsHandler = DataAssets;
+	type OffchainKeyManager = IrisProxy;
 }
 
 parameter_types! {
@@ -548,6 +549,13 @@ impl pallet_vesting::Config for Runtime {
 	// `VestingInfo` encode length is 36bytes. 28 schedules gets encoded as 1009 bytes, which is the
 	// highest number of schedules that encodes less than 2^10.
 	const MAX_VESTING_SCHEDULES: u32 = 28;
+}
+
+impl pallet_iris_proxy::Config for Runtime {
+	type Event = Event;
+	type Call = Call;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type QueueManager = DataAssets;
 }
 
 
@@ -637,6 +645,7 @@ construct_runtime!(
 		Gateway: pallet_gateway,
 		Ipfs: pallet_ipfs,
 		Vesting: pallet_vesting,
+		IrisProxy: pallet_iris_proxy,
 	}
 );
 
@@ -869,7 +878,7 @@ impl_runtime_apis! {
 			proxy: Bytes,
 		) -> Option<Bytes> {
 			// None
-			DataAssets::encrypt(
+			IrisProxy::encrypt(
 				plaintext, 
 				signature, 
 				signer, 

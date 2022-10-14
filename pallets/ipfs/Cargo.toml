@@ -40,6 +40,7 @@ pallet-authorities = { version = "1.0.0", path = "../authorities", default-featu
 pallet-authorization = { version = "1.0.0", default-features = false, path = "../authorization" }
 pallet-data-assets = { version = "1.0.0", default-features = false, path = "../data-assets" }
 pallet-gateway = { version = "1.0.0", default-features = false, path = "../gateway" }
+pallet-iris-proxy = { version = "1.0.0", default-features = false, path = "../iris-proxy" }
 pallet-ipfs-primitives = { version = "1.0.0", default-features = false, path = "common" }
 iris-primitives = { version = "1.0.0", default-features = false, path = "../common" }
 

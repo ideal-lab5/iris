@@ -44,6 +44,13 @@ use serde::{
     de::{Visitor},
 };
 
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+pub struct ReencryptionRequest<AccountId> {
+    pub caller: AccountId,
+    pub data_public_key: Vec<u8>,
+    pub caller_public_key: Vec<u8>,
+}
+
 #[derive(Eq, Ord, PartialOrd, Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Clone)]
 pub struct EjectionCommand<AccountId, AssetId> {
     pub asset_id: AssetId,

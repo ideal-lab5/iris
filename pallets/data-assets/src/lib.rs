@@ -123,12 +123,12 @@ pub struct CapsuleRecoveryRequest<AccountId> {
     pub public_key: Vec<u8>,
 }
 
-#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-pub struct ReencryptionRequest<AccountId> {
-    pub caller: AccountId,
-    pub data_public_key: Vec<u8>,
-    pub caller_public_key: Vec<u8>,
-}
+// #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+// pub struct ReencryptionRequest<AccountId> {
+//     pub caller: AccountId,
+//     pub data_public_key: Vec<u8>,
+//     pub caller_public_key: Vec<u8>,
+// }
 
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"iris");
 
@@ -238,7 +238,7 @@ pub mod pallet {
     /// The staging map maps account ids to the public key that 
     /// corresponds to data they've encrypted but have not yet ingested
     /// We make the assumption that a node is only allowed to stage
-    /// a single encrypted dataset at once
+    /// a single encrypted dataset at once (for now, open to changing that)
     #[pallet::storage]
     pub type IngestionStaging<T: Config> = StorageMap<
         _,
@@ -248,168 +248,17 @@ pub mod pallet {
         OptionQuery,
     >;
 
-    // TODO: Explore making types for TPREPublicKey, Ciphertext
-    // maps pubkey to ciphertext/capsule
-    #[pallet::storage]
-    pub type Capsules<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        Vec<u8>,  // public key
-        Vec<u8>, // capsule data 
-        OptionQuery,
-    >;
-
-    #[pallet::storage]
-    pub type Proxy<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        Vec<u8>,  // public key
-        T::AccountId, // proxy accountid
-        OptionQuery,
-    >;
-
-    #[pallet::storage]
-    pub type FragmentOwnerSet<T: Config> = StorageDoubleMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId, // consumer acct id
-        Blake2_128Concat,
-        Vec<u8>, // public key (umbral)
-        Vec<T::AccountId>,
-        ValueQuery,
-    >;
-
-    #[pallet::storage]
-    pub type Fragments<T: Config> = StorageNMap<
-        _,
-        (
-            NMapKey<Blake2_128Concat, T::AccountId>, // originator/consumer/decryptor/delegatee
-            NMapKey<Blake2_128Concat, Vec<u8>>,      // public key
-            NMapKey<Blake2_128Concat, T::AccountId>  // frag holder
-        ),
-        EncryptedFragment, // the information needed to decrypt encrypted fragment knowing secret key
-        OptionQuery,
-    >;
-
-    /// maps a key fragment holder to a vec of public keys for which
-    /// they have been tasked with recovering the capsule fragmentr
-    #[pallet::storage]
-    pub type CapsuleRecoveryRequests<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId, // proxy address
-        Vec<CapsuleRecoveryRequest<T::AccountId>>, // public key associated with umbral encrypted data
-        ValueQuery,
-    >;
-
-    #[pallet::storage]
-    pub type VerifiedCapsuleFrags<T: Config> = StorageDoubleMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        Blake2_128Concat,
-        Vec<u8>,
-        Vec<EncryptedFragment>, // <-- TODO: should rename this struct to something more generic
-        ValueQuery,
-    >;
-
-    // could potentially exist elsewhere
-    // lots of these storage maps could probably be simplified, need to do more analysis
-    #[pallet::storage]
-    pub type ProxyCodes<T: Config> = StorageDoubleMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId, // proxy acct id
-        Blake2_128Concat,
-        Vec<u8>, // the public key
-        EncryptedFragment, // the info needed to decrypt the secret key
-        OptionQuery,
-    >;
-
-    #[pallet::storage]
-    pub type ReencryptionRequests<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        Vec<ReencryptionRequest<T::AccountId>>,
-        ValueQuery,
-    >;
-
-    #[pallet::storage]
-    pub type EphemeralKeys<T: Config> = StorageDoubleMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId, // the consumer
-        Blake2_128Concat,
-        Vec<u8>,    // the data pk
-        Vec<u8>,    // the ephemeral pk for the data/consumer combi
-        ValueQuery,
-    >;
-
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
         /// A request to add bytes was queued
         CreatedIngestionRequest,
-        /// A request to retrieve bytes was queued
-        QueuedDataToCat(T::AccountId),
-        /// A new asset class was created (add bytes command processed)
-        AssetClassCreated(T::AssetId),
-        /// A new asset was created (tickets minted)
-        AssetCreated(T::AssetId),
-        /// An asset was burned succesfully
-        AssetBurned(T::AssetId),
-        /// A node has published ipfs identity results on chain
-        PublishedIdentity(T::AccountId),
-        /// data has been queued to be pinned by a storage node
-        QueuedDataToPin,
 	}
 
 	#[pallet::error]
 	pub enum Error<T> {
-        InsufficientAuthorities,
-        PublicKeyConversionFailure,
-        /// could not build the ipfs request
-		CantCreateRequest,
-        /// the request to IPFS timed out
-        RequestTimeout,
-        /// the request to IPFS failed
-        RequestFailed,
-        /// The tx could not be signed
-        OffchainSignedTxError,
-        /// you cannot sign a tx
-        NoLocalAcctForSigning,
         /// could not create a new asset
         CantCreateAssetClass,
-        /// could not mint a new asset
-        CantMintAssets,
-        /// there is no asset associated with the specified cid
-        NoSuchOwnedContent,
-        /// the specified asset class does not exist
-        NoSuchAssetClass,
-        /// the account does not have a sufficient balance
-        InsufficientBalance,
-        /// the asset id is unknown or you do not have access to it
-        InvalidAssetId,
-        DataSpaceNotAccessible,
-	}
-
-    #[pallet::validate_unsigned]
-	impl<T: Config> ValidateUnsigned for Pallet<T> {
-		type Call = Call<T>;
-
-		/// Validate unsigned call to this module.
-		///
-		/// By default unsigned transactions are disallowed, but implementing the validator
-		/// here we make sure that some particular calls (the ones produced by offchain worker)
-		/// are being whitelisted and marked as valid.
-		fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-            if let Call::submit_encryption_artifacts{ .. } = call {
-				Self::validate_transaction_parameters()
-			} else {
-				InvalidTransaction::Call.into()
-			}
-		}
 	}
 
 
@@ -508,47 +357,8 @@ pub mod pallet {
             Ok(())
         }
 
-        #[pallet::weight(100)]
-        pub fn start_decryption(
-            origin: OriginFor<T>,
-            asset_id: T::AssetId,
-            public_key: Vec<u8>,
-        ) -> DispatchResult {
-            let consumer = ensure_signed(origin)?;
-            let data_public_key = Metadata::<T>::get(asset_id).unwrap().public_key;
-            let fragment_holders = FragmentOwnerSet::<T>::get(consumer.clone(), data_public_key.clone());
-            for fragment_holder in fragment_holders {
-                ReencryptionRequests::<T>::mutate(fragment_holder, |mut requests| {
-                    requests.push(ReencryptionRequest {
-                        caller: consumer.clone(),
-                        data_public_key: data_public_key.clone(),
-                        caller_public_key: public_key.clone(),
-                    });
-                });
-            }
-            Ok(())
-        }
 
-        #[pallet::weight(0)]
-        pub fn submit_encryption_artifacts(
-            origin: OriginFor<T>,
-            owner: T::AccountId,
-            data_capsule: Vec<u8>,
-            public_key: Vec<u8>,
-            proxy: T::AccountId,
-            sk_encryption_info: EncryptedFragment,
-        ) -> DispatchResult {
-            ensure_signed(origin)?;
-            Capsules::<T>::insert(public_key.clone(), data_capsule);
-            Proxy::<T>::insert(public_key.clone(), proxy.clone());
-            // need to store the sk_encryption_info
-            ProxyCodes::<T>::insert(proxy.clone(), public_key.clone(), sk_encryption_info.clone());
-            // for gateway nodes
-            IngestionStaging::<T>::insert(owner.clone(), public_key.clone());
-            // TODO: emit event
-            Ok(())
-        }
-	}
+    }
 }
 
 impl<T: Config> Pallet<T> {
@@ -573,64 +383,69 @@ impl<T: Config> Pallet<T> {
 			.build()
 	}
 
-    /// TODO: should it be signed or unsigned tx? probably signed right?
-    /// checkout: client\network\src\config.rs for sk generation/storage + write to file
-    /// Recover signing acct and use it to encrypt the data and submit unsigned tx
-    pub fn encrypt(
-        plaintext: Bytes,
-        signature: Bytes,
-        signer: Bytes,
-        message: Bytes,
-        shares: usize,
-        threshold: usize,
-        proxy: Bytes,
-    ) -> Option<Bytes> {
+    // /// TODO: should it be signed or unsigned tx? probably signed right?
+    // /// checkout: client\network\src\config.rs for sk generation/storage + write to file
+    // /// Recover signing acct and use it to encrypt the data and submit unsigned tx
+    // pub fn encrypt(
+    //     plaintext: Bytes,
+    //     signature: Bytes,
+    //     signer: Bytes,
+    //     message: Bytes,
+    //     shares: usize,
+    //     threshold: usize,
+    //     proxy: Bytes,
+    // ) -> Option<Bytes> {
 
-        let proxy_acct_bytes: [u8;32] = proxy.to_vec().try_into().unwrap();
-        // let proxy_acct_pubkey = Public::from_raw(proxy_acct_bytes);
-        let proxy_acct_id: T::AccountId = T::AccountId::decode(&mut &proxy_acct_bytes[..]).unwrap();
+    //     let proxy_acct_bytes: [u8;32] = proxy.to_vec().try_into().unwrap();
+    //     // let proxy_acct_pubkey = Public::from_raw(proxy_acct_bytes);
+    //     let proxy_acct_id: T::AccountId = T::AccountId::decode(&mut &proxy_acct_bytes[..]).unwrap();
 
-        let acct_bytes: [u8;32] = signer.to_vec().try_into().unwrap();
-        let acct_pubkey = Public::from_raw(acct_bytes);
-        let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
-        let msg: Vec<u8> = message.to_vec();
+    //     let acct_bytes: [u8;32] = signer.to_vec().try_into().unwrap();
+    //     let acct_pubkey = Public::from_raw(acct_bytes);
+    //     let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
+    //     let msg: Vec<u8> = message.to_vec();
 
-        let acct_id: T::AccountId = T::AccountId::decode(&mut &acct_bytes[..]).unwrap();
+    //     let acct_id: T::AccountId = T::AccountId::decode(&mut &acct_bytes[..]).unwrap();
 
-        if sig.verify(msg.as_slice(), &acct_pubkey) {
-            let proxy_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(proxy_acct_id.clone());
-            let proxy_pk_slice = iris_primitives::slice_to_array_32(&proxy_pk_vec).unwrap();
-            let proxy_pk = BoxPublicKey::from(*proxy_pk_slice);
+    //     if sig.verify(msg.as_slice(), &acct_pubkey) {
+    //         let proxy_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(proxy_acct_id.clone());
+    //         let proxy_pk_slice = iris_primitives::slice_to_array_32(&proxy_pk_vec).unwrap();
+    //         let proxy_pk = BoxPublicKey::from(*proxy_pk_slice);
 
-            let plaintext_as_slice: &[u8] = &plaintext.to_vec();
+    //         let plaintext_as_slice: &[u8] = &plaintext.to_vec();
 
-            match iris_primitives::encrypt_phase_1(plaintext_as_slice, shares, threshold, proxy_pk) {
-                // capsule, ciphertext, public key, encrypted secret key
-                Ok(result) => {
-                    let data_capsule_vec: Vec<u8> = result.0.to_array().as_slice().to_vec();
-                    let pk: Vec<u8> = result.2.to_array().as_slice().to_vec();
+    //         // match T::OffchainKeyManager::encrypt(plaintext, shares, threshold, proxy_pk) {
+    //         //     Some(ciphertext) => { },
+    //         //     None => { }
+    //         // }
 
-                    let call = Call::submit_encryption_artifacts { 
-                        owner: acct_id,
-                        data_capsule: data_capsule_vec,
-                        public_key: pk.clone(),
-                        proxy: proxy_acct_id.clone(),
-                        sk_encryption_info: result.3.clone(),
-                    };
+    //         match iris_primitives::encrypt_phase_1(plaintext_as_slice, shares, threshold, proxy_pk) {
+    //             // capsule, ciphertext, public key, encrypted secret key
+    //             Ok(result) => {
+    //                 let data_capsule_vec: Vec<u8> = result.0.to_array().as_slice().to_vec();
+    //                 let pk: Vec<u8> = result.2.to_array().as_slice().to_vec();
+
+    //                 let call = Call::submit_encryption_artifacts { 
+    //                     owner: acct_id,
+    //                     data_capsule: data_capsule_vec,
+    //                     public_key: pk.clone(),
+    //                     proxy: proxy_acct_id.clone(),
+    //                     sk_encryption_info: result.3.clone(),
+    //                 };
         
-                    SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
-                        .map_err(|()| "Unable to submit unsigned transaction.");
+    //                 SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
+    //                     .map_err(|()| "Unable to submit unsigned transaction.");
             
-                    Some(Bytes::from(result.1.to_vec()))
-                },
-                Err(e) => {
-                    Some(Bytes::from("".as_bytes().to_vec()))
-                }
-            };
-        }
+    //                 Some(Bytes::from(result.1.to_vec()))
+    //             },
+    //             Err(e) => {
+    //                 Some(Bytes::from("".as_bytes().to_vec()))
+    //             }
+    //         };
+    //     }
 
-        None 
-    }
+    //     None 
+    // }
 
     /// Attempt to decrypt the ciphertext
     /// 
@@ -745,133 +560,24 @@ impl<T: Config> Convert<T::ValidatorId, Option<T::ValidatorId>> for ValidatorOf<
 }
 
 /// a trait to provide the ingestion queue to other modules
-pub trait QueueProvider<AccountId, AssetId, Balance> {
-    fn get_ephemeral_key(account: AccountId, data_public_key: Vec<u8>) -> Vec<u8>;
-    fn submit_ephemeral_key(account: AccountId, data_public_key: Vec<u8>, public_key: Vec<u8>);
-    fn get_reencryption_requests(acct: AccountId) -> Vec<ReencryptionRequest<AccountId>>;
-    /// read ingestion requests issued for a specific gateway
+pub trait QueueManager<AccountId, Balance> {
+
+    fn add_ingestion_staging(owner: AccountId, public_key: Vec<u8>);
     fn ingestion_requests(gateway: AccountId) -> Vec<IngestionCommand<AccountId, Balance>>;
-    /// TODO: these may be more appropriate if in the Authorization pallet
-    /// request that the kfrag holder recovers the capsule fragment associated with the given public key
-    fn add_capsule_recovery_request(
-        account: AccountId,
-        public_key: Vec<u8>, 
-    );
-    // fn remove_capsule_recovery_request(account: AccountId, public_key: Vec<u8>);
-    /// add a verified capsule to the verified capsules storage map
-    fn add_verified_capsule_frag(account: AccountId, public_key: Vec<u8>, encrypted_capsule_framgent_data: EncryptedFragment);
-    fn get_capsule_recovery_requests(account: AccountId) -> Vec<CapsuleRecoveryRequest<AccountId>>;
-    /// remove the specified public key from the collection of fragments to recover
-    // fn remove_capsule_recovery_request(kfrag_holder: AccountId, public_key: Vec<u8>);
-    /// get the holder of kfrags as identified by public key
-    // fn get_fragment_holders(public_key: Vec<u8>) -> Vec<AccountId>;
-    fn get_kfrags(public_key: Vec<u8>, account: AccountId, kfrag_holder: AccountId) -> Option<EncryptedFragment>;
-    fn get_capsule(public_key: Vec<u8>) -> Option<Vec<u8>>;
-    fn get_proxy_code(account: AccountId, public_key: Vec<u8>) -> Option<EncryptedFragment>;
-    fn submit_fragment(consumer: AccountId, public_key: Vec<u8>, assignee: AccountId, key_frag_info: EncryptedFragment);
-    fn submit_fragment_holders(consumer: AccountId, public_key: Vec<u8>, holders: Vec<AccountId>);
+
+    // fn capsule_recovery_requests();
+    // fn add_capsule_recovery_request();
+
 }
 
-impl<T: Config> QueueProvider<T::AccountId, T::AssetId, T::Balance> for Pallet<T> {
+impl<T: Config> QueueManager<T::AccountId, T::Balance> for Pallet<T> {
 
-    fn get_ephemeral_key(
-        account: T::AccountId,
-         data_public_key: Vec<u8>,
-    ) -> Vec<u8> {
-        EphemeralKeys::<T>::get(account, data_public_key)
-    }
-
-    fn submit_ephemeral_key(
-        account: T::AccountId,
-        data_public_key: Vec<u8>,
-        public_key: Vec<u8>
-    ) {
-        EphemeralKeys::<T>::insert(account, data_public_key, public_key);
-    }
-
-    fn get_reencryption_requests(acct: T::AccountId) -> Vec<ReencryptionRequest<T::AccountId>> {
-        ReencryptionRequests::<T>::get(acct)
-    }
-
-    fn submit_fragment_holders(
-        consumer: T::AccountId,
-        public_key: Vec<u8>,
-        holders: Vec<T::AccountId>,
-    ) {
-        FragmentOwnerSet::<T>::insert(consumer, public_key, holders);
-    }
-
-    fn submit_fragment(
-        consumer: T::AccountId,
-        public_key: Vec<u8>,
-        assignee: T::AccountId,
-        encrypted_kfrag_data: EncryptedFragment,
-    ) {
-        Fragments::<T>::insert(
-            (
-                consumer.clone(),
-                public_key.clone(),
-                assignee,
-            ), 
-            encrypted_kfrag_data,
-        );
+    fn add_ingestion_staging(owner: T::AccountId, public_key: Vec<u8>) {
+        IngestionStaging::<T>::insert(owner.clone(), public_key.clone());
     }
 
     fn ingestion_requests(gateway: T::AccountId) -> Vec<IngestionCommand<T::AccountId, T::Balance>> {
         IngestionCommands::<T>::get(gateway)
-    }
-
-    fn add_capsule_recovery_request(
-        account: T::AccountId,
-        public_key: Vec<u8>, 
-    ) {
-        // NOTE: this assumes there's at least one proxy available.
-        // TODO: revisit this when testing
-        let proxy = Proxy::<T>::get(public_key.clone()).unwrap();
-        // get proxy node accountid
-        CapsuleRecoveryRequests::<T>::mutate(proxy, |mut pks| {
-            pks.push(CapsuleRecoveryRequest {
-                caller: account,
-                public_key: public_key.clone(),
-            });
-        });
-    }
-
-    fn get_capsule_recovery_requests(account: T::AccountId) -> Vec<CapsuleRecoveryRequest<T::AccountId>> {
-        CapsuleRecoveryRequests::<T>::get(account)
-    }
-
-    // fn remove_capsule_recovery_request(
-    //     account: T::AccountId,
-    //     public_key: Vec<u8>, 
-    // ) {
-    //     CapsuleRecoveryRequests::<T>::remove(account, public_key);
-    // }
-
-    fn add_verified_capsule_frag(account: T::AccountId, public_key: Vec<u8>, verified_cfrag_data: EncryptedFragment) {
-        VerifiedCapsuleFrags::<T>::mutate(account, public_key, |cfrags| {
-            cfrags.push(verified_cfrag_data);
-        });
-    }
-
-    // fn remove_capsule_recovery_request(kfrag_holder: T::AccountId, public_key: Vec<u8>) {
-    //     // TODO
-    // }
- 
-    // fn get_fragment_holders(public_key: Vec<u8>) -> Vec<T::AccountId> {
-    //     FragmentOwnerSet::<T>::get(public_key)
-    // }
-    
-    fn get_kfrags(public_key: Vec<u8>, account: T::AccountId, kfrag_holder: T::AccountId) -> Option<EncryptedFragment> {
-        Fragments::<T>::get((account, public_key, kfrag_holder))
-    }
-
-    fn get_capsule(public_key: Vec<u8>) -> Option<Vec<u8>> {
-        Capsules::<T>::get(public_key)
-    }
-
-    fn get_proxy_code(account: T::AccountId, public_key: Vec<u8>) -> Option<EncryptedFragment> {
-        ProxyCodes::<T>::get(account, public_key)
     }
 }
 
@@ -916,7 +622,7 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
                 let mut cmds = IngestionCommands::<T>::get(who.clone());
                 let cmd_idx = cmds.iter().position(|c| *c == cmd.clone()).unwrap();
                 cmds.remove(cmd_idx);
-                IngestionCommands::<T>::insert(who.clone(), cmds);
+                IngestionCommands::<T>::insert(who.clone(), cmds); // needed?
                 // emit event?
                 Ok(())
             },
