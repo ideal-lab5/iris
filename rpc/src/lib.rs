@@ -54,7 +54,12 @@ pub trait EncryptionApi<BlockHash, Balance> {
 	#[method(name = "iris_decrypt")]
 	fn decrypt(
 		&self,
-		bytes: Bytes,
+		ciphertext: Bytes,
+		signature: Bytes,
+		signer: Bytes,
+		message: Bytes,
+		asset_id: u32,
+		secret_key: Bytes,
 		at: Option<BlockHash>,
 	) -> RpcResult<Option<Bytes>>;
 }
@@ -122,14 +127,19 @@ where
 
 	fn decrypt(
 		&self,
-		bytes: Bytes,
+		ciphertext: Bytes,
+		signature: Bytes,
+		signer: Bytes,
+		message: Bytes,
+		asset_id: u32,
+		secret_key: Bytes,
 		at: Option<<Block as BlockT>::Hash>
 	) -> RpcResult<Option<Bytes>> {
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			self.client.info().best_hash
 		));
-		api.decrypt(&at, bytes).map_err(|e| {
+		api.decrypt(&at, ciphertext, signature, signer, message, asset_id, secret_key).map_err(|e| {
 			CallError::Custom(ErrorObject::owned(
 				Error::RuntimeError.into(),
 				"Unable to retrieve bytes.",

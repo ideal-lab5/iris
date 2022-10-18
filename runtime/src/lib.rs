@@ -888,8 +888,22 @@ impl_runtime_apis! {
 			)
 		}
 
-		fn decrypt(bytes: Bytes) -> Option<Bytes> {
-			None
+		fn decrypt(
+			ciphertext: Bytes,
+			signature: Bytes,
+			signer: Bytes,
+			message: Bytes,
+			asset_id: u32,
+			secret_key: Bytes,
+		) -> Option<Bytes> {
+			IrisProxy::decrypt(
+				signature,
+				signer,
+				message,
+				ciphertext,
+				asset_id,
+				secret_key,
+			)
 		}
 	}
 

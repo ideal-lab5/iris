@@ -45,6 +45,13 @@ sp_api::decl_runtime_apis! {
 			proxy: Bytes,
 		) -> Option<Bytes>;
 
-		fn decrypt(bytes: Bytes) -> Option<Bytes>;
+		fn decrypt(
+			ciphertext: Bytes,
+			signature: Bytes,
+			signer: Bytes,
+			message: Bytes,
+			asset_id: u32,
+			secret_key: Bytes,
+		) -> Option<Bytes>;
 	}
 }
