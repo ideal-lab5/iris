@@ -80,19 +80,16 @@ pub struct AssetId<T: Copy> {
     pub id: T,
 }
 
-#[derive(PartialEq, Eq, Encode, Decode, RuntimeDebug)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct EncryptionResult {
-	pub public_key: Bytes,
-	pub ciphertext: Bytes,
-}
-
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Clone)]
 pub struct EncryptedFragment {
     pub nonce: Vec<u8>,
     pub ciphertext: Vec<u8>,
     pub public_key: Vec<u8>,
 }
+
+/*
+    ENCRYPTION FUNCTIONS
+*/
 
 /// generates a new keypair and uses it to encrypt the plaintext
 /// also encrypts the secret key with itself and generates 'shares' keyfragments
@@ -105,7 +102,7 @@ pub struct EncryptedFragment {
 ///
 /// return encryption artifacts (Capsule, ciphertext, and public key) if successful, otherwise returns None
 ///
-pub fn encrypt_phase_1(
+pub fn encrypt(
     plaintext: &[u8], 
     shares: usize, 
     threshold: usize,
@@ -122,7 +119,7 @@ pub fn encrypt_phase_1(
         Ok((capsule, ciphertext)) => (capsule, ciphertext),
         Err(error) => {
             return Err(error);
-        },
+        }
     };
 
     let encrypted_sk = encrypt_x25519(proxy_public_key, data_owner_umbral_sk.to_string().as_bytes().to_vec());
@@ -139,7 +136,10 @@ pub fn encrypt_phase_1(
 /// Encrypt the bytes with an ephemeral secret key and your provided public key.
 /// This performs asymmetric encryption
 ///
-pub fn encrypt_x25519(public_key: BoxPublicKey, key_fragment_bytes: Vec<u8>) -> EncryptedFragment {
+pub fn encrypt_x25519(
+    public_key: BoxPublicKey, 
+    key_fragment_bytes: Vec<u8>,
+) -> EncryptedFragment {
     let mut rng = ChaCha20Rng::seed_from_u64(31u64);
     let ephemeral_secret_key = BoxSecretKey::generate(&mut rng);
 
@@ -155,6 +155,51 @@ pub fn encrypt_x25519(public_key: BoxPublicKey, key_fragment_bytes: Vec<u8>) -> 
         ciphertext: ciphertext,
         public_key: ephemeral_secret_key.public_key().as_bytes().to_vec()
     }
+}
+
+/*
+    DECRYPTION FUNCTIONS
+*/
+
+pub fn decrypt(
+    ciphertext: Vec<u8>,
+    x25519_sk: BoxSecretKey, // supplied to the rpc as an argument
+    data_owner_public_key: PublicKey,
+    consumer_secret_key: SecretKey,
+    encrypted_capsule_fragments: Vec<EncryptedFragment>,
+    capsule: Capsule,
+) -> Result<Vec<u8>, ReencryptionError>  {
+    // for each encrypted capsule fragment, we need to decrypt it
+    let verified_capsule_fragments: Vec<VerifiedCapsuleFrag> = 
+        convert_encrypted_capsules(encrypted_capsule_fragments, x25519_sk.clone());
+    match decrypt_reencrypted(
+        &consumer_secret_key, &data_owner_public_key, &capsule, verified_capsule_fragments, &ciphertext
+    ) {
+        Ok(result) => {
+            return Ok(result.to_vec());
+        }
+        Err(e) => {
+            return Err(e);
+        }
+    }
+}
+
+fn convert_encrypted_capsules(
+    encrypted_capsule_frags: Vec<EncryptedFragment>,
+    x25519_sk: BoxSecretKey,
+) -> Vec<VerifiedCapsuleFrag> {
+    encrypted_capsule_frags.iter().map(|enc_cap_frag| {
+        let raw_pk = enc_cap_frag.public_key.clone();
+        let pk_slice = slice_to_array_32(&raw_pk).unwrap();
+        let pk = BoxPublicKey::from(*pk_slice);
+        let decrypted_capsule_vec = decrypt_x25519(
+            pk,
+            x25519_sk.clone(),
+            enc_cap_frag.ciphertext.clone(),
+            enc_cap_frag.nonce.clone(),
+        );
+        VerifiedCapsuleFrag::from_verified_bytes(decrypted_capsule_vec).unwrap()
+    }).collect::<Vec<_>>()
 }
 
 /// Decrypt message encrypted with X25519 keys
@@ -208,7 +253,7 @@ fn encryption_can_encrypt() {
 	let shares: usize = 3;
 	let threshold: usize = 3;
 
-	let result = encrypt_phase_1(plaintext, shares, threshold, pk).unwrap();
+	let result = encrypt(plaintext, shares, threshold, pk).unwrap();
 	assert_eq!(49, result.3.len());
 }
 

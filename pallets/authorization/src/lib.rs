@@ -98,15 +98,6 @@ pub mod pallet {
         ValueQuery,
     >;
 
-    // #[pallet::storage]
-    // pub type EjectionCommands<T: Config> = StorageMap<
-    //     _,
-    //     Blake2_128Concat,
-    //     T::AccountId,
-    //     Vec<EjectionCommand<T::AccountId, T::AssetId>>,
-    //     ValueQuery,
-    // >;
-
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
@@ -194,7 +185,7 @@ pub mod pallet {
                             // is there any way we can use the vesting schedule approach to facilitate this?
                             <Lock::<T>>::insert(&data_consumer_address, &asset_id, execution_result);
                             if execution_result {
-                                match T::MetadataProvider::get(asset_id.clone()) {
+                                match <T as pallet::Config>::MetadataProvider::get(asset_id.clone()) {
                                     Some(metadata) => {
                                         // use the metadata to get the associated public key used to encrypt the data
                                         <pallet_iris_proxy::Pallet<T>>::add_capsule_recovery_request(

@@ -71,8 +71,7 @@ use sp_runtime::{
 };
 use codec::HasCompact;
 use iris_primitives::*;
-use pallet_authorities::EraProvider;
-use pallet_data_assets::QueueManager;
+use pallet_data_assets::{MetadataProvider, QueueManager};
 
 use umbral_pre::*;
 
@@ -156,6 +155,8 @@ pub mod pallet {
         type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
 		/// read/write to data ingestion/ejection queues
 		type QueueManager: pallet_data_assets::QueueManager<Self::AccountId, Self::Balance>;
+		/// get metadata of data assets
+		type MetadataProvider: pallet_data_assets::MetadataProvider<Self::AssetId>;
 	}
 
 	#[pallet::pallet]
@@ -253,6 +254,18 @@ pub mod pallet {
         ValueQuery,
     >;
 
+	// TODO get rid of this/merge with other maps
+	#[pallet::storage]
+	pub type SecretKeys<T: Config> = StorageDoubleMap<
+		_,
+		Blake2_128Concat,
+		T::AccountId, // the consumer
+		Blake2_128Concat,
+		Vec<u8>,    // the data pk
+		EncryptedFragment,    // the encrypted secret key info
+		OptionQuery,
+	>;
+
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
@@ -291,6 +304,7 @@ pub mod pallet {
 			public_key: Vec<u8>,
 			encrypted_cfrag_data: iris_primitives::EncryptedFragment,
 		) -> DispatchResult {
+			// should there be any verification that this public key was generated via the encryption? probably
 			VerifiedCapsuleFrags::<T>::mutate(data_consumer, public_key, |cfrags| {
             	cfrags.push(encrypted_cfrag_data);
         	});
@@ -306,7 +320,7 @@ pub mod pallet {
 			ephemeral_public_key: Vec<u8>,
 			data_public_key: Vec<u8>,
 			kfrag_assignments: Vec<(T::AccountId, EncryptedFragment)>,
-			secret_key_fragment: EncryptedFragment,
+			secret_key_fragment: EncryptedFragment, // recall: this key is encrypted with consumer's pk
 		) -> DispatchResult {
 			// ensure_signed(origin)?;
 			let mut frag_holders = Vec::new();
@@ -324,7 +338,8 @@ pub mod pallet {
             }
 			EphemeralKeys::<T>::insert(consumer.clone(), data_public_key.clone(), ephemeral_public_key.clone());
 			FragmentOwnerSet::<T>::insert(consumer.clone(), data_public_key.clone(), frag_holders);
-			// TODO: emite event
+			SecretKeys::<T>::insert(consumer.clone(), data_public_key.clone(), secret_key_fragment.clone());
+			// TODO: emit event
 			Ok(())
 		}
 
@@ -352,6 +367,90 @@ pub mod pallet {
 
 impl<T: Config> Pallet<T> {
 
+	pub fn decrypt(
+		signature: Bytes,
+        signer: Bytes,
+        message: Bytes,
+		ciphertext: Bytes,
+		asset_id: u32,
+		secret_key: Bytes, // uhm... yeah that's gonna be totally fine... for now...
+	) -> Option<Bytes> {
+		
+        let acct_bytes: [u8;32] = signer.to_vec().try_into().unwrap();
+        let acct_pubkey = Public::from_raw(acct_bytes);
+        let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
+        let msg: Vec<u8> = message.to_vec();
+        let acct_id: T::AccountId = T::AccountId::decode(&mut &acct_bytes[..]).unwrap();
+
+        if sig.verify(msg.as_slice(), &acct_pubkey) {
+			let sk_vec = secret_key.to_vec();
+			let sk_slice = iris_primitives::slice_to_array_32(&sk_vec).unwrap();
+			let sk = BoxSecretKey::from(*sk_slice);
+			// map asset_id to public_key 
+            let asset_id_as_type = TryInto::<T::AssetId>::try_into(asset_id).ok().unwrap();
+			// again shouldn't make this assumption... will fix later when testing
+			let metadata = T::MetadataProvider::get(asset_id_as_type.clone()).unwrap();
+
+			let capsule_vec = Capsules::<T>::get(metadata.public_key.clone()).unwrap();
+			let capsule: Capsule = Capsule::from_bytes(capsule_vec).unwrap();
+			let encrypted_sk = SecretKeys::<T>::get(acct_id.clone(), metadata.public_key.clone()).unwrap();
+
+			// decrypt secret key
+			return Some(Self::do_decrypt(
+				acct_id.clone(), 
+				ciphertext.to_vec(),
+				metadata.public_key.clone(),
+				encrypted_sk,
+				sk,
+				capsule,
+			));
+
+		}
+
+		Some(Bytes::from(Vec::new()))
+	}
+
+	fn do_decrypt(
+		account_id: T::AccountId,
+		ciphertext: Vec<u8>,
+		data_public_key_vec: Vec<u8>,
+		encrypted_decryption_key: EncryptedFragment,
+		x25519_sk: BoxSecretKey,
+		capsule: Capsule,
+	) -> Bytes {
+		let encrypted_capsule_fragments = VerifiedCapsuleFrags::<T>::get(
+			account_id.clone(), data_public_key_vec.clone(),
+		);
+
+		// the public key associated with secret that encrypted the cfrags
+		let pk_for_encrypted_sk = encrypted_decryption_key.public_key.clone();
+		let pk_slice = iris_primitives::slice_to_array_32(&pk_for_encrypted_sk).unwrap();
+		let pk = BoxPublicKey::from(*pk_slice);
+
+		let decrypted_tpre_sk_bytes = iris_primitives::decrypt_x25519(
+			pk.clone(),
+			x25519_sk.clone(),
+			encrypted_decryption_key.ciphertext.clone(),
+			encrypted_decryption_key.nonce.clone(),
+		);
+		let decrypted_sk = SecretKey::from_bytes(decrypted_tpre_sk_bytes).unwrap();
+
+		let pk_for_data = data_public_key_vec.clone();
+		let data_pk_slice = iris_primitives::slice_to_array_32(&pk_for_data).unwrap();
+		let data_public_key = PublicKey::from_bytes(&data_pk_slice).unwrap();
+
+		let plaintext = match iris_primitives::decrypt(
+			ciphertext, x25519_sk.clone(), data_public_key, 
+			decrypted_sk, encrypted_capsule_fragments, capsule,
+		) {
+			Ok(plaintext) => plaintext,
+			Err(e) => {
+				"".as_bytes().to_vec()
+			}
+		};
+		Bytes::from(plaintext)
+	}
+
     /// TODO: should it be signed or unsigned tx? probably signed right?
     /// checkout: client\network\src\config.rs for sk generation/storage + write to file
     /// Recover signing acct and use it to encrypt the data and submit unsigned tx
@@ -364,7 +463,6 @@ impl<T: Config> Pallet<T> {
         threshold: usize,
         proxy: Bytes,
     ) -> Option<Bytes> {
-
         let proxy_acct_bytes: [u8;32] = proxy.to_vec().try_into().unwrap();
         let proxy_acct_id: T::AccountId = T::AccountId::decode(&mut &proxy_acct_bytes[..]).unwrap();
 
@@ -375,69 +473,51 @@ impl<T: Config> Pallet<T> {
 
         let acct_id: T::AccountId = T::AccountId::decode(&mut &acct_bytes[..]).unwrap();
 
+		// how do I test this?
         if sig.verify(msg.as_slice(), &acct_pubkey) {
             let proxy_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(proxy_acct_id.clone());
             let proxy_pk_slice = iris_primitives::slice_to_array_32(&proxy_pk_vec).unwrap();
             let proxy_pk = BoxPublicKey::from(*proxy_pk_slice);
             let plaintext_as_slice: &[u8] = &plaintext.to_vec();
-
-            match iris_primitives::encrypt_phase_1(plaintext_as_slice, shares, threshold, proxy_pk) {
-                // capsule, ciphertext, public key, encrypted secret key
-                Ok(result) => {
-                    let data_capsule_vec: Vec<u8> = result.0.to_array().as_slice().to_vec();
-                    let pk: Vec<u8> = result.2.to_array().as_slice().to_vec();
-
-                    let call = Call::submit_encryption_artifacts { 
-                        owner: acct_id,
-                        data_capsule: data_capsule_vec,
-                        public_key: pk.clone(),
-                        proxy: proxy_acct_id.clone(),
-                        sk_encryption_info: result.3.clone(),
-                    };
-        
-                    SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
-                        .map_err(|()| "Unable to submit unsigned transaction.");
-            
-                    Some(Bytes::from(result.1.to_vec()))
-                },
-                Err(e) => {
-                    Some(Bytes::from("".as_bytes().to_vec()))
-                }
-            };
+			Self::do_encrypt(plaintext_as_slice, shares, threshold, proxy_pk, acct_id, proxy_acct_id.clone());
         }
 
         None 
     }
 
-	// fn do_encrypt(plaintext: &[u8], proxy: T::AccountId, shares: usize, threshold: usize) {
-	// 	let proxy_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(proxy_acct_id.clone());
-	// 	let proxy_pk_slice = iris_primitives::slice_to_array_32(&proxy_pk_vec).unwrap();
-	// 	let proxy_pk = BoxPublicKey::from(*proxy_pk_slice);
+	pub fn do_encrypt(
+		plaintext: &[u8],
+		shares: usize,
+		threshold: usize,
+		proxy_pk: BoxPublicKey,
+		owner_account_id: T::AccountId,
+		proxy_account_id: T::AccountId,
+	) -> Bytes {
+		let ciphertext = match iris_primitives::encrypt(plaintext, shares, threshold, proxy_pk) {
+			// (capsule, ciphertext, public key, encrypted secret key)
+			Ok(result) => {
+				let data_capsule_vec: Vec<u8> = result.0.to_array().as_slice().to_vec();
+				let pk: Vec<u8> = result.2.to_array().as_slice().to_vec();
 
-	// 	match iris_primitives::encrypt_phase_1(plaintext_as_slice, shares, threshold, proxy_pk) {
-	// 		// capsule, ciphertext, public key, encrypted secret key
-	// 		Ok(result) => {
-	// 			let data_capsule_vec: Vec<u8> = result.0.to_array().as_slice().to_vec();
-	// 			let pk: Vec<u8> = result.2.to_array().as_slice().to_vec();
-
-	// 			let call = Call::submit_encryption_artifacts { 
-	// 				owner: acct_id,
-	// 				data_capsule: data_capsule_vec,
-	// 				public_key: pk.clone(),
-	// 				proxy: proxy_acct_id.clone(),
-	// 				sk_encryption_info: result.3.clone(),
-	// 			};
+				let call = Call::submit_encryption_artifacts { 
+					owner: owner_account_id,
+					data_capsule: data_capsule_vec,
+					public_key: pk.clone(),
+					proxy: proxy_account_id.clone(),
+					sk_encryption_info: result.3.clone(),
+				};
 	
-	// 			SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
-	// 				.map_err(|()| "Unable to submit unsigned transaction.");
+				SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
+					.map_err(|()| "Unable to submit unsigned transaction.");
 		
-	// 			Some(Bytes::from(result.1.to_vec()))
-	// 		},
-	// 		Err(e) => {
-	// 			Some(Bytes::from("".as_bytes().to_vec()))
-	// 		}
-	// 	};
-	// }
+				result.1.to_vec()
+			},
+			Err(e) => {
+				"".as_bytes().to_vec()
+			}
+		};
+		Bytes::from(ciphertext)
+	}
 
 	// A proxy processes requests to generate kfrags
 	// verify kfrag and convert to cfrag

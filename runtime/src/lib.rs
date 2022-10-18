@@ -77,7 +77,6 @@ pub use sp_runtime::{Perbill, Permill};
 use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
 use pallet_authorities::EraIndex;
 use pallet_ipfs_primitives::IpfsResult;
-use iris_primitives::EncryptionResult;
 
 pub use pallet_data_assets;
 pub use pallet_authorization;
@@ -466,6 +465,15 @@ impl pallet_data_assets::Config for Runtime {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
+impl pallet_iris_proxy::Config for Runtime {
+	type Event = Event;
+	type Call = Call;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type QueueManager = DataAssets;
+	type MetadataProvider = DataAssets;
+}
+
+
 impl pallet_authorization::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
@@ -551,14 +559,6 @@ impl pallet_vesting::Config for Runtime {
 	const MAX_VESTING_SCHEDULES: u32 = 28;
 }
 
-impl pallet_iris_proxy::Config for Runtime {
-	type Event = Event;
-	type Call = Call;
-	type AuthorityId = pallet_authorities::crypto::TestAuthId;
-	type QueueManager = DataAssets;
-}
-
-
 impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Runtime
 where
 	Call: From<LocalCall>,
@@ -635,6 +635,7 @@ construct_runtime!(
 		Sudo: pallet_sudo,
 		Assets: pallet_assets,
 		DataAssets: pallet_data_assets,
+		IrisProxy: pallet_iris_proxy,
 		Authorization: pallet_authorization,
 		Ledger: pallet_ledger,
 		Authorities: pallet_authorities,
@@ -645,7 +646,6 @@ construct_runtime!(
 		Gateway: pallet_gateway,
 		Ipfs: pallet_ipfs,
 		Vesting: pallet_vesting,
-		IrisProxy: pallet_iris_proxy,
 	}
 );
 

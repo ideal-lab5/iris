@@ -30,8 +30,6 @@ use sp_runtime::{
 	traits::MaybeDisplay,
 };
 
-use iris_primitives::EncryptionResult;
-
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 

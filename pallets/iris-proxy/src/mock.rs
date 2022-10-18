@@ -18,8 +18,8 @@
 #![cfg(test)]
 
 use super::*;
-use crate::{self as pallet_gateway, Config};
-use pallet_data_assets;
+use crate::{self as pallet_iris_proxy, Config};
+// use pallet_data_assets;
 use frame_support::{
 	parameter_types, 
 	traits::{GenesisBuild, ConstU32},
@@ -99,7 +99,7 @@ frame_support::construct_runtime!(
 		Assets: pallet_assets,
 		Authorities: pallet_authorities,
 		DataAssets: pallet_data_assets,
-		Gateway: pallet_gateway,
+		IrisProxy: pallet_iris_proxy,
 	}
 );
 
@@ -289,20 +289,14 @@ impl pallet_authorities::Config for Test {
 	type MaxDeadSession = MaxDeadSession;
 }
 
-parameter_types! {
-	pub const BondingDuration: EraIndex = 3;
-}
-
 impl Config for Test {
 	type Event = Event;
 	type Call = Call;
-	type Currency = Balances;
-	type Balance = <Self as pallet_balances::Config>::Balance;
-	type BondingDuration = BondingDuration;
-	type EraProvider = Authorities;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type QueueManager = DataAssets;
 }
 
-type Extrinsic = TestXt<Call, ()>;
+pub type Extrinsic = TestXt<Call, ()>;
 type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 impl frame_system::offchain::SigningTypes for Test {
@@ -366,10 +360,12 @@ pub fn new_test_ext_default(validators: Vec<(sp_core::sr25519::Public, UintAutho
 }
 
 // Build genesis storage according to the mock runtime.
-pub fn new_test_ext_default_funded_validators(
-	validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>,
+pub fn new_test_ext_funded(
+	pairs: Vec<(sp_core::sr25519::Public, u64)>,
+	validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>
 ) -> sp_io::TestExternalities {
 	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
+
 	let keys: Vec<_> = validators.clone().iter()
 		.map(|i| (i.0, i.0, i.1.clone().into())).collect();
 	BasicExternalities::execute_with_storage(&mut t, || {
@@ -383,23 +379,14 @@ pub fn new_test_ext_default_funded_validators(
 	}
 	.assimilate_storage(&mut t)
 	.unwrap();
-
+	
 	pallet_session::GenesisConfig::<Test> { keys: keys.clone() }
 		.assimilate_storage(&mut t)
 		.unwrap();
 
-	let (pair2, _) = sp_core::sr25519::Pair::generate();
-	let (pair3, _) = sp_core::sr25519::Pair::generate();
-
 	pallet_balances::GenesisConfig::<Test> {
-		balances: vec![
-			(validators[0].0, 10), 
-			(pair2.public(), 20), 
-			(pair3.public(), 30)
-		],
-	}
-	.assimilate_storage(&mut t)
-	.unwrap();
+		balances: pairs,
+	}.assimilate_storage(&mut t).unwrap();
 
-	sp_io::TestExternalities::new(t)
+	t.into()
 }

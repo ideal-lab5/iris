@@ -109,57 +109,57 @@ fn data_assets_can_request_ingestion() {
 	
 }
 
-#[test]
-fn data_assets_can_submit_encryption_artifacts() {
-	TEST_CONSTANTS.with(|t| {
-		// Given: I am a valid node with a positive balance
-		let pairs = vec![(t.p.clone().public(), 10)];
-		let encrypted_key = EncryptedFragment {
-			nonce: t.name.clone(),
-			ciphertext: t.name.clone(),
-			public_key: t.name.clone(),
-		};
+// #[test]
+// fn data_assets_can_submit_encryption_artifacts() {
+// 	TEST_CONSTANTS.with(|t| {
+// 		// Given: I am a valid node with a positive balance
+// 		let pairs = vec![(t.p.clone().public(), 10)];
+// 		let encrypted_key = EncryptedFragment {
+// 			nonce: t.name.clone(),
+// 			ciphertext: t.name.clone(),
+// 			public_key: t.name.clone(),
+// 		};
 
-		new_test_ext_funded(pairs, validators()).execute_with(|| {
-			// When: I submit key fragments
-			assert_ok!(DataAssets::submit_encryption_artifacts(
-				Origin::signed(t.p.clone().public()),
-				t.p.clone().public(),
-				t.name.clone(),
-				t.name.clone(),
-				t.p.clone().public(),
-				encrypted_key.clone(),
-			));
-			// check proxy
-			// check proxy codes
+// 		new_test_ext_funded(pairs, validators()).execute_with(|| {
+// 			// When: I submit key fragments
+// 			assert_ok!(DataAssets::submit_encryption_artifacts(
+// 				Origin::signed(t.p.clone().public()),
+// 				t.p.clone().public(),
+// 				t.name.clone(),
+// 				t.name.clone(),
+// 				t.p.clone().public(),
+// 				encrypted_key.clone(),
+// 			));
+// 			// check proxy
+// 			// check proxy codes
 
-			let capsule_data = Capsules::<Test>::get(t.name.clone()).unwrap();
-			assert_eq!(t.name.clone(), capsule_data);
+// 			let capsule_data = Capsules::<Test>::get(t.name.clone()).unwrap();
+// 			assert_eq!(t.name.clone(), capsule_data);
 
-			let pk = IngestionStaging::<Test>::get(t.p.public().clone()).unwrap();
-			assert_eq!(t.name.clone(), pk);
-		}); 
-	});
-}
+// 			let pk = IngestionStaging::<Test>::get(t.p.public().clone()).unwrap();
+// 			assert_eq!(t.name.clone(), pk);
+// 		}); 
+// 	});
+// }
 
-#[test]
-pub fn rpc_encrypt_can_encrypt_and_submit_signed_tx() {
-}
+// #[test]
+// pub fn rpc_encrypt_can_encrypt_and_submit_signed_tx() {
+// }
 
-#[test]
-pub fn rpc_encrypt_fails_if_shares_exceeds_validator_count() {
+// #[test]
+// pub fn rpc_encrypt_fails_if_shares_exceeds_validator_count() {
 	
-}
+// }
 
-#[test]
-pub fn rpc_decrypt_can_decrypt() {
+// #[test]
+// pub fn rpc_decrypt_can_decrypt() {
 
-}
+// }
 
-#[test]
-pub fn rpc_decrypt_fail_if_no_cfrags() {
+// #[test]
+// pub fn rpc_decrypt_fail_if_no_cfrags() {
 
-}
+// }
 
 fn validators() -> Vec<(sp_core::sr25519::Public, UintAuthorityId)> {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (

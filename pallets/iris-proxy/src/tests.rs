@@ -22,7 +22,11 @@ use crate::mock::*;
 use frame_support::{
 	assert_noop, assert_ok, assert_err, bounded_vec, pallet_prelude::*
 };
-use sp_runtime::testing::UintAuthorityId;
+use sp_runtime::{
+	testing::UintAuthorityId,
+	traits::{Extrinsic as ExtrinsicT},
+	RuntimeAppPublic,
+};
 use sp_core::Pair;
 use sp_core::{
 	offchain::{testing, OffchainWorkerExt, TransactionPoolExt, OffchainDbExt}
@@ -30,269 +34,222 @@ use sp_core::{
 use sp_keystore::{testing::KeyStore, KeystoreExt, SyncCryptoStore};
 use std::sync::Arc;
 
-/*
-BOND extrinsic tests
-*/
-#[test]
-fn gateway_simple_setup_should_work() {
-	// GIVEN: There are two validator nodes
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	// AND: I have properly setup the mock runtime
-	new_test_ext_default(vec![v0.clone(), v1.clone()]).execute_with(|| {
-		// WHEN: The runtime is initiated with default genesis values
-		// THEN: The values of the proxy pallet match the default values
-		assert_eq!(0, crate::Proxies::<Test>::count());
-		assert_eq!(0, crate::MinGatewayBond::<Test>::get());
-		assert_eq!(None, crate::MaxProxyCount::<Test>::get());
-	});
+use iris_primitives::*;
+use rand_chacha::{
+    ChaCha20Rng,
+    rand_core::SeedableRng,
+};
+use crypto_box::{
+    aead::{ AeadCore, Aead },
+	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
+};
+
+struct TestData {
+	pub p: sp_core::sr25519::Pair,
+	pub q: sp_core::sr25519::Pair,
+	pub plaintext: Vec<u8>,
+	pub ciphertext: Vec<u8>,
+	pub public_key: Vec<u8>,
+	pub data_capsule: Vec<u8>,
+	pub nonce: Vec<u8>,
 }
 
+thread_local!(static TEST_CONSTANTS: TestData = TestData {
+	p: sp_core::sr25519::Pair::generate().0,
+	q: sp_core::sr25519::Pair::generate().0,
+	ciphertext: "ciphertext".as_bytes().to_vec(),
+	plaintext: "plaintext".as_bytes().to_vec(),
+	public_key: "public_key".as_bytes().to_vec(),
+	data_capsule: "data_capsule".as_bytes().to_vec(),
+	nonce: "nonce".as_bytes().to_vec(),
+});
+
 #[test]
-fn gateway_bond_with_valid_values_should_work() {
-	// GIVEN: There are two validator nodes
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	// AND: I have properly setup the mock runtime
-	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
-		// WHEN: I have properly setup the runtime
-		// AND: I attempt to bond my controller to my stash
-		// AND: My controller is my stash (wlog)
-		// THEN: the bonding is successful
-		assert_ok!(Gateway::bond(
-			Origin::signed(v0.0.clone()),
-			v0.0.clone(),
-			1,
-		));
-		// AND: The bonds are updated
-		assert_eq!(Some(v0.0.clone()), crate::Bonded::<Test>::get(v0.0.clone()));
-		// AND: The ledger is updated
-		let expect_staking_ledger = crate::StakingLedger {
-			stash: v0.0.clone(),
-			total: 1,
-			active: 1,
-			unlocking: Default::default(),
-			reserved: Default::default(),
+fn can_submit_encryption_artifacts() {
+	TEST_CONSTANTS.with(|t| {
+		let pairs = vec![(t.p.clone().public(), 10)];
+
+		// Given: I am a valid node with a positive balance
+		let pairs = vec![(t.p.clone().public(), 10)];
+		let encrypted_key = EncryptedFragment {
+			nonce: t.nonce.clone(),
+			ciphertext: t.ciphertext.clone(),
+			public_key: t.public_key.clone(),
 		};
-		assert_eq!(Some(expect_staking_ledger), crate::Ledger::<Test>::get(v0.0.clone()));
+
+		new_test_ext_funded(pairs, validators()).execute_with(|| {
+			// When: I submit key fragments
+			assert_ok!(IrisProxy::submit_encryption_artifacts(
+				Origin::signed(t.p.clone().public()),
+				t.p.clone().public(),
+				t.data_capsule.clone(),
+				t.public_key.clone(),
+				t.p.clone().public(),
+				encrypted_key.clone(),
+			));
+			// check proxy
+			// check proxy codes
+
+			let capsule_data = Capsules::<Test>::get(t.public_key.clone()).unwrap();
+			assert_eq!(t.data_capsule.clone(), capsule_data);
+
+			let proxy = Proxy::<Test>::get(t.public_key.clone()).unwrap();
+			assert_eq!(t.p.clone().public(), proxy.clone());
+
+			let proxy_code = ProxyCodes::<Test>::get(proxy.clone(), t.public_key.clone()).unwrap();
+			assert_eq!(proxy_code, encrypted_key);
+		}); 
 	});
 }
 
 #[test]
-fn gateway_bond_not_validator_err_when_not_validator() {
-	// GIVEN: There are two validator nodes
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	let (not_validator, _) = sp_core::sr25519::Pair::generate();
-	// AND: I have properly setup the mock runtime
-	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
-		// WHEN: I have properly setup the runtime
-		// AND: I attempt to bond my controller to my stash
-		// AND: I am NOT a validator
-		// THEN: The bond fails
-		assert_err!(Gateway::bond(
-			Origin::signed(not_validator.clone().public()),
-			not_validator.clone().public(),
-			1,
-		), crate::Error::<Test>::NotValidator);
-	});
-}
-
-#[test]
-fn proxy_bond_already_bonded_err_when_bonded() {
-	// GIVEN: There are two validator nodes
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	let (not_validator, _) = sp_core::sr25519::Pair::generate();
-	// AND: I have properly setup the mock runtime
-	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
-		// WHEN: I have properly setup the runtime
-		// AND: I attempt to bond my controller to my stash
-		// AND: My controller is my stash (wlog)
-		// THEN: the bonding is successful
-		assert_ok!(Gateway::bond(
-			Origin::signed(v0.0.clone()),
-			v0.0.clone(),
-			1,
-		));
-		// AND: If I try to bond again
-		// THEN: The bond fails
-		assert_err!(Gateway::bond(
-			Origin::signed(v0.0.clone()), 
-			v0.0.clone(),
-			1,
-		), crate::Error::<Test>::AlreadyBonded);
-	});
-}
-
-#[test]
-fn gateway_bond_already_paired_when_controller_in_ledger() {
-	// GIVEN: There are two validator nodes
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	let (not_validator, _) = sp_core::sr25519::Pair::generate();
-	// AND: I have properly setup the mock runtime
-	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
-		// WHEN: I have properly setup the runtime
-		// AND: I attempt to bond my controller to my stash
-		// AND: My controller is my stash (wlog)
-		// THEN: the bonding is successful
-		assert_ok!(Gateway::bond(
-			Origin::signed(v0.0.clone()),
-			v0.0.clone(),
-			1,
-		));
-		// AND: If I try to bond the same controller to a different stash
-		// THEN: I receive an AlreadyPaired error
-		assert_err!(Gateway::bond(
-			Origin::signed(v1.0.clone()), 
-			v0.0.clone(),
-			1,
-		), crate::Error::<Test>::AlreadyPaired);
-	});
-}
-
-#[test]
-fn gateway_bond_insufficient_balance_err_when_value_too_low() {
-	// GIVEN: There are two validator nodes
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	let (not_validator, _) = sp_core::sr25519::Pair::generate();
-	// AND: I have properly setup the mock runtime
-	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
-		// WHEN: I have properly setup the runtime
-		// AND: I attempt to bond my controller to my stash with a low balance
-		// AND: My controller is my stash (wlog)
-		// THEN: the bonding fails with an InsufficientBond error
-		assert_err!(Gateway::bond(
-			Origin::signed(v1.0.clone()), 
-			v1.0.clone(),
-			0,
-		), crate::Error::<Test>::InsufficientBond);
-	});
-}
-
-/*
-BOND and DECLARE_PROXY tests
-*/
-
-#[test]
-fn gateway_declare_gateway_works() {
-	// GIVEN: There are two validator nodes
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	// AND: I have properly setup the mock runtime
-	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
-		// WHEN: I have properly setup the runtime
-		// AND: I attempt to bond my controller to my stash
-		// AND: My controller is my stash (wlog)
-		// THEN: the bonding is successful
-		assert_ok!(Gateway::bond(
-			Origin::signed(v0.0.clone()),
-			v0.0.clone(),
-			1,
-		));
-		let proxy_prefs = crate::GatewayPrefs {
-			max_mbps: 100,
-			storage_max_gb: 100,
+fn can_submit_capsule_fragment() {
+	TEST_CONSTANTS.with(|t| {
+		let pairs = vec![(t.p.clone().public(), 10)];
+		let encrypted_capsule_fragment = iris_primitives::EncryptedFragment {
+			nonce: t.nonce.clone(),
+			ciphertext: t.ciphertext.clone(),
+			public_key: t.public_key.clone(),
 		};
-		assert_ok!(Gateway::declare_gateway(
-			Origin::signed(v0.0.clone()),
-			proxy_prefs.clone(),
-		));
-		// AND: the address is added to the proxies list
-		assert_eq!(Some(proxy_prefs.clone()), crate::Proxies::<Test>::get(v0.0.clone()));
+
+		new_test_ext_funded(pairs, validators()).execute_with(|| {
+			assert_ok!(IrisProxy::submit_capsule_fragment(
+				Origin::signed(t.p.clone().public()),
+				t.p.clone().public(),
+				t.public_key.clone(),
+				encrypted_capsule_fragment.clone(),
+			));
+
+			let verified_cfrags = VerifiedCapsuleFrags::<Test>::get(
+				t.p.clone().public(), t.public_key.clone()
+			);
+			assert_eq!(verified_cfrags.len(), 1);
+			assert_eq!(verified_cfrags[0], encrypted_capsule_fragment.clone());
+		});
 	});
 }
 
-#[test]
-fn gateway_declare_gateway_err_when_not_controller() {
-	// GIVEN: There are two validator nodes
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	// AND: I have properly setup the mock runtime
-	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
-		// WHEN: I have properly setup the runtime
-		// AND: I attempt to bond my controller to my stash
-		// AND: My controller is my stash (wlog)
-		// THEN: the bonding is successful
-		assert_ok!(Gateway::bond(
-			Origin::signed(v0.0.clone()),
-			v0.0.clone(),
-			1,
-		));
-		let proxy_prefs = crate::GatewayPrefs {
-			max_mbps: 100,
-			storage_max_gb: 100,
-		};
-		assert_err!(Gateway::declare_gateway(
-			Origin::signed(v1.0.clone()),
-			proxy_prefs.clone(),
-		), crate::Error::<Test>::NotController);
-	});
-}
-
-// TODO: test setup with genesis config
 // #[test]
-// fn proxy_bond_and_declare_gateway_err_when_max_proxy_count_exceeded() {
+// fn submit_capsule_fragment_fails_if_public_key_unknown() {
 
 // }
 
-/*
-	bond_extra tests
-*/
+// #[test]
+// fn can_submit_reencryption_keys() {
+// 	TEST_CONSTANTS.with(|t| {
+
+// 	});
+// }
+
+
 
 #[test]
-fn gateway_bond_extra_works_with_valid_values() {
-	// GIVEN: There are two validator nodes
+pub fn offchain_can_encrypt_data_and_submit_artifacts() {
+	TEST_CONSTANTS.with(|test_data| {
+		let pairs = vec![(test_data.p.clone().public(), 10)];
+		let shares = 3;
+		let threshold = 2;
+		let plaintext = "plaintext".as_bytes();
+
+		let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+		let sk = BoxSecretKey::generate(&mut rng);
+
+		let mut t = new_test_ext_funded(pairs, validators());
+		let (offchain, state) = testing::TestOffchainExt::new();
+		let (pool, pool_state) = testing::TestTransactionPoolExt::new();
+
+		let keystore = KeyStore::new();
+		const PHRASE: &str =
+			"news slush supreme milk chapter athlete soap sausage put clutch what kitten";
+		SyncCryptoStore::sr25519_generate_new(
+			&keystore,
+			crate::crypto::Public::ID,
+			Some(&format!("{}/hunter1", PHRASE)),
+		).unwrap();
+
+		t.register_extension(OffchainWorkerExt::new(offchain.clone()));
+		t.register_extension(OffchainDbExt::new(offchain.clone()));
+		t.register_extension(TransactionPoolExt::new(pool));
+		t.register_extension(KeystoreExt(Arc::new(keystore)));
+
+		t.execute_with(|| {
+			let ciphertext_bytes = IrisProxy::do_encrypt(
+				&test_data.plaintext.clone(),
+				5, 3,
+				sk.public_key(),
+				test_data.p.clone().public(),
+				test_data.q.clone().public(),
+			);
+			let ciphertext = ciphertext_bytes.to_vec();
+			assert_eq!(49, ciphertext.len());
+			let tx = pool_state.write().transactions.pop().unwrap();
+			assert!(pool_state.read().transactions.is_empty());
+			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
+			// unsigned tx
+			assert_eq!(tx.signature, None);
+			// panic!("{:?}", tx.call);
+		});
+	});
+}
+
+#[test]
+fn can_generate_new_kfrags() {
+	TEST_CONSTANTS.with(|test_data| {
+		let pairs = vec![(test_data.p.clone().public(), 10)];
+		let shares = 3;
+		let threshold = 2;
+		let plaintext = "plaintext".as_bytes();
+
+		let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+		let proxy_sk = BoxSecretKey::generate(&mut rng);
+
+		let mut t = new_test_ext_funded(pairs, validators());
+		let (offchain, state) = testing::TestOffchainExt::new();
+		let (pool, pool_state) = testing::TestTransactionPoolExt::new();
+
+		let keystore = KeyStore::new();
+		const PHRASE: &str =
+			"news slush supreme milk chapter athlete soap sausage put clutch what kitten";
+		SyncCryptoStore::sr25519_generate_new(
+			&keystore,
+			crate::crypto::Public::ID,
+			Some(&format!("{}/hunter1", PHRASE)),
+		).unwrap();
+
+		t.register_extension(OffchainWorkerExt::new(offchain.clone()));
+		t.register_extension(OffchainDbExt::new(offchain.clone()));
+		t.register_extension(TransactionPoolExt::new(pool));
+		t.register_extension(KeystoreExt(Arc::new(keystore)));
+
+		t.execute_with(|| {
+			// GIVEN: Some data has been encrypted and added to the ingestion staging map
+			let ciphertext_bytes = IrisProxy::do_encrypt(
+				&test_data.plaintext.clone(),
+				5, 3,
+				proxy_sk.public_key(),
+				test_data.p.clone().public(),
+				test_data.q.clone().public(),
+			);
+			let ciphertext = ciphertext_bytes.to_vec();
+			assert_eq!(49, ciphertext.len());
+			// AND: I have generated new keys using the authorities pallet
+			// assert_ok!(Authorities::create_secrets(
+			// 	Origin::signed(test_data.q.public().clone()),
+			// ));
+			// // THEN: The public key exists in the ingestion staging map
+			// let new_public_key = DataAssets::ingestion_staging(test_data.p.clone().public()).unwrap();
+			// // WHEN: I simulate a new capsule recovery request for the data
+			// IrisProxy::add_capsule_recovery_request(
+			// 	test_data.p.clone().public(),
+			// 	new_public_key.clone(),
+			// );
+			// THEN: I can generate new key fragments for the caller
+
+		});
+	});
+}
+
+fn validators() -> Vec<(sp_core::sr25519::Public, UintAuthorityId)> {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
 		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
 		UintAuthorityId(0)
@@ -301,70 +258,10 @@ fn gateway_bond_extra_works_with_valid_values() {
 		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
 		UintAuthorityId(1)
 	);
-	// AND: I have properly setup the mock runtime
-	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
-		// WHEN: I have properly setup the runtime
-		// AND: I attempt to bond my controller to my stash
-		// AND: My controller is my stash (wlog)
-		// THEN: the bonding is successful
-		assert_ok!(Gateway::bond(
-			Origin::signed(v0.0.clone()),
-			v0.0.clone(),
-			1,
-		));
-		let expect_staking_ledger = crate::StakingLedger {
-			stash: v0.0.clone(),
-			total: 2,
-			active: 2,
-			reserved: Default::default(),		
-			unlocking: Default::default(),
-		};
-		assert_ok!(Gateway::bond_extra(
-			Origin::signed(v0.0.clone()),
-			1,
-		));
-		// AND: the ledger is updated
-		assert_eq!(Some(expect_staking_ledger), crate::Ledger::<Test>::get(v0.0.clone()));
-	});
-}
+	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
+		UintAuthorityId(2)
+	);
 
-/*
-	unbond tests
-*/
-#[test]
-fn gateway_unbond_works_with_valid_values() {
-// GIVEN: There are two validator nodes
-let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-	sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	// AND: I have properly setup the mock runtime
-	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
-		// WHEN: I have properly setup the runtime
-		// AND: I attempt to bond my controller to my stash
-		// AND: My controller is my stash (wlog)
-		// THEN: the bonding is successful
-		assert_ok!(Gateway::bond(
-			Origin::signed(v0.0.clone()),
-			v0.0.clone(),
-			1,
-		));
-		let expect_staking_ledger = crate::StakingLedger {
-			stash: v0.0.clone(),
-			total: 1,
-			active: 0,
-			unlocking: bounded_vec![UnlockChunk { value: 1, era: 4 }],
-			reserved: Default::default(),
-		};
-		assert_ok!(Gateway::unbond(
-			Origin::signed(v0.0.clone()),
-			1,
-		));
-		// AND: the ledger is updated
-		assert_eq!(Some(expect_staking_ledger), crate::Ledger::<Test>::get(v0.0.clone()));
-	});
+	vec![v0.clone(), v1.clone(), v2.clone()]
 }

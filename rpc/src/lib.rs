@@ -35,7 +35,6 @@ use std::sync::Arc;
 use codec::{Codec, Decode, Encode};
 use sp_std::vec::Vec;
 
-use iris_primitives::EncryptionResult;
 pub use encryption_rpc_runtime_api::EncryptionApi as EncryptionRuntimeApi;
 
 #[rpc(client, server)]
