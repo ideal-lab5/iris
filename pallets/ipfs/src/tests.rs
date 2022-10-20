@@ -75,7 +75,7 @@ pub fn ipfs_can_submit_ingestion_complete() {
 	
 		new_test_ext_funded(test_data.p.clone()).execute_with(|| {
 			// And: A user has encrypted data and submitted capsule/kfrags
-			assert_ok!(DataAssets::submit_encryption_artifacts(
+			assert_ok!(IrisProxy::submit_encryption_artifacts(
 				Origin::signed(test_data.p.clone().public()),
 				test_data.p.clone().public(),
 				test_data.name.clone(),
@@ -83,8 +83,6 @@ pub fn ipfs_can_submit_ingestion_complete() {
 				test_data.p.clone().public(),
 				encrypted_kfrag.clone(),
 			));
-			// let ingestion_cmds_1 = DataAssets::ingestion_commands(p.clone().public());
-			// assert_eq!(ingestion_cmds_1.len(), 1);
 			// And: There is an ingestion request in the queue for a gateway 
 			assert_ok!(DataAssets::create_request(
 				Origin::signed(test_data.p.public().clone()),
@@ -100,11 +98,6 @@ pub fn ipfs_can_submit_ingestion_complete() {
 				Origin::signed(test_data.p.public().clone()),
 				cmd,
 			));
-	
-	
-			// let ingestion_cmds_0 = DataAssets::ingestion_commands(p.clone().public());
-			// assert_eq!(ingestion_cmds_0.len(), 0);
-	
 			// // Then: A new asset class is created with asset id 1
 			let asset = Assets::asset(0);
 			assert_ne!(asset, None);

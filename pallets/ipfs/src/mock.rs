@@ -101,6 +101,7 @@ frame_support::construct_runtime!(
         Balances: pallet_balances,
         Assets: pallet_assets,
 		Ipfs: pallet_ipfs,
+		IrisProxy: pallet_iris_proxy,
 	}
 );
 
@@ -225,6 +226,7 @@ impl Config for Test {
 	type QueueManager = DataAssets;
 	type MetadataProvider = DataAssets;
 	type ResultsHandler = DataAssets;
+	type OffchainKeyManager = IrisProxy;
 	type NodeConfigBlockDuration = NodeConfigBlockDuration;
 }
 
@@ -254,9 +256,16 @@ impl pallet_session::Config for Test {
 impl pallet_authorization::Config for Test {
 	type Event = Event;
 	type Call = Call;
-	type QueueManager = DataAssets;
 	type MetadataProvider = DataAssets;
 	type ValidatorSet = Authorities;
+}
+
+impl pallet_iris_proxy::Config for Test {
+	type Event = Event;
+	type Call = Call;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type QueueManager = DataAssets;
+	type MetadataProvider = DataAssets;
 }
 
 parameter_types! {

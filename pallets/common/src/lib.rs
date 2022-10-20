@@ -48,7 +48,7 @@ use serde::{
 pub struct ReencryptionRequest<AccountId> {
     pub caller: AccountId,
     pub data_public_key: Vec<u8>,
-    pub caller_public_key: Vec<u8>,
+    // pub caller_public_key: Vec<u8>,
 }
 
 #[derive(Eq, Ord, PartialOrd, Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Clone)]
@@ -74,6 +74,7 @@ pub struct IngestionCommand<AccountId, Balance> {
     pub balance: Balance,
 }
 
+// needed? I don't think this is used.
 #[derive(Eq, Ord, PartialOrd, Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Clone, Copy, MaxEncodedLen, Default)]
 pub struct AssetId<T: Copy> {
     // #[codec(compact)]
@@ -122,7 +123,14 @@ pub fn encrypt(
         }
     };
 
-    let encrypted_sk = encrypt_x25519(proxy_public_key, data_owner_umbral_sk.to_string().as_bytes().to_vec());
+    let secret_key_bytes = data_owner_umbral_sk
+        .to_secret_array()
+        .as_secret()
+        .to_vec();
+    let encrypted_sk = encrypt_x25519(
+        proxy_public_key, 
+        secret_key_bytes,
+    );
 
     Ok((
         data_capsule,
@@ -161,30 +169,8 @@ pub fn encrypt_x25519(
     DECRYPTION FUNCTIONS
 */
 
-pub fn decrypt(
-    ciphertext: Vec<u8>,
-    x25519_sk: BoxSecretKey, // supplied to the rpc as an argument
-    data_owner_public_key: PublicKey,
-    consumer_secret_key: SecretKey,
-    capsule_fragments: Vec<VerifiedCapsuleFrag>,
-    capsule: Capsule,
-) -> Result<Vec<u8>, ReencryptionError>  {
-    // for each encrypted capsule fragment, we need to decrypt it
-    let verified_capsule_fragments: Vec<VerifiedCapsuleFrag> = 
-        convert_encrypted_capsules(encrypted_capsule_fragments, x25519_sk.clone());
-    match decrypt_reencrypted(
-        &consumer_secret_key, &data_owner_public_key, &capsule, verified_capsule_fragments, &ciphertext
-    ) {
-        Ok(result) => {
-            return Ok(result.to_vec());
-        }
-        Err(e) => {
-            return Err(e);
-        }
-    }
-}
-
-fn convert_encrypted_capsules(
+/// A helper functio to decrypt and convert encrypted capsule fragments back to capsule fragments
+pub fn convert_encrypted_capsules(
     encrypted_capsule_frags: Vec<EncryptedFragment>,
     x25519_sk: BoxSecretKey,
 ) -> Vec<VerifiedCapsuleFrag> {
@@ -202,6 +188,7 @@ fn convert_encrypted_capsules(
     }).collect::<Vec<_>>()
 }
 
+// TODO: should return Result<(), DecryptionError> instead
 /// Decrypt message encrypted with X25519 keys
 /// 
 /// * `sender_public_key`: The X25519 public key whose corresponding secret key encrypted the ciphertext.
@@ -233,20 +220,14 @@ pub fn slice_to_array_32(slice: &[u8]) -> Option<&[u8; 32]> {
         None
     }
 }
-
-
-
 /*
 	encryption tests
 */
 #[test]
 fn encryption_can_encrypt() {
 	// Given: I am a valid node with a positive balance
-	let (p, _) = sp_core::sr25519::Pair::generate();
-	let pairs = vec![(p.clone().public(), 10)];
-
-	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-	let sk = SecretKey::random_with_rng(rng.clone());
+    let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+	let sk = BoxSecretKey::generate(&mut rng);
 	let pk = sk.public_key();
 
 	let plaintext = "plaintext".as_bytes();
@@ -254,15 +235,11 @@ fn encryption_can_encrypt() {
 	let threshold: usize = 3;
 
 	let result = encrypt(plaintext, shares, threshold, pk).unwrap();
-	assert_eq!(49, result.3.len());
+	assert_eq!(49, result.1.len());
 }
 
 #[test]
 fn can_encrypt_x25519() {
-	// Given: I am a valid node with a positive balance
-	let (p, _) = sp_core::sr25519::Pair::generate();
-	let pairs = vec![(p.clone().public(), 10)];
-
 	let test_vec = "test".as_bytes().to_vec();
 	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
 	let sk = BoxSecretKey::generate(&mut rng);
@@ -275,56 +252,66 @@ fn can_encrypt_x25519() {
 }
 
 // #[test]
-// fn test_can_decrypt_using_out_of_encrypt() {
-//     // Given: I am a valid node with a positive balance
-// 	let (p, _) = sp_core::sr25519::Pair::generate();
-// 	let pairs = vec![(p.clone().public(), 10)];
-
+// fn test_can_decrypt_using_output_of_encrypt() {
 // 	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-// 	let sk = SecretKey::random_with_rng(rng.clone());
+//     let sk = BoxSecretKey::generate(&mut rng);
 // 	let pk = sk.public_key();
 
 // 	let plaintext = "plaintext".as_bytes();
 // 	let shares: usize = 3;
 // 	let threshold: usize = 3;
 
-// 	let result = encrypt(plaintext, shares, threshold, pk).unwrap();
+// 	let result = encrypt(plaintext, shares, threshold, pk.clone()).unwrap();
 
 //     // result = Ok((
-//     //     data_capsule,
-//     //     data_ciphertext.to_vec(),
-//     //     data_owner_umbral_pk,
-//     //     encrypted_sk,
+//     //     0 data_capsule,
+//     //     1 data_ciphertext.to_vec(),
+//     //     2 data_owner_umbral_pk,
+//     //     3 encrypted_sk,
 //     // ))
 
-//     // ciphertext: Vec<u8>,
-//     // x25519_sk: BoxSecretKey, // supplied to the rpc as an argument
-//     // data_owner_public_key: PublicKey,
-//     // consumer_secret_key: SecretKey,
-//     // encrypted_capsule_fragments: Vec<EncryptedFragment>,
-//     // capsule: Capsule,
+//     // 1 ciphertext: Vec<u8>,
+//     // 2 data_owner_public_key: PublicKey,
+//     // 3 consumer_secret_key: SecretKey,
+//     // x  capsule frags
+//     // 0 capsule: Capsule,
+
+//     // now decrypt using result of encrypt
+//     // recover secret key
+//     let encrypted_sk_artifacts = result.3.clone();
+//     let pk_raw = encrypted_sk_artifacts.public_key.clone();
+//     let pk_array = slice_to_array_32(&pk_raw).unwrap();
+//     let recovered_pk = BoxPublicKey::from(*pk_array);
+
+//     let decrypted_sk_raw = decrypt_x25519(
+//         recovered_pk.clone(), sk.clone(), 
+//         encrypted_sk_artifacts.ciphertext.clone(), 
+//         encrypted_sk_artifacts.nonce.clone(),
+//     );
+//     let decrypted_sk_array = slice_to_array_32(&decrypted_sk_raw).unwrap();
+//     let recovered_sk = SecretKey::from(*decrypted_sk_array);
+
+//     // now generate capsule fragments
 
 //     let recovered_plaintext = decrypt(
 //         result.1,
-
+//         result.2,
 //     );
 // }
 
 #[test]
 fn test_can_decrypt_x25519_using_output_of_encrypt_x25519() {
     // Given: I am a valid node with a positive balance
-    let (p, _) = sp_core::sr25519::Pair::generate();
-    let pairs = vec![(p.clone().public(), 10)];
-
     let plaintext = "test".as_bytes().to_vec();
     let mut rng = ChaCha20Rng::seed_from_u64(31u64);
     let sk = BoxSecretKey::generate(&mut rng);
     let pk = sk.public_key();
 
-    let encrypted = encrypt_x25519(pk.clone(), plaintext);
+    let encrypted = encrypt_x25519(pk.clone(), plaintext.clone());
 
-    let pk_slice = slice_to_array_32(&encrypted.public_key.clone());
-    let recovered_pk = BoxPublicKey::from`(*pk_slice);
+    let pk_tmp = encrypted.public_key.clone();
+    let pk_slice = slice_to_array_32(&pk_tmp).unwrap();
+    let recovered_pk = BoxPublicKey::from(*pk_slice);
 
     let recovered_plaintext = decrypt_x25519(
         recovered_pk, sk.clone(), encrypted.ciphertext.clone(), encrypted.nonce.clone(),
@@ -332,3 +319,28 @@ fn test_can_decrypt_x25519_using_output_of_encrypt_x25519() {
 
     assert_eq!(plaintext.clone(), recovered_plaintext.clone());
 }
+
+// #[test]
+// fn tazdfadfasf_test_can_decrypt_x25519_using_output_of_encrypt_x25519() {
+//     // Given: I am a valid node with a positive balance
+//     let plaintext = "test".as_bytes().to_vec();
+//     let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+//     let sk = BoxSecretKey::generate(&mut rng);
+//     let pk = sk.public_key();
+
+//     // generate keys
+//     let data_owner_umbral_sk = SecretKey::random_with_rng(rng.clone());
+//     let data_owner_umbral_pk = data_owner_umbral_sk.public_key();
+
+//     let encrypted = encrypt_x25519(pk.clone(), data_owner_umbral_sk.to_string().as_bytes().to_vec());
+
+//     let pk_tmp = encrypted.public_key.clone();
+//     let pk_slice = slice_to_array_32(&pk_tmp).unwrap();
+//     let recovered_pk = BoxPublicKey::from(*pk_slice);
+
+//     let recovered_plaintext = decrypt_x25519(
+//         recovered_pk, sk.clone(), encrypted.ciphertext.clone(), encrypted.nonce.clone(),
+//     );
+//     panic!("{:?}", data_owner_umbral_sk.to_secret_array());
+//     assert_eq!(data_owner_umbral_sk.to_string().as_bytes().to_vec().clone(), recovered_plaintext.clone());
+// }

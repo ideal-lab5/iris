@@ -451,7 +451,6 @@ impl<T: Config> Pallet<T> {
 
 	fn update_keys(validator_id: T::AccountId) {
 		Self::update_x25519(validator_id);
-		// Self::update_secp251(validator_id);
 	}
 
 	fn update_x25519(validator_id: T::AccountId) {
@@ -463,20 +462,8 @@ impl<T: Config> Pallet<T> {
 		let local_storage = StorageValueRef::persistent(b"iris::x25519");
 		local_storage.set(&secret_key.as_bytes());
 
-		X25519PublicKeys::<T>::insert(validator_id, pk);
+		X25519PublicKeys::<T>::insert(validator_id.clone(), pk);
 	}
-
-	// fn update_secp251(validator_id: T::AccountId) {
-	// 	let mut rng = ChaCha20Rng::seed_from_u64(17u64);
-	// 	// generate keys
-	// 	let sk = SecretKey::random_with_rng(rng.clone());
-	// 	let pk: Vec<u8> = sk.public_key().to_array().as_slice().to_vec();
-
-	// 	let local_storage = StorageValueRef::persistent(b"iris::secp251");
-	// 	local_storage.set(&sk.to_secret_array());
-
-	// 	secp251PublicKeys::<T>::insert(validator_id, pk);
-	// }
 
 	fn validate_transaction_parameters() -> TransactionValidity {
 		ValidTransaction::with_tag_prefix("iris")

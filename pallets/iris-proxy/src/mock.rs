@@ -40,6 +40,7 @@ use sp_core::{
 	sr25519::Signature,
 	H256,
 	Pair,
+	offchain::OffchainDbExt,
 };
 use core::convert::{TryInto, TryFrom};
 use std::cell::RefCell;
@@ -294,6 +295,7 @@ impl Config for Test {
 	type Call = Call;
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type QueueManager = DataAssets;
+	type MetadataProvider = DataAssets;
 }
 
 pub type Extrinsic = TestXt<Call, ()>;
@@ -365,7 +367,6 @@ pub fn new_test_ext_funded(
 	validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>
 ) -> sp_io::TestExternalities {
 	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
-
 	let keys: Vec<_> = validators.clone().iter()
 		.map(|i| (i.0, i.0, i.1.clone().into())).collect();
 	BasicExternalities::execute_with_storage(&mut t, || {

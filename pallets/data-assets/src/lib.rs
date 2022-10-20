@@ -337,28 +337,25 @@ pub mod pallet {
             Self::deposit_event(Event::CreatedIngestionRequest);
 			Ok(())
         }
+        // /// increase the balance vested in the request 
+        // /// sent to a gateway
+        // #[pallet::weight(100)]
+        // pub fn bump_request(
+        //     origin: OriginFor<T>,
+        //     amount: BalanceOf<T>,
+        // ) -> DispatchResult {
+        //     // TODO
+        //     Ok(())
+        // }
 
-        /// increase the balance vested in the request 
-        /// sent to a gateway
-        #[pallet::weight(100)]
-        pub fn bump_request(
-            origin: OriginFor<T>,
-            amount: BalanceOf<T>,
-        ) -> DispatchResult {
-            // TODO
-            Ok(())
-        }
-
-        /// if a request has not been processed, 'unvest' total balance
-        #[pallet::weight(100)]
-        pub fn kill_request(
-            origin: OriginFor<T>,
-        ) -> DispatchResult {
-            // TODO
-            Ok(())
-        }
-
-
+        // /// if a request has not been processed, 'unvest' total balance
+        // #[pallet::weight(100)]
+        // pub fn kill_request(
+        //     origin: OriginFor<T>,
+        // ) -> DispatchResult {
+        //     // TODO
+        //     Ok(())
+        // }
     }
 }
 
@@ -410,10 +407,6 @@ pub trait QueueManager<AccountId, Balance> {
 
     fn add_ingestion_staging(owner: AccountId, public_key: Vec<u8>);
     fn ingestion_requests(gateway: AccountId) -> Vec<IngestionCommand<AccountId, Balance>>;
-
-    // fn capsule_recovery_requests();
-    // fn add_capsule_recovery_request();
-
 }
 
 impl<T: Config> QueueManager<T::AccountId, T::Balance> for Pallet<T> {

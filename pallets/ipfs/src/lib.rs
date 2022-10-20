@@ -293,7 +293,8 @@ pub mod pallet {
 									log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
 								}
 								// TODO: should add a 'role' check here
-								T::OffchainKeyManager::process_decryption_delegation(addr.clone());
+								// T::OffchainKeyManager::process_decryption_delegation(addr.clone());
+								// T::OffchainKeyManager::process_reencryption_requests(addr.clone(), );
 								// 	log::error!("Encountered an error while attempting to generate key fragments: {:?}", e);
 								// }
 								// if let Err(e) = OffchainKeyManager::<T>::process_reencryption_requests(addr.clone()) {

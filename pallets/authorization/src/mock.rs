@@ -98,6 +98,7 @@ construct_runtime!(
 		Authorities: pallet_authorities,
 		Authorization: pallet_authorization,
 		DataAssets: pallet_data_assets,
+		IrisProxy: pallet_iris_proxy,
 	}
 );
 
@@ -231,6 +232,14 @@ impl pallet_vesting::Config for Test {
 	// `VestingInfo` encode length is 36bytes. 28 schedules gets encoded as 1009 bytes, which is the
 	// highest number of schedules that encodes less than 2^10.
 	const MAX_VESTING_SCHEDULES: u32 = 28;
+}
+
+impl pallet_iris_proxy::Config for Test {
+	type Event = Event;
+	type Call = Call;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type QueueManager = DataAssets;
+	type MetadataProvider = DataAssets;
 }
 
 thread_local! {
