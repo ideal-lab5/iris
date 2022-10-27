@@ -728,19 +728,19 @@ impl<T: Config> Pallet<T> {
 				let encrypted_frag = &reencryption_artifact.verified_kfrags.clone()
 					.iter()
 					.filter(|k| k.0 == account.clone())
-					.map(|k| k.1)
+					.map(|k| k.1.clone())
 					.collect::<Vec<_>>()[0];
 
 				// convert to PublicKey
-				let enc_pk_temp = *encrypted_frag.public_key.clone();
+				let enc_pk_temp = encrypted_frag.public_key.clone();
 				let pk_array = iris_primitives::slice_to_array_32(&enc_pk_temp).unwrap();
 				let kfrag_enc_public_key = BoxPublicKey::from(pk_array.clone());
 				// decrypt encrypted kfrag
 				let kfrag_bytes = iris_primitives::decrypt_x25519(
 					kfrag_enc_public_key, 
 					local_secret_key.clone(), 
-					*encrypted_frag.ciphertext, 
-					*encrypted_frag.nonce
+					encrypted_frag.ciphertext.to_vec(), 
+					encrypted_frag.nonce.to_vec()
 				).unwrap();
 				let kfrag = KeyFrag::from_bytes(kfrag_bytes).unwrap();
 
