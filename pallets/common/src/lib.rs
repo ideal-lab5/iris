@@ -44,14 +44,6 @@ use serde::{
     de::{Visitor},
 };
 
-#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-pub struct ReencryptionRequest<AccountId> {
-    pub caller: AccountId,
-    pub data_public_key: Vec<u8>,
-    pub verifying_public_key: Vec<u8>,
-    pub caller_public_key: Vec<u8>,
-}
-
 #[derive(Eq, Ord, PartialOrd, Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Clone)]
 pub struct EjectionCommand<AccountId, AssetId> {
     pub asset_id: AssetId,
@@ -83,7 +75,7 @@ pub struct AssetId<T: Copy> {
 }
 
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Clone)]
-pub struct EncryptedFragment {
+pub struct EncryptedBox {
     pub nonce: Vec<u8>,
     pub ciphertext: Vec<u8>,
     pub public_key: Vec<u8>,
@@ -106,17 +98,15 @@ pub struct EncryptedFragment {
 ///
 pub fn encrypt(
     plaintext: &[u8], 
-    shares: usize, 
-    threshold: usize,
     proxy_public_key: BoxPublicKey,
-) -> Result<(Capsule, Vec<u8>, PublicKey, EncryptedFragment), EncryptionError> {
+) -> Result<(Capsule, Vec<u8>, PublicKey, EncryptedBox), EncryptionError> {
     let mut rng = ChaCha20Rng::seed_from_u64(17u64);
     // generate keys
-    let data_owner_umbral_sk = SecretKey::random_with_rng(rng.clone());
-    let data_owner_umbral_pk = data_owner_umbral_sk.public_key();
+    let sk = SecretKey::random_with_rng(rng.clone());
+    let pk = sk.public_key();
 
-    let (data_capsule, data_ciphertext) = match umbral_pre::encrypt_with_rng(
-        &mut rng.clone(), &data_owner_umbral_pk, plaintext)
+    let (capsule, ciphertext) = match umbral_pre::encrypt_with_rng(
+        &mut rng.clone(), &pk, plaintext)
     {
         Ok((capsule, ciphertext)) => (capsule, ciphertext),
         Err(error) => {
@@ -124,7 +114,7 @@ pub fn encrypt(
         }
     };
 
-    let secret_key_bytes = data_owner_umbral_sk
+    let secret_key_bytes = sk
         .to_secret_array()
         .as_secret()
         .to_vec();
@@ -134,21 +124,20 @@ pub fn encrypt(
     );
 
     Ok((
-        data_capsule,
-        data_ciphertext.to_vec(),
-        data_owner_umbral_pk,
+        capsule,
+        ciphertext.to_vec(),
+        pk,
         encrypted_sk,
     ))
 }
 
 ///
 /// Encrypt the bytes with an ephemeral secret key and your provided public key.
-/// This performs asymmetric encryption
 ///
 pub fn encrypt_x25519(
     public_key: BoxPublicKey, 
     plaintext: Vec<u8>,
-) -> EncryptedFragment {
+) -> EncryptedBox {
     let mut rng = ChaCha20Rng::seed_from_u64(31u64);
     let ephemeral_secret_key = BoxSecretKey::generate(&mut rng);
 
@@ -157,9 +146,7 @@ pub fn encrypt_x25519(
     // TODO: should probably use encrypt_in_place for safety?
     let ciphertext: Vec<u8> = salsa_box.encrypt(&nonce, &plaintext[..]).unwrap().to_vec();
 
-    // TODO: really need to make it clearer exactly which public key this is
-    // the public key should be the pk of the ephemeral secret key
-    EncryptedFragment{ 
+    EncryptedBox { 
         nonce: nonce.as_slice().to_vec(),
         ciphertext: ciphertext,
         public_key: ephemeral_secret_key.public_key().as_bytes().to_vec()
@@ -172,11 +159,11 @@ pub fn encrypt_x25519(
 
 /// A helper functio to decrypt and convert encrypted capsule fragments back to capsule fragments
 pub fn convert_encrypted_capsules(
-    encrypted_capsule_frags: Vec<EncryptedFragment>,
+    encrypted_capsule_frags: Vec<EncryptedBox>,
     x25519_sk: BoxSecretKey,
 ) -> Result<Vec<CapsuleFrag>, crypto_box::aead::Error> {
     let mut capsules = Vec::new();
-    for enc_cap_frag in encrypted_capsule_frags.iter() {
+    for enc_cap_frag in encrypted_capsule_frags.into_iter() {
         let raw_pk = enc_cap_frag.public_key.clone();
         let pk_slice = slice_to_array_32(&raw_pk).unwrap();
         let pk = BoxPublicKey::from(*pk_slice);
@@ -213,12 +200,28 @@ pub fn decrypt_x25519(
     })
 }
 
+/*
+    UTILITY FUNCTIONS
+*/
 
+/// Convert a public key encoded as a vector of u8
+/// to a BoxPublicKey type required for encryption and decryption
+pub fn vec_to_box_public_key(pk_vec: &[u8]) -> BoxPublicKey {
+    // TODO: error handling
+    let pk_array = slice_to_array_32(pk_vec).unwrap();
+    BoxPublicKey::from(pk_array.clone())
+}
+
+/// Convert a slice of u8 to an array of u8 of size 32
+/// 
+/// * `slice`: The slize to convert
+/// 
 pub fn slice_to_array_32(slice: &[u8]) -> Option<&[u8; 32]> {
     if slice.len() == 32 {
         let ptr = slice.as_ptr() as *const [u8; 32];
         unsafe {Some(&*ptr)}
     } else {
+        panic!("Length should be 32 but was {:?}", slice.len());
         None
     }
 }
@@ -302,8 +305,7 @@ fn iris_protocol() {
     let b_paul_pk = b_paul_sk.public_key();
 
     // the data consumer Charlie
-    let charlie_sk = SecretKey::random_with_rng(&mut rng);
-    let charlie_pk = charlie_sk.public_key();
+
     let b_charlie_sk = BoxSecretKey::generate(&mut rng);
     let b_charlie_pk = b_charlie_sk.public_key();
 
@@ -332,7 +334,7 @@ fn iris_protocol() {
     let plaintext = b"it was a dark and stormy night...";
     let (capsule, ciphertext) = encrypt_with_rng(&mut rng, &u_root_pk, plaintext).unwrap();
 
-    // olivia encrypts the secret key u_data_sk using for paulusing his public key, b_paul_pk
+    // olivia encrypts the secret key u_data_sk for paulusing his public key, b_paul_pk
     let secret_key_bytes = u_root_sk
         .to_secret_array()
         .as_secret()
@@ -357,11 +359,9 @@ fn iris_protocol() {
         public_data_sk_box.nonce.clone(),
     ).unwrap();
     // convert the new vec to a secret key
-    // let tmp_sk = paul_decrypted_data_sk_bytes.clone();
-	// let sk_array = iris_primitives::slice_to_array_32(&tmp_sk).unwrap();
     let u_paul_decrypted_root_sk = SecretKey::from_bytes(paul_decrypted_data_sk_bytes.clone()).unwrap();
-    // assert_eq!(u_paul_decrypted_root_sk, u_root_sk);
-
+    let charlie_sk = SecretKey::random_with_rng(&mut rng);
+    let charlie_pk = charlie_sk.public_key();
     // generate kfrags for Charlie
     let kfrags = generate_kfrags_with_rng(
         &mut rng, 
@@ -401,7 +401,7 @@ fn iris_protocol() {
     let kfrag_1_box_pk_tmp = kfrag_1_box.public_key.clone();
 	let kfrag_1_pk_array = slice_to_array_32(&kfrag_1_box_pk_tmp).unwrap();
     let kfrag_1_pk = BoxPublicKey::from(*kfrag_1_pk_array);
-    let recovered_kfrag_1_data = decrypt_x25519(
+    let recovered_kfrag_1_data = decrypt_x25519( 
         kfrag_1_pk.clone(),
         b_victor_1_sk.clone(),
         kfrag_1_box.ciphertext.clone(),
@@ -424,9 +424,10 @@ fn iris_protocol() {
 
     // finally each validator encrypts the capsule fragment for Charlie
     // we only require two cfrags
+    let mut rng_v0 = ChaCha20Rng::seed_from_u64(17u64);
     // Victor 0
     let verified_kfrag0 = recovered_kfrag_0.verify(&verifying_pk, Some(&u_root_pk), Some(&charlie_pk)).unwrap();
-    let verified_cfrag0 = reencrypt_with_rng(&mut rng, &capsule, verified_kfrag0);
+    let verified_cfrag0 = reencrypt_with_rng(&mut rng_v0, &capsule, verified_kfrag0);
     let encrypted_cfrag_0_box = encrypt_x25519(
         b_charlie_pk.clone(),
         verified_cfrag0.to_array().as_slice().to_vec(),
@@ -443,7 +444,7 @@ fn iris_protocol() {
     // now charlie collects each encrypted cfrag, decrypts them, and converts them to CapsuleFrags
     let cfrag_0_box_pk_tmp = encrypted_cfrag_0_box.public_key.clone();
 	let cfrag_0_pk_array = slice_to_array_32(&cfrag_0_box_pk_tmp).unwrap();
-    let cfrag_0_pk = BoxPublicKey::from(*kfrag_0_pk_array);
+    let cfrag_0_pk = BoxPublicKey::from(*cfrag_0_pk_array);
     let recovered_cfrag_0_bytes = decrypt_x25519(
         cfrag_0_pk.clone(),
         b_charlie_sk.clone(),
@@ -477,35 +478,11 @@ fn iris_protocol() {
         .unwrap();
 
     let plaintext_bob = decrypt_reencrypted(
-        &charlie_sk, &u_root_pk, &capsule, [verified_cfrag0, verified_cfrag1], &ciphertext).unwrap();
+        &charlie_sk, 
+        &u_root_pk, 
+        &capsule, 
+        [verified_cfrag0, verified_cfrag1], 
+        &ciphertext
+    ).unwrap();
     assert_eq!(&plaintext_bob as &[u8], plaintext);
 }
-
-// fn choose_kfrag_holders(
-//     key_fragments: Vec<VerifiedKeyFrag>,
-//     candidates: Vec<(T::AccountId, Vec<u8>)>,
-// ) -> Vec<(T::AccountId, EncryptedFragment)> {
-//     let mut assignments = Vec::new();
-//     let rng = ChaCha20Rng::seed_from_u64(17u64);
-//     for i in vec![0, required_authorities_count] {
-//         let candidate = candidates[i].clone();
-//         match iris_primitives::slice_to_array_32(&candidate.1) {
-//             Some(pk_slice) => {
-//                 let pk = BoxPublicKey::from(*pk_slice);
-//                 let key_fragment = key_fragments[i].clone()
-//                     .unverify()
-//                     .to_array()
-//                     .as_slice()
-//                     .to_vec();
-//                 let encrypted_kfrag_data = iris_primitives::encrypt_x25519(
-//                     pk.clone(), key_fragment,
-//                 );
-//                 assignments.push((candidate.0.clone(), encrypted_kfrag_data.clone()));
-//             },
-//             None => {
-//                 // idk yet
-//             }
-//         }
-//     }
-//     assignments
-// }

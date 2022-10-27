@@ -91,7 +91,7 @@ use crypto_box::{
 
 use scale_info::prelude::string::ToString;
 use scale_info::prelude::format;
-use iris_primitives::{IngestionCommand, EncryptedFragment};
+use iris_primitives::{IngestionCommand, EncryptedBox};
 use pallet_gateway::ProxyProvider;
 use pallet_data_assets::{MetadataProvider, ResultsHandler, QueueManager};
 use pallet_iris_proxy::OffchainKeyManager;

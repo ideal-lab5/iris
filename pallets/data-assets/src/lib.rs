@@ -91,7 +91,7 @@ use crypto_box::{
 
 use core::convert::TryInto;
 use pallet_vesting::VestingInfo;
-use iris_primitives::{IngestionCommand, EncryptedFragment};
+use iris_primitives::{IngestionCommand, EncryptedBox};
 
 /// struct to store metadata of an asset class
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
@@ -115,12 +115,6 @@ pub struct SecretStuff {
 pub struct EncryptedData {
     pub capsule: Vec<u8>,
     pub ciphertext: Vec<u8>,
-}
-
-#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-pub struct CapsuleRecoveryRequest<AccountId> {
-    pub caller: AccountId,
-    pub public_key: Vec<u8>,
 }
 
 // #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]

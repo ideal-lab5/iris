@@ -114,7 +114,7 @@ fn data_assets_can_request_ingestion() {
 // 	TEST_CONSTANTS.with(|t| {
 // 		// Given: I am a valid node with a positive balance
 // 		let pairs = vec![(t.p.clone().public(), 10)];
-// 		let encrypted_key = EncryptedFragment {
+// 		let encrypted_key = EncryptedBox {
 // 			nonce: t.name.clone(),
 // 			ciphertext: t.name.clone(),
 // 			public_key: t.name.clone(),

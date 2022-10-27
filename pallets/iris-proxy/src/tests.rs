@@ -47,23 +47,25 @@ use crypto_box::{
 struct TestData {
 	pub p: sp_core::sr25519::Pair,
 	pub q: sp_core::sr25519::Pair,
+	pub r: sp_core::sr25519::Pair,
 	pub plaintext: Vec<u8>,
 	pub ciphertext: Vec<u8>,
 	pub public_key: Vec<u8>,
-	pub data_capsule: Vec<u8>,
+	pub capsule: Vec<u8>,
 	pub nonce: Vec<u8>,
 }
 
 thread_local!(static TEST_CONSTANTS: TestData = TestData {
 	p: sp_core::sr25519::Pair::generate().0,
 	q: sp_core::sr25519::Pair::generate().0,
+	r: sp_core::sr25519::Pair::generate().0,
 	ciphertext: "ciphertext".as_bytes().to_vec(),
 	plaintext: "plaintext".as_bytes().to_vec(),
 	public_key: vec![2, 32, 185, 106, 68, 174, 201, 135, 
 		191, 34, 180, 13, 32, 162, 229, 68, 
 		52, 118, 248, 52, 201, 84, 117, 230, 
 		102, 195, 66, 63, 150, 109, 251, 201, 116],
-	data_capsule: vec![
+	capsule: vec![
 		2, 32, 185, 106, 68, 174, 201, 135, 191, 34, 180, 13, 32, 162, 229, 68, 
 		52, 118, 248, 52, 201, 84, 117, 230, 102, 195, 66, 63, 150, 109, 251, 201, 116, 2, 89, 
 		58, 239, 98, 206, 136, 245, 46, 28, 176, 136, 190, 229, 179, 147, 164, 153, 86, 198, 7,
@@ -75,12 +77,12 @@ thread_local!(static TEST_CONSTANTS: TestData = TestData {
 
 #[test]
 fn can_submit_encryption_artifacts() {
-	TEST_CONSTANTS.with(|test_data| {
+	TEST_CONSTANTS.with(|test_data| { 
 		let pairs = vec![(test_data.p.clone().public(), 10)];
 
 		// Given: I am a valid node with a positive balance
 		let pairs = vec![(test_data.p.clone().public(), 10)];
-		let encrypted_key = EncryptedFragment {
+		let encrypted_key = EncryptedBox {
 			nonce: test_data.nonce.clone(),
 			ciphertext: test_data.ciphertext.clone(),
 			public_key: test_data.public_key.clone(),
@@ -91,18 +93,18 @@ fn can_submit_encryption_artifacts() {
 			assert_ok!(IrisProxy::submit_encryption_artifacts(
 				Origin::signed(test_data.p.clone().public()),
 				test_data.p.clone().public(),
-				test_data.data_capsule.clone(),
-				test_data.public_key.clone(),
 				test_data.p.clone().public(),
+				test_data.capsule.clone(),
+				test_data.public_key.clone(),
 				encrypted_key.clone(),
 			));
 			// check proxy
 			// check proxy codes
 
 			let capsule_data = Capsules::<Test>::get(test_data.public_key.clone()).unwrap();
-			assert_eq!(test_data.data_capsule.clone(), capsule_data);
+			assert_eq!(test_data.capsule.clone(), capsule_data);
 
-			let proxy = Proxy::<Test>::get(test_data.public_key.clone()).unwrap();
+			let proxy = EncryptionArtifacts::<Test>::get(test_data.public_key.clone()).unwrap().proxy.clone();
 			assert_eq!(test_data.p.clone().public(), proxy.clone());
 
 			let proxy_code = ProxyCodes::<Test>::get(proxy.clone(), test_data.public_key.clone()).unwrap();
@@ -115,7 +117,7 @@ fn can_submit_encryption_artifacts() {
 fn can_submit_capsule_fragment() {
 	TEST_CONSTANTS.with(|test_data| {
 		let pairs = vec![(test_data.p.clone().public(), 10)];
-		let encrypted_capsule_fragment = iris_primitives::EncryptedFragment {
+		let encrypted_capsule_fragment = iris_primitives::EncryptedBox {
 			nonce: test_data.nonce.clone(),
 			ciphertext: test_data.ciphertext.clone(),
 			public_key: test_data.public_key.clone(),
@@ -129,7 +131,7 @@ fn can_submit_capsule_fragment() {
 				encrypted_capsule_fragment.clone(),
 			));
 
-			let verified_cfrags = VerifiedCapsuleFrags::<Test>::get(
+			let verified_cfrags = EncryptedCapsuleFrags::<Test>::get(
 				test_data.p.clone().public(), test_data.public_key.clone()
 			);
 			assert_eq!(verified_cfrags.len(), 1);
@@ -148,31 +150,33 @@ fn can_submit_reencryption_keys() {
 	TEST_CONSTANTS.with(|test_data| {
 		let pairs = vec![(test_data.p.clone().public(), 10)];
 		new_test_ext_funded(pairs, validators()).execute_with(|| {
-			let frag_0 = EncryptedFragment {
+			let frag_0 = EncryptedBox {
 				ciphertext: test_data.ciphertext.clone(),
 				public_key: test_data.public_key.clone(),
 				nonce: test_data.nonce.clone(),
 			};
 
-			let frag_1 = EncryptedFragment {
+			let frag_1 = EncryptedBox {
 				ciphertext: test_data.ciphertext.clone(),
 				public_key: test_data.public_key.clone(),
 				nonce: test_data.nonce.clone(),
 			};
 
-			let secret_key_encrypted = EncryptedFragment {
+			let secret_key_encrypted = EncryptedBox {
 				ciphertext: test_data.ciphertext.clone(),
 				public_key: test_data.public_key.clone(),
 				nonce: test_data.nonce.clone(),
 			};
 
-			let mut kfrag_assignments: Vec<(sp_core::sr25519::Public, EncryptedFragment)> = Vec::new();
+			let mut kfrag_assignments: Vec<(sp_core::sr25519::Public, EncryptedBox)> = Vec::new();
 			kfrag_assignments.push((test_data.p.clone().public(), frag_0.clone()));
 			kfrag_assignments.push((test_data.q.clone().public(), frag_1.clone()));
 
 			assert_ok!(IrisProxy::submit_reencryption_keys(
 				Origin::signed(test_data.p.clone().public()),
 				test_data.q.clone().public(),
+				test_data.public_key.clone(),
+				test_data.public_key.clone(),
 				test_data.public_key.clone(),
 				test_data.public_key.clone(),
 				kfrag_assignments,
@@ -222,96 +226,105 @@ fn can_submit_reencryption_keys() {
 			).unwrap();
 			assert_eq!(secret_key_encrypted.clone(), s_key);
 
-			let actual_frag_owners = crate::FragmentOwnerSet::<Test>::get(
-				test_data.q.clone().public(), 
-				test_data.public_key.clone()
-			);
-			assert_eq!(2, actual_frag_owners.len());
+			// let actual_frag_owners = crate::FragmentOwnerSet::<Test>::get(
+			// 	test_data.q.clone().public(), 
+			// 	test_data.public_key.clone()
+			// );
+			// assert_eq!(2, actual_frag_owners.len());
 		});
 	});
 }
-/*
-	OFFCHAIN 
-*/
-#[test]
-pub fn offchain_can_encrypt_data_and_submit_artifacts() {
-	TEST_CONSTANTS.with(|test_data| {
-		let pairs = vec![(test_data.p.clone().public(), 10)];
-		let plaintext = "plaintext".as_bytes();
+// /*
+// 	OFFCHAIN 
+// */
+// #[test]
+// pub fn offchain_can_encrypt_data_and_submit_artifacts() {
+// 	TEST_CONSTANTS.with(|test_data| {
+// 		let pairs = vec![(test_data.p.clone().public(), 10)];
 
-		let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-		let sk = BoxSecretKey::generate(&mut rng);
+// 		let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+// 		let sk = BoxSecretKey::generate(&mut rng);
 
-		let mut t = new_test_ext_funded(pairs, validators());
-		let (offchain, state) = testing::TestOffchainExt::new();
-		let (pool, pool_state) = testing::TestTransactionPoolExt::new();
+// 		let mut t = new_test_ext_funded(pairs, validators());
+// 		let (offchain, state) = testing::TestOffchainExt::new();
+// 		let (pool, pool_state) = testing::TestTransactionPoolExt::new();
 
-		let keystore = KeyStore::new();
-		const PHRASE: &str =
-			"news slush supreme milk chapter athlete soap sausage put clutch what kitten";
-		SyncCryptoStore::sr25519_generate_new(
-			&keystore,
-			crate::crypto::Public::ID,
-			Some(&format!("{}/hunter1", PHRASE)),
-		).unwrap();
+// 		let keystore = KeyStore::new();
+// 		const PHRASE: &str =
+// 			"news slush supreme milk chapter athlete soap sausage put clutch what kitten";
+// 		SyncCryptoStore::sr25519_generate_new(
+// 			&keystore,
+// 			crate::crypto::Public::ID,
+// 			Some(&format!("{}/hunter1", PHRASE)),
+// 		).unwrap();
 
-		t.register_extension(OffchainWorkerExt::new(offchain.clone()));
-		t.register_extension(OffchainDbExt::new(offchain.clone()));
-		t.register_extension(TransactionPoolExt::new(pool));
-		t.register_extension(KeystoreExt(Arc::new(keystore)));
+// 		t.register_extension(OffchainWorkerExt::new(offchain.clone()));
+// 		t.register_extension(OffchainDbExt::new(offchain.clone()));
+// 		t.register_extension(TransactionPoolExt::new(pool));
+// 		t.register_extension(KeystoreExt(Arc::new(keystore)));
 
-		t.execute_with(|| {
-			let ciphertext_bytes = IrisProxy::do_encrypt(
-				&test_data.plaintext.clone(),
-				5, 3,
-				sk.public_key(),
-				test_data.p.clone().public(),
-				test_data.q.clone().public(),
-			);
-			let ciphertext = ciphertext_bytes.to_vec();
-			assert_eq!(49, ciphertext.len());
+// 		t.execute_with(|| {
+// 			let ciphertext_bytes = IrisProxy::do_encrypt(
+// 				&test_data.plaintext.clone(),
+// 				test_data.p.clone().public(),
+// 				test_data.q.clone().public(),
+// 			);
+// 			let ciphertext = ciphertext_bytes.to_vec();
+// 			assert_eq!(49, ciphertext.len());
 
-			let sk_box = EncryptedFragment {
-				nonce: vec![102, 209, 34, 179, 214, 75, 129,  24, 
-							44, 14, 136, 104, 179, 34, 247, 161, 
-							168, 16, 131, 113, 43, 29, 165, 49], 
-				ciphertext: vec![76, 236, 32, 60, 161, 53, 11, 169, 11, 
-							92, 15, 188, 173, 102, 6, 17, 88, 25, 228, 
-							208, 149, 25, 5, 184, 97, 54, 40, 59, 237, 
-							87, 50, 173, 62, 1, 200, 115, 87, 11, 160, 
-							134, 139, 103, 194, 59, 123, 34, 227, 15], 
-				public_key: vec![136, 127, 175, 150, 142, 160, 194, 
-							185, 24, 43, 243, 37, 77, 126,  183, 
-							5, 114, 157, 167, 133, 183, 81, 29, 
-							217, 53, 237, 240, 233, 111, 29, 9, 84] 
-			};
+// 			let sk_box = EncryptedBox {
+// 				nonce: vec![102, 209, 34, 179, 214, 75, 129,  24, 
+// 							44, 14, 136, 104, 179, 34, 247, 161, 
+// 							168, 16, 131, 113, 43, 29, 165, 49], 
+// 				ciphertext: vec![76, 236, 32, 60, 161, 53, 11, 169, 11, 
+// 							92, 15, 188, 173, 102, 6, 17, 88, 25, 228, 
+// 							208, 149, 25, 5, 184, 97, 54, 40, 59, 237, 
+// 							87, 50, 173, 62, 1, 200, 115, 87, 11, 160, 
+// 							134, 139, 103, 194, 59, 123, 34, 227, 15], 
+// 				public_key: vec![136, 127, 175, 150, 142, 160, 194, 
+// 							185, 24, 43, 243, 37, 77, 126,  183, 
+// 							5, 114, 157, 167, 133, 183, 81, 29, 
+// 							217, 53, 237, 240, 233, 111, 29, 9, 84] 
+// 			};
 
-			let submit_encryption_artifacts_call = mock::Call::IrisProxy(Call::submit_encryption_artifacts { 
-				owner: test_data.p.clone().public(), 
-				data_capsule: test_data.data_capsule.clone(), 
-				public_key: test_data.public_key.clone(), 
-				proxy: test_data.q.clone().public(), 
-				sk_encryption_info: sk_box.clone(),
-			});
+// 			let submit_encryption_artifacts_call = mock::Call::IrisProxy(Call::submit_encryption_artifacts { 
+// 				owner: test_data.p.clone().public(), 
+// 				capsule: test_data.capsule.clone(), 
+// 				public_key: test_data.public_key.clone(), 
+// 				proxy: test_data.q.clone().public(), 
+// 				sk_encryption_info: sk_box.clone(),
+// 			});
 
 
-			let tx = pool_state.write().transactions.pop().unwrap();
-			assert!(pool_state.read().transactions.is_empty());
-			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
-			// unsigned tx
-			assert_eq!(tx.signature, None);
-			assert_eq!(submit_encryption_artifacts_call, tx.call);
-		});
-	});
-}
+// 			let tx = pool_state.write().transactions.pop().unwrap();
+// 			assert!(pool_state.read().transactions.is_empty());
+// 			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
+// 			// unsigned tx
+// 			assert_eq!(tx.signature, None);
+// 			assert_eq!(submit_encryption_artifacts_call, tx.call);
+// 		});
+// 	});
+// }
 
 #[test]
 fn can_process_kfrag_generation_request() {
 	TEST_CONSTANTS.with(|test_data| {
-		let pairs = vec![(test_data.p.clone().public(), 10)];
-		let plaintext = "plaintext".as_bytes();
+		let owner = test_data.p.clone();
+		let proxy = test_data.q.clone();
+		let consumer = test_data.r.clone();
+
+		let pairs = vec![
+			(owner.clone().public(), 10),
+			(consumer.clone().public(), 10),
+			(proxy.clone().public(), 10)
+		];
 
 		let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+
+		// this is the new ephemeral keypair created by consumer 
+		let consumer_sk = BoxSecretKey::generate(&mut rng);
+		let consumer_box_pk = consumer_sk.public_key();
+
 		let proxy_sk = BoxSecretKey::generate(&mut rng);
 
 		let validators = validators();
@@ -335,15 +348,24 @@ fn can_process_kfrag_generation_request() {
 
 		t.execute_with(|| {
 
-			let sk_box = EncryptedFragment {
+			// Given: validator and proxies have generated secrets
+			assert_ok!(Authorities::create_secrets(
+				Origin::signed(owner.public().clone()),
+			));
+			assert_ok!(Authorities::create_secrets(
+				Origin::signed(proxy.public().clone()),
+			));
+			for v in validators.clone() {
+				assert_ok!(Authorities::create_secrets(
+					Origin::signed(v.0.clone())
+				));
+			}
+
+			let sk_box = EncryptedBox {
 				nonce: vec![102, 209, 34, 179, 214, 75, 129,  24, 
 							44, 14, 136, 104, 179, 34, 247, 161, 
 							168, 16, 131, 113, 43, 29, 165, 49], 
-				ciphertext: vec![76, 236, 32, 60, 161, 53, 11, 169, 
-							11, 92, 15, 188, 173, 102, 6, 17, 88, 25, 
-							228, 208, 149, 25, 5, 184, 97, 54, 40, 59, 237, 
-							87, 50, 173, 62, 1, 200, 115, 87, 11, 160, 134, 
-							139, 103, 194, 59, 123, 34, 227, 15], 
+				ciphertext: vec![76, 236, 32, 60, 161, 53, 11, 169, 11, 92, 15, 188, 173, 102, 6, 17, 88, 25, 228, 208, 149, 25, 5, 184, 97, 54, 40, 59, 237, 87, 50, 173, 62, 1, 200, 115, 87, 11, 160, 134, 139, 103, 194, 59, 123, 34, 227, 15], 
 				public_key: vec![136, 127, 175, 150, 142, 160, 194, 
 							185, 24, 43, 243, 37, 77, 126,  183, 
 							5, 114, 157, 167, 133, 183, 81, 29, 
@@ -351,69 +373,59 @@ fn can_process_kfrag_generation_request() {
 			};
 
 			let submit_encryption_artifacts_call = mock::Call::IrisProxy(Call::submit_encryption_artifacts { 
-				owner: test_data.p.clone().public(), 
-				data_capsule: test_data.data_capsule.clone(), 
+				owner: owner.clone().public(), 
+				capsule: test_data.capsule.clone(), 
 				public_key: test_data.public_key.clone(), 
-				proxy: test_data.q.clone().public(), 
-				sk_encryption_info: sk_box.clone(),
+				proxy: proxy.clone().public(), 
+				encrypted_sk_box: sk_box.clone(),
 			});
 
+			let proxy_pk_bytes = Authorities ::x25519_public_keys(proxy.public().clone());
+			let proxy_pk = vec_to_box_public_key(&proxy_pk_bytes);
+
 			// GIVEN: Some data has been encrypted and added to the ingestion staging map
-			IrisProxy::do_encrypt(
+			let ciphertext_bytes = IrisProxy::do_encrypt(
 				&test_data.plaintext.clone(),
-				5, 3,
-				proxy_sk.public_key(),
-				test_data.p.clone().public(), // owner
-				test_data.q.clone().public(), // proxy
+				owner.clone().public(), // owner
+				proxy.clone().public(), // proxy
 			);
+			
 			let tx = pool_state.write().transactions.pop().unwrap();
 			assert!(pool_state.read().transactions.is_empty());
 			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
 			assert_eq!(tx.signature, None);
 			assert_eq!(submit_encryption_artifacts_call, tx.call);
 
+
+			/*
+				Kind of signifies 'end of part one'
+			*/
+
+
 			// now we want to simulate the extrinsic being executed
 			assert_ok!(IrisProxy::submit_encryption_artifacts(
-				Origin::signed(test_data.p.clone().public()), 
-				test_data.p.clone().public(),  // owner
-				test_data.data_capsule.clone(), // capsule
+				Origin::signed(owner.clone().public()), 
+				owner.clone().public(),  // owner
+				proxy.clone().public(), // proxy
+				test_data.capsule.clone(), // capsule 
 				test_data.public_key.clone(), // umbral pk
-				test_data.q.clone().public(), // proxy
 				sk_box.clone(), // encrypted sk to decrypt umbral sk 
 			));
-			// AND: I each validator has generated new keys using the authorities pallet
-			assert_ok!(Authorities::create_secrets(
-				Origin::signed(test_data.q.public().clone()),
-			));
-			assert_ok!(Authorities::create_secrets(
-				Origin::signed(test_data.p.public().clone()),
-			));
-			for v in validators.clone() {
-				assert_ok!(Authorities::create_secrets(
-					Origin::signed(v.0.clone())
-				));
-				assert_eq!(32, Authorities::x25519_public_keys(v.0.clone()).len());
-			}
 
 			// THEN: The public key exists in the ingestion staging map
 			// let new_public_key = DataAssets::ingestion_staging(test_data.p.clone().public()).unwrap();
 			// WHEN: I simulate a new capsule recovery request for the data
-			IrisProxy::add_capsule_recovery_request(
-				test_data.p.clone().public(),
+			IrisProxy::add_kfrag_request(
+				consumer.clone().public(),
 				test_data.public_key.clone(),
+				consumer_box_pk.as_bytes().to_vec().clone(),
 			);
 
-
-			let sk = EncryptedFragment { 
+			let sk = EncryptedBox { 
 				nonce: vec![102, 209, 34, 179, 214, 75, 129, 
 					24, 44, 14, 136, 104, 179, 34, 247, 161, 
 					168, 16, 131, 113, 43, 29, 165, 49], 
-				ciphertext: vec![180, 87, 48, 1, 209, 111, 
-					101, 30, 115, 115, 64, 113, 43, 108, 219, 
-					186, 63, 220, 233, 211, 233, 22, 233, 194, 
-					162, 78, 27, 145, 61, 74, 115, 8, 95, 
-					43, 218, 32, 103, 70, 248, 182, 4, 134, 
-					130, 225, 9, 196, 154, 92], 
+				ciphertext: vec![219, 140, 164, 182, 194, 125, 129, 157, 29, 37, 228, 22, 170, 32, 105, 162, 248, 245, 156, 187, 107, 237, 70, 78, 154, 125, 13, 223, 27, 213, 129, 103, 190, 3, 28, 75, 213, 140, 88, 7, 187, 101, 243, 146, 172, 11, 234, 31], 
 				public_key: vec![136, 127, 175, 150, 142, 160, 
 					194, 185, 24, 43, 243, 37, 77, 126, 183, 
 					5, 114, 157, 167, 133, 183, 81, 29, 
@@ -428,81 +440,46 @@ fn can_process_kfrag_generation_request() {
 				9, 76, 209, 226, 215
 			];
 
-			let frag_0 = EncryptedFragment { 
+			let frag_0 = EncryptedBox { 
 				nonce: vec![102, 209, 34, 179, 214, 75, 
 					129, 24, 44, 14, 136, 104, 179, 34, 247, 
 					161, 168, 16, 131, 113, 43, 29, 165, 49], 
-				ciphertext: vec![59, 237, 216, 176, 20, 240, 10, 101, 162, 99, 81, 84, 138, 83, 
-					71, 172, 110, 64, 182, 195, 221, 102, 137, 247, 7, 175, 162, 0, 223, 168, 
-					131, 213, 195, 121, 66, 84, 139, 128, 185, 184, 183, 166, 123, 51, 176, 117,
-					 41, 216, 138, 141, 43, 158, 35, 237, 204, 219, 153, 181, 73, 183, 14, 180, 
-					 249, 93, 35, 247, 17, 104, 252, 12, 190, 142, 208, 109, 8, 193, 184, 143, 
-					 189, 11, 201, 188, 222, 72, 49, 120, 72, 123, 202, 155, 130, 205, 169, 52, 
-					 62, 211, 32, 214, 130, 119, 162, 250, 185, 57, 108, 122, 227, 244, 50, 9, 
-					 223, 164, 112, 144, 179, 134, 142, 223, 32, 114, 127, 165, 215, 229, 142, 
-					 177, 201, 244, 245, 175, 17, 167, 58, 227, 91, 18, 201, 40, 219, 231, 124, 
-					 130, 62, 125, 163, 61, 123, 66, 4, 219, 38, 133, 203, 234, 82, 138, 154, 69, 
-					 199, 72, 16, 146, 230, 149, 75, 147, 138, 46, 210, 158, 55, 137, 228, 246, 90,
-					  99, 3, 152, 55, 69, 30, 101, 253, 233, 56, 245, 62, 30, 172, 244, 205, 111, 
-					  35, 83, 10, 133, 107, 7, 72, 37, 101, 220, 184, 175, 38, 11, 128, 240, 23,
-					   222, 100, 137, 132, 172, 212, 8, 184, 177, 137, 201, 11, 155, 101, 187, 25,
-					190, 148, 91, 43, 225, 8, 145, 45, 105, 207, 236, 126, 217, 55, 54, 160, 
-					147, 13, 136, 3, 214, 232, 60, 159, 240, 192, 44, 144, 237, 95, 49, 229, 
-					219, 54, 21, 52, 41, 255, 227, 96, 27, 12, 163, 210, 192, 62, 213, 131, 13, 246, 96], 
+				ciphertext: vec![77, 44, 174, 139, 113, 253, 132, 254, 0, 152, 44, 45, 18, 40, 139, 120, 85, 230, 45, 38, 32, 131, 98, 47, 117, 199, 210, 149, 224, 6, 237, 179, 76, 113, 98, 251, 27, 159, 84, 102, 161, 36, 218, 98, 71, 176, 28, 157, 80, 206, 86, 9, 82, 190, 211, 66, 223, 148, 183, 45, 237, 119, 229, 165, 253, 133, 170, 185, 166, 87, 167, 156, 242, 189, 35, 61, 130, 59, 6, 53, 201, 188, 222, 72, 49, 120, 72, 123, 202, 155, 130, 205, 169, 52, 62, 211, 32, 214, 130, 119, 162, 250, 185, 57, 108, 122, 227, 244, 50, 9, 223, 164, 112, 145, 204, 30, 171, 254, 96, 165, 32, 196, 142, 176, 121, 81, 171, 187, 228, 110, 206, 248, 115, 32, 162, 76, 136, 99, 53, 92, 92, 102, 241, 193, 39, 181, 106, 68, 116, 146, 242, 239, 82, 245, 198, 176, 219, 104, 220, 7, 171, 85, 251, 170, 5, 255, 97, 73, 248, 138, 201, 69, 183, 217, 172, 108, 78, 20, 10, 72, 240, 113, 37, 47, 186, 171, 119, 164, 148, 126, 127, 163, 251, 195, 174, 204, 85, 164, 28, 54, 180, 88, 148, 88, 127, 35, 254, 124, 68, 53, 156, 171, 50, 178, 62, 8, 84, 4, 107, 249, 199, 97, 216, 214, 66, 181, 254, 240, 228, 65, 51, 243, 66, 240, 64, 117, 59, 178, 59, 96, 5, 191, 27, 140, 86, 240, 250, 55, 51, 169, 5, 53, 137, 245, 42, 186, 6, 39, 190, 127, 224, 179, 113, 102, 144, 154, 220, 108, 221, 186, 183, 163, 76, 96, 246, 96], 
 				public_key: vec![136, 127, 175, 150, 142, 160, 194, 185, 24, 43, 243, 37, 77, 126, 183, 5, 
 					114, 157, 167, 133, 183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84]
 			};
 
-			let frag_1 = EncryptedFragment { 
+			let frag_1 = EncryptedBox { 
 				nonce: vec![102, 209, 34, 179, 214, 75, 129, 24, 44, 14, 136, 104, 179, 34, 
 					247, 161, 168, 16, 131, 113, 43, 29, 165, 49], 
-				ciphertext: vec![14, 242, 31, 22, 127, 184, 158, 215, 12, 183, 233, 184, 114, 
-					162, 233, 86, 112, 12, 129, 219, 55, 252, 115, 88, 155, 236, 165, 48, 99, 
-					217, 120, 125, 237, 93, 177, 146, 15, 191, 246, 132, 181, 84, 234, 101, 
-					114, 207, 177, 62, 235, 253, 176, 207, 192, 193, 252, 67, 9, 230, 106, 
-					115, 170, 148, 6, 199, 28, 117, 17, 40, 17, 8, 1, 103, 110, 177, 22, 40,
-					138, 39, 166, 4, 201, 188, 222, 72, 49, 120, 72, 123, 202, 155, 130, 
-					205, 169, 52, 62, 211, 32, 214, 130, 119, 162, 250, 185, 57, 108, 122,
-					227, 244, 50, 9, 223, 164, 112, 145, 150, 167, 12, 59, 195, 75, 178, 
-					31, 40, 54, 207, 45, 223, 33, 229, 45, 3, 61, 141, 163, 30, 102, 169, 
-					185, 237, 91, 93, 215, 152, 95, 211, 242, 80, 237, 136, 130, 33, 51, 
-					126, 3, 249, 99, 154, 218, 155, 161, 50, 129, 29, 3, 231, 44, 211, 252, 
-					238, 111, 172, 147, 98, 128, 189, 202, 76, 77, 115, 125, 164, 252, 
-					211, 144, 78, 164, 169, 82, 236, 20, 18, 233, 139, 7, 208, 147, 4, 
-					137, 36, 39, 50, 150, 94, 50, 154, 31, 249, 79, 215, 52, 135, 17, 200, 
-					137, 16, 174, 21, 151, 200, 220, 98, 240, 92, 207, 34, 49, 242, 105, 226, 
-					230, 1, 22, 253, 120, 64, 226, 172, 149, 41, 121, 81, 138, 13, 255, 155, 
-					1, 57, 154, 230, 234, 156, 87, 184, 233, 132, 97, 224, 184, 117, 91, 169, 
-					185, 244, 223, 247, 186, 26, 243, 64, 114, 183, 95, 218, 225, 246, 96], 
+				ciphertext: vec![231, 128, 154, 127, 160, 53, 16, 247, 143, 223, 24, 132, 166, 118, 11, 175, 101, 176, 255, 140, 209, 72, 126, 130, 164, 102, 59, 19, 60, 245, 81, 217, 122, 95, 138, 212, 60, 38, 18, 255, 98, 202, 221, 52, 217, 69, 19, 88, 129, 173, 123, 98, 119, 251, 147, 215, 60, 87, 253, 237, 21, 193, 20, 90, 230, 196, 94, 19, 42, 99, 252, 63, 184, 200, 148, 45, 67, 45, 33, 66, 201, 188, 222, 72, 49, 120, 72, 123, 202, 155, 130, 205, 169, 52, 62, 211, 32, 214, 130, 119, 162, 250, 185, 57, 108, 122, 227, 244, 50, 9, 223, 164, 112, 145, 58, 38, 7, 46, 15, 113, 84, 154, 84, 97, 129, 190, 237, 203, 94, 145, 210, 158, 149, 17, 235, 8, 94, 39, 36, 74, 112, 210, 96, 54, 12, 104, 17, 60, 123, 71, 18, 171, 126, 177, 200, 136, 73, 215, 113, 118, 142, 76, 243, 65, 236, 135, 192, 107, 115, 176, 56, 106, 126, 77, 245, 9, 23, 217, 52, 146, 224, 61, 95, 144, 225, 231, 70, 194, 156, 29, 208, 216, 198, 131, 246, 120, 30, 49, 126, 22, 197, 32, 250, 215, 168, 202, 131, 175, 217, 128, 110, 173, 254, 28, 14, 19, 236, 97, 31, 66, 236, 195, 172, 154, 40, 79, 75, 49, 111, 54, 13, 27, 191, 95, 132, 196, 34, 193, 105, 150, 35, 99, 106, 195, 226, 127, 10, 192, 107, 159, 195, 148, 91, 201, 168, 150, 5, 159, 9, 99, 27, 126, 171, 87, 201, 103, 170, 250, 38, 67, 212, 227, 180, 255, 246, 96], 
 				public_key: vec![136, 127, 175, 150, 142, 160, 194, 185, 24, 43, 243, 37, 77, 126, 183, 
 					5, 114, 157, 167, 133, 183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84] 
 			};
 
-			let call = mock::Call::IrisProxy(Call::submit_reencryption_keys 
-				{ 
-					consumer: test_data.p.clone().public(), 
-					ephemeral_public_key: ephemeral_pk_vec.clone(), 
-					data_public_key: vec![2, 32, 185, 106, 68, 174, 201, 135, 
-						191, 34, 180, 13, 32, 162, 229, 
-						68, 52, 118, 248, 52, 201, 84, 
-						117, 230, 102, 195, 66, 63, 
-						150, 109, 251, 201, 116], 
-					kfrag_assignments: vec![
-						(validators[0].clone().0, frag_0.clone()), 
-						(validators[2].clone().0, frag_1.clone())
-					],
-					encrypted_sk_box: sk.clone(),
-				}
-			);
+			let consumer_pk = vec![136, 127, 175, 150, 142, 160, 194, 185, 24, 43, 243, 37, 77, 126, 183, 5, 114, 157, 167, 133, 183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84];
+
+			let call = mock::Call::IrisProxy(Call::submit_reencryption_keys { 
+				consumer: consumer.clone().public(), 
+				ephemeral_public_key: ephemeral_pk_vec.clone(), 
+				data_public_key: vec![2, 32, 185, 106, 68, 174, 201, 135, 
+					191, 34, 180, 13, 32, 162, 229, 
+					68, 52, 118, 248, 52, 201, 84, 
+					117, 230, 102, 195, 66, 63, 
+					150, 109, 251, 201, 116], 
+				kfrag_assignments: vec![
+					(validators[0].clone().0, frag_0.clone()), 
+					(validators[1].clone().0, frag_1.clone())
+				],
+				encrypted_sk_box: sk.clone(),
+				consumer_public_key: consumer_pk.clone(),
+				verifying_public_key: test_data.public_key.clone(),
+			});
 
 			// THEN: I can generate new key fragments for the caller
 			assert_ok!(IrisProxy::proxy_process_kfrag_generation_requests(
-				test_data.q.clone().public(),
-				validators.clone().iter()
-					.map(|v| (
-						v.0,
-						proxy_sk.public_key().clone().as_bytes().to_vec()
-					)).collect::<Vec<_>>()
+				proxy.clone().public(),
+				validators.clone(),
 			));
 			let tx = pool_state.write().transactions.pop().unwrap();
 			assert!(pool_state.read().transactions.is_empty());
@@ -511,250 +488,409 @@ fn can_process_kfrag_generation_request() {
 			assert_eq!(call, tx.call);
 			// Then: When the extrinsic is executed
 			assert_ok!(IrisProxy::submit_reencryption_keys(
-				Origin::signed(test_data.q.clone().public()),
-				test_data.q.clone().public(),
+				Origin::signed(proxy.clone().public()),
+				consumer.clone().public(),
 				ephemeral_pk_vec.clone(),
+				test_data.public_key.clone(),
+				consumer_box_pk.as_bytes().to_vec().clone(),
 				test_data.public_key.clone(),
 				vec![(validators[0].clone().0, frag_0.clone()), 
 					 (validators[1].clone().0, frag_1.clone())],
 				sk.clone(),
 			));
-		});
-	});
-}
-
-#[test]
-fn can_process_reencryption_request() {
-	TEST_CONSTANTS.with(|test_data| {
-		let pairs = vec![(test_data.p.clone().public(), 10)];
-		let plaintext = "plaintext".as_bytes();
-
-		let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-		let proxy_sk = BoxSecretKey::generate(&mut rng);
-
-		let validators = validators();
-		let mut t = new_test_ext_funded(pairs, validators.clone());
-		let (offchain, state) = testing::TestOffchainExt::new();
-		let (pool, pool_state) = testing::TestTransactionPoolExt::new();
-
-		let keystore = KeyStore::new();
-		const PHRASE: &str =
-			"news slush supreme milk chapter athlete soap sausage put clutch what kitten";
-		SyncCryptoStore::sr25519_generate_new(
-			&keystore,
-			crate::crypto::Public::ID,
-			Some(&format!("{}/hunter1", PHRASE)),
-		).unwrap();
-
-		t.register_extension(OffchainWorkerExt::new(offchain.clone()));
-		t.register_extension(OffchainDbExt::new(offchain.clone()));
-		t.register_extension(TransactionPoolExt::new(pool));
-		t.register_extension(KeystoreExt(Arc::new(keystore)));
-
-		t.execute_with(|| {
-
-			let sk_box = EncryptedFragment {
-				nonce: vec![102, 209, 34, 179, 214, 75, 129,  24, 
-							44, 14, 136, 104, 179, 34, 247, 161, 
-							168, 16, 131, 113, 43, 29, 165, 49], 
-				ciphertext: vec![76, 236, 32, 60, 161, 53, 11, 169, 
-							11, 92, 15, 188, 173, 102, 6, 17, 88, 25, 
-							228, 208, 149, 25, 5, 184, 97, 54, 40, 59, 237, 
-							87, 50, 173, 62, 1, 200, 115, 87, 11, 160, 134, 
-							139, 103, 194, 59, 123, 34, 227, 15], 
-				public_key: vec![136, 127, 175, 150, 142, 160, 194, 
-							185, 24, 43, 243, 37, 77, 126,  183, 
-							5, 114, 157, 167, 133, 183, 81, 29, 
-							217, 53, 237, 240, 233, 111, 29, 9, 84] 
-			};
-
-			let submit_encryption_artifacts_call = mock::Call::IrisProxy(Call::submit_encryption_artifacts { 
-				owner: test_data.p.clone().public(), 
-				data_capsule: test_data.data_capsule.clone(), 
-				public_key: test_data.public_key.clone(), 
-				proxy: test_data.q.clone().public(), 
-				sk_encryption_info: sk_box.clone(),
-			});
-
-			// GIVEN: Some data has been encrypted and added to the ingestion staging map
-			IrisProxy::do_encrypt(
-				&test_data.plaintext.clone(),
-				5, 3,
-				proxy_sk.public_key(),
-				test_data.p.clone().public(), // owner
-				test_data.q.clone().public(), // proxy
-			);
-			let tx = pool_state.write().transactions.pop().unwrap();
-			assert!(pool_state.read().transactions.is_empty());
-			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
-			assert_eq!(tx.signature, None);
-			assert_eq!(submit_encryption_artifacts_call, tx.call);
-
-			// now we want to simulate the extrinsic being executed
-			assert_ok!(IrisProxy::submit_encryption_artifacts(
-				Origin::signed(test_data.p.clone().public()), 
-				test_data.p.clone().public(),  // owner
-				test_data.data_capsule.clone(), // capsule
-				test_data.public_key.clone(), // umbral pk
-				test_data.q.clone().public(), // proxy
-				sk_box.clone(), // encrypted sk to decrypt umbral sk 
-			));
-			// AND: I each validator has generated new keys using the authorities pallet
-			assert_ok!(Authorities::create_secrets(
-				Origin::signed(test_data.q.public().clone()),
-			));
-			assert_ok!(Authorities::create_secrets(
-				Origin::signed(test_data.p.public().clone()),
-			));
-			for v in validators.clone() {
-				assert_ok!(Authorities::create_secrets(
-					Origin::signed(v.0.clone())
-				));
-				assert_eq!(32, Authorities::x25519_public_keys(v.0.clone()).len());
-			}
-
-			// THEN: The public key exists in the ingestion staging map
-			// let new_public_key = DataAssets::ingestion_staging(test_data.p.clone().public()).unwrap();
-			// WHEN: I simulate a new capsule recovery request for the data
-			IrisProxy::add_capsule_recovery_request(
-				test_data.p.clone().public(),
-				test_data.public_key.clone(),
-			);
-
-
-			let sk = EncryptedFragment { 
-				nonce: vec![102, 209, 34, 179, 214, 75, 129, 
-					24, 44, 14, 136, 104, 179, 34, 247, 161, 
-					168, 16, 131, 113, 43, 29, 165, 49], 
-				ciphertext: vec![180, 87, 48, 1, 209, 111, 
-					101, 30, 115, 115, 64, 113, 43, 108, 219, 
-					186, 63, 220, 233, 211, 233, 22, 233, 194, 
-					162, 78, 27, 145, 61, 74, 115, 8, 95, 
-					43, 218, 32, 103, 70, 248, 182, 4, 134, 
-					130, 225, 9, 196, 154, 92], 
-				public_key: vec![136, 127, 175, 150, 142, 160, 
-					194, 185, 24, 43, 243, 37, 77, 126, 183, 
-					5, 114, 157, 167, 133, 183, 81, 29, 
-					217, 53, 237, 240, 233, 111, 29, 9, 84] 
-			};
-
-			let ephemeral_pk_vec = vec![
-				2, 74, 50, 75, 57, 138, 197, 
-				248, 204, 201, 125, 87, 177, 81, 
-				222, 20, 49, 128, 38, 251, 104, 
-				211, 77, 79, 11, 140, 181, 7, 
-				9, 76, 209, 226, 215
-			];
-
-			let frag_0 = EncryptedFragment { 
-				nonce: vec![102, 209, 34, 179, 214, 75, 
-					129, 24, 44, 14, 136, 104, 179, 34, 247, 
-					161, 168, 16, 131, 113, 43, 29, 165, 49], 
-				ciphertext: vec![59, 237, 216, 176, 20, 240, 10, 101, 162, 99, 81, 84, 138, 83, 
-					71, 172, 110, 64, 182, 195, 221, 102, 137, 247, 7, 175, 162, 0, 223, 168, 
-					131, 213, 195, 121, 66, 84, 139, 128, 185, 184, 183, 166, 123, 51, 176, 117,
-					 41, 216, 138, 141, 43, 158, 35, 237, 204, 219, 153, 181, 73, 183, 14, 180, 
-					 249, 93, 35, 247, 17, 104, 252, 12, 190, 142, 208, 109, 8, 193, 184, 143, 
-					 189, 11, 201, 188, 222, 72, 49, 120, 72, 123, 202, 155, 130, 205, 169, 52, 
-					 62, 211, 32, 214, 130, 119, 162, 250, 185, 57, 108, 122, 227, 244, 50, 9, 
-					 223, 164, 112, 144, 179, 134, 142, 223, 32, 114, 127, 165, 215, 229, 142, 
-					 177, 201, 244, 245, 175, 17, 167, 58, 227, 91, 18, 201, 40, 219, 231, 124, 
-					 130, 62, 125, 163, 61, 123, 66, 4, 219, 38, 133, 203, 234, 82, 138, 154, 69, 
-					 199, 72, 16, 146, 230, 149, 75, 147, 138, 46, 210, 158, 55, 137, 228, 246, 90,
-					  99, 3, 152, 55, 69, 30, 101, 253, 233, 56, 245, 62, 30, 172, 244, 205, 111, 
-					  35, 83, 10, 133, 107, 7, 72, 37, 101, 220, 184, 175, 38, 11, 128, 240, 23,
-					   222, 100, 137, 132, 172, 212, 8, 184, 177, 137, 201, 11, 155, 101, 187, 25,
-					190, 148, 91, 43, 225, 8, 145, 45, 105, 207, 236, 126, 217, 55, 54, 160, 
-					147, 13, 136, 3, 214, 232, 60, 159, 240, 192, 44, 144, 237, 95, 49, 229, 
-					219, 54, 21, 52, 41, 255, 227, 96, 27, 12, 163, 210, 192, 62, 213, 131, 13, 246, 96], 
-				public_key: vec![136, 127, 175, 150, 142, 160, 194, 185, 24, 43, 243, 37, 77, 
-					126, 183, 5, 114, 157, 167, 133, 183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84]
-			};
-
-			let frag_1 = EncryptedFragment { 
-				nonce: vec![102, 209, 34, 179, 214, 75, 129, 24, 44, 14, 136, 104, 179, 34, 
-					247, 161, 168, 16, 131, 113, 43, 29, 165, 49], 
-				ciphertext: vec![14, 242, 31, 22, 127, 184, 158, 215, 12, 183, 233, 184, 114, 
-					162, 233, 86, 112, 12, 129, 219, 55, 252, 115, 88, 155, 236, 165, 48, 99, 
-					217, 120, 125, 237, 93, 177, 146, 15, 191, 246, 132, 181, 84, 234, 101, 
-					114, 207, 177, 62, 235, 253, 176, 207, 192, 193, 252, 67, 9, 230, 106, 
-					115, 170, 148, 6, 199, 28, 117, 17, 40, 17, 8, 1, 103, 110, 177, 22, 40,
-					138, 39, 166, 4, 201, 188, 222, 72, 49, 120, 72, 123, 202, 155, 130, 
-					205, 169, 52, 62, 211, 32, 214, 130, 119, 162, 250, 185, 57, 108, 122,
-					227, 244, 50, 9, 223, 164, 112, 145, 150, 167, 12, 59, 195, 75, 178, 
-					31, 40, 54, 207, 45, 223, 33, 229, 45, 3, 61, 141, 163, 30, 102, 169, 
-					185, 237, 91, 93, 215, 152, 95, 211, 242, 80, 237, 136, 130, 33, 51, 
-					126, 3, 249, 99, 154, 218, 155, 161, 50, 129, 29, 3, 231, 44, 211, 252, 
-					238, 111, 172, 147, 98, 128, 189, 202, 76, 77, 115, 125, 164, 252, 
-					211, 144, 78, 164, 169, 82, 236, 20, 18, 233, 139, 7, 208, 147, 4, 
-					137, 36, 39, 50, 150, 94, 50, 154, 31, 249, 79, 215, 52, 135, 17, 200, 
-					137, 16, 174, 21, 151, 200, 220, 98, 240, 92, 207, 34, 49, 242, 105, 226, 
-					230, 1, 22, 253, 120, 64, 226, 172, 149, 41, 121, 81, 138, 13, 255, 155, 
-					1, 57, 154, 230, 234, 156, 87, 184, 233, 132, 97, 224, 184, 117, 91, 169, 
-					185, 244, 223, 247, 186, 26, 243, 64, 114, 183, 95, 218, 225, 246, 96], 
-				public_key: vec![136, 127, 175, 150, 142, 160, 194, 185, 24, 43, 243, 37, 77, 126, 183, 
-					5, 114, 157, 167, 133, 183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84] 
-			};
-
-			let call = mock::Call::IrisProxy(Call::submit_reencryption_keys 
-				{ 
-					consumer: test_data.p.clone().public(), 
-					ephemeral_public_key: ephemeral_pk_vec.clone(), 
-					data_public_key: vec![2, 32, 185, 106, 68, 174, 201, 135, 
-						191, 34, 180, 13, 32, 162, 229, 
-						68, 52, 118, 248, 52, 201, 84, 
-						117, 230, 102, 195, 66, 63, 
-						150, 109, 251, 201, 116], 
-					kfrag_assignments: vec![
-						(validators[0].clone().0, frag_0.clone()), 
-						(validators[2].clone().0, frag_1.clone())
-					],
-					encrypted_sk_box: sk.clone(),
-				}
-			);
-
-			// THEN: I can generate new key fragments for the caller
-			assert_ok!(IrisProxy::proxy_process_kfrag_generation_requests(
-				test_data.q.clone().public(),
-				validators.clone().iter()
-					.map(|v| (
-						v.0,
-						proxy_sk.public_key().clone().as_bytes().to_vec()
-					)).collect::<Vec<_>>()
-			));
-			let tx = pool_state.write().transactions.pop().unwrap();
-			assert!(pool_state.read().transactions.is_empty());
-			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
-			assert_eq!(tx.signature.unwrap().0, 0);
-			assert_eq!(call, tx.call);
-			// WHEN: the extrinsic is executed
-			assert_ok!(IrisProxy::submit_reencryption_keys(
-				Origin::signed(test_data.q.clone().public()),
-				test_data.q.clone().public(),
-				ephemeral_pk_vec.clone(),
-				test_data.public_key.clone(),
-				vec![(validators[0].clone().0, frag_0.clone()), 
-					 (validators[1].clone().0, frag_1.clone())],
-				sk.clone(),
-			));
-
-			// let reencryption_req_p = crate::ReencryptionRequests::<Test>::get(
-			// 	validators[0].clone().0
-			// );
-
 			// AND: I process reencryption requests
 			assert_ok!(IrisProxy::kfrag_holder_process_reencryption_requests(
 				validators[0].clone().0,
 			));
 
+			let encrypted_cfrag_0 = EncryptedBox { 
+				nonce: vec![102, 209, 34, 179, 214, 75, 129, 24, 44, 14, 136, 104, 179, 34, 247, 161, 168, 16, 131, 113, 43, 29, 165, 49], 
+				ciphertext: vec![77, 122, 28, 96, 15, 97, 134, 229, 114, 51, 52, 102, 228, 50, 131, 185, 10, 53, 35, 131, 213, 209, 137, 
+					31, 125, 35, 38, 165, 138, 34, 97, 137, 21, 96, 230, 68, 81, 127, 241, 56, 177, 96, 104, 197, 191, 32, 236, 151, 81, 
+					191, 29, 87, 107, 83, 191, 120, 178, 158, 26, 94, 240, 196, 245, 156, 218, 177, 160, 32, 136, 24, 157, 170, 28, 
+					115, 230, 156, 3, 172, 218, 78, 111, 26, 176, 47, 49, 72, 52, 198, 230, 253, 159, 226, 197, 242, 4, 193, 193, 
+					166, 134, 187, 180, 77, 181, 49, 181, 81, 120, 172, 88, 193, 39, 208, 124, 222, 49, 41, 254, 92, 102, 194, 27, 
+					38, 213, 213, 15, 86, 157, 116, 151, 224, 106, 248, 98, 192, 4, 54, 222, 19, 152, 83, 133, 178, 202, 228, 214, 
+					56, 5, 249, 139, 216, 94, 211, 23, 218, 179, 159, 31, 198, 201, 1, 153, 89, 60, 111, 159, 53, 196, 186, 142, 
+					71, 241, 151, 236, 131, 92, 226, 203, 2, 76, 93, 235, 95, 233, 255, 218, 61, 147, 203, 124, 85, 31, 243, 160, 
+					173, 140, 32, 71, 228, 71, 162, 163, 236, 63, 140, 38, 166, 176, 149, 151, 32, 27, 1, 61, 141, 149, 162, 147, 
+					141, 162, 22, 45, 84, 45, 145, 10, 147, 202, 218, 241, 127, 138, 89, 254, 128, 186, 83, 82, 219, 252, 38, 170, 
+					74, 22, 55, 162, 136, 29, 57, 178, 176, 79, 212, 119, 45, 107, 96, 32, 62, 48, 120, 116, 165, 81, 147, 27, 66,
+					163, 243, 241, 4, 131, 125, 59, 79, 15, 190, 128, 154, 45, 211, 38, 25, 11, 104, 99, 178, 157, 40, 244, 91, 83, 
+					252, 19, 39, 206, 67, 64, 43, 32, 47, 213, 43, 142, 141, 62, 112, 189, 54, 14, 195, 78, 37, 233, 72, 113, 28, 
+					144, 95, 51, 147, 145, 236, 50, 189, 144, 125, 143, 254, 180, 138, 6, 70, 180, 206, 109, 191, 129, 143, 27, 57, 
+					65, 3, 184, 8, 173, 87, 76, 243, 28, 200, 7, 200, 113, 254, 218, 193, 157, 133, 65, 208, 223, 61, 26, 43, 125, 
+					137, 199, 152, 228, 85, 27, 62, 123, 38, 232], 
+				public_key: vec![136, 127, 175, 150, 142, 160, 194, 185, 24, 43,
+					 243, 37, 77, 126, 183, 5, 114, 157, 167, 133, 183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84] 
+			};
+
+			let encrypted_cfrag_1 = EncryptedBox { 
+				nonce: vec![102, 209, 34, 179, 214, 75, 129, 24, 44, 14, 136, 104, 179, 34, 247, 161, 168, 16, 131, 113, 43, 29, 165, 49], 
+				ciphertext: vec![187, 97, 48, 87, 187, 103, 34, 175, 42, 13, 40, 72, 208, 144, 229, 29, 10, 163, 244, 187, 7, 123, 28, 48, 49, 73, 5, 69, 54, 19, 42, 64, 230, 68, 196, 103, 100, 115, 172, 229, 23, 234, 47, 21, 194, 237, 84, 122, 106, 191, 64, 173, 119, 119, 202, 29, 124, 110, 37, 171, 205, 64, 224, 65, 62, 104, 103, 11, 30, 184, 191, 19, 79, 216, 252, 189, 225, 200, 163, 38, 94, 84, 128, 121, 227, 226, 197, 13, 250, 80, 78, 67, 44, 116, 216, 50, 125, 204, 176, 149, 92, 98, 146, 136, 243, 200, 187, 66, 95, 151, 185, 37, 115, 27, 49, 41, 254, 92, 102, 194, 27, 38, 213, 213, 15, 86, 157, 116, 151, 224, 106, 248, 98, 192, 4, 54, 222, 19, 152, 83, 133, 178, 202, 228, 214, 56, 5, 249, 139, 216, 94, 211, 23, 218, 179, 159, 31, 198, 201, 1, 153, 89, 60, 111, 159, 53, 196, 186, 142, 71, 241, 151, 236, 131, 92, 226, 203, 2, 76, 93, 235, 95, 233, 255, 218, 61, 147, 203, 124, 85, 31, 243, 160, 173, 140, 32, 71, 228, 71, 162, 163, 236, 63, 140, 38, 166, 176, 149, 151, 32, 27, 1, 61, 141, 99, 154, 63, 93, 205, 194, 89, 10, 247, 64, 242, 124, 140, 170, 75, 128, 150, 63, 24, 177, 243, 23, 132, 159, 237, 48, 134, 254, 135, 192, 137, 85, 29, 57, 178, 176, 79, 212, 119, 45, 107, 96, 32, 62, 48, 120, 116, 165, 81, 147, 27, 66, 163, 243, 241, 4, 131, 125, 59, 79, 15, 190, 128, 154, 45, 65, 137, 102, 6, 13, 180, 230, 57, 177, 33, 228, 243, 220, 119, 79, 30, 175, 49, 248, 135, 162, 214, 221, 108, 156, 131, 3, 156, 235, 173, 17, 173, 215, 239, 132, 223, 44, 139, 231, 86, 231, 42, 199, 144, 201, 220, 23, 117, 75, 117, 1, 113, 120, 92, 51, 194, 123, 48, 150, 104, 107, 183, 37, 100, 121, 226, 227, 195, 3, 235, 144, 49, 14, 208, 44, 230, 67, 177, 134, 249, 103, 195, 198, 215, 241, 76, 208, 58, 238, 114, 174, 226, 93, 59, 222, 119], 
+				public_key: vec![136, 127, 175, 150, 142, 160, 194, 185, 24, 43,
+					 243, 37, 77, 126, 183, 5, 114, 157, 167, 133, 183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84] 
+			};
+
+			let v_0_call = mock::Call::IrisProxy(Call::submit_capsule_fragment {
+				data_consumer: consumer.public().clone(), 
+				public_key: test_data.public_key.clone(), 
+				encrypted_cfrag_data: encrypted_cfrag_0.clone()
+			});
+
+			let v_1_call = mock::Call::IrisProxy(Call::submit_capsule_fragment {
+				data_consumer: consumer.public().clone(), 
+				public_key: test_data.public_key.clone(), 
+				encrypted_cfrag_data: encrypted_cfrag_1.clone()
+			});
+
 			let tx = pool_state.write().transactions.pop().unwrap();
 			assert!(pool_state.read().transactions.is_empty());
 			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
-			assert_eq!(tx.signature.unwrap().0, 0);
-			// assert_eq!(call, tx.call);
+			assert_eq!(tx.signature.unwrap().0, 1);
+			assert_eq!(v_0_call, tx.call);
+			// And: I submit capsule fragments 
+			assert_ok!(IrisProxy::submit_capsule_fragment(
+				Origin::signed(validators[0].0.clone()),
+				consumer.public().clone(),
+				test_data.public_key.clone(),
+				encrypted_cfrag_0.clone(),
+			));
+
+			assert_ok!(IrisProxy::kfrag_holder_process_reencryption_requests(
+				validators[1].clone().0,
+			));
+			let tx = pool_state.write().transactions.pop().unwrap();
+			assert!(pool_state.read().transactions.is_empty());
+			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
+			assert_eq!(tx.signature.unwrap().0, 2);
+			assert_eq!(v_1_call, tx.call);
+			// And: I submit capsule fragments 
+			assert_ok!(IrisProxy::submit_capsule_fragment(
+				Origin::signed(validators[1].0.clone()),
+				consumer.public().clone(),
+				test_data.public_key.clone(),
+				encrypted_cfrag_1.clone(),
+			));
+
+			let encrypted_sk = SecretKeys::<Test>::get(consumer.public().clone(), test_data.public_key.clone()).unwrap();
+			let verifying_pk_bytes = VerifyingKeys::<Test>::get(consumer.public().clone(), test_data.public_key.clone());
+			let new_verifying_pk = PublicKey::from_bytes(verifying_pk_bytes).unwrap();
+
+			let capsule_data = Capsules::<Test>::get(test_data.public_key.clone()).unwrap();
+			let capsule: Capsule = Capsule::from_bytes(capsule_data).unwrap();
+
+			// When: I try to decrypt data
+			let plaintext = IrisProxy::do_decrypt(
+				consumer.public().clone(),
+				ciphertext_bytes.to_vec().clone(),
+				test_data.public_key.clone(),
+				encrypted_sk.clone(),
+				consumer_sk.clone(),
+				new_verifying_pk.clone(),
+				capsule,
+			);
+			// Then: the recovered plaintext matches the input plaintext
+			assert_eq!(test_data.plaintext.clone(), plaintext.to_vec());
 		});
 	});
 }
+
+// #[test]
+// fn can_decrypt() {
+// 	TEST_CONSTANTS.with(|test_data| {
+// 		// GIVEN: there are unique accounts for an owner, a proxy, and a consumer
+// 		let owner = test_data.p.clone();
+// 		let proxy = test_data.q.clone();
+// 		let consumer = test_data.r.clone();
+
+// 		let pairs = vec![(test_data.p.clone().public(), 10)];
+
+// 		let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+
+// 		// AND: Offchain, the consumer generates a new secret key
+// 		let consumer_sk = BoxSecretKey::generate(&mut rng);
+
+// 		let validators = validators();
+// 		let mut t = new_test_ext_funded(pairs, validators.clone());
+// 		let (offchain, state) = testing::TestOffchainExt::new();
+// 		let (pool, pool_state) = testing::TestTransactionPoolExt::new();
+
+// 		let keystore = KeyStore::new();
+// 		const PHRASE: &str =
+// 			"news slush supreme milk chapter athlete soap sausage put clutch what kitten";
+// 		SyncCryptoStore::sr25519_generate_new(
+// 			&keystore,
+// 			crate::crypto::Public::ID,
+// 			Some(&format!("{}/hunter1", PHRASE)),
+// 		).unwrap();
+
+// 		t.register_extension(OffchainWorkerExt::new(offchain.clone()));
+// 		t.register_extension(OffchainDbExt::new(offchain.clone()));
+// 		t.register_extension(TransactionPoolExt::new(pool));
+// 		t.register_extension(KeystoreExt(Arc::new(keystore)));
+
+// 		t.execute_with(|| {
+
+// 			// AND: the proxy node has created a new keypair
+// 			assert_ok!(Authorities::create_secrets(
+// 				Origin::signed(proxy.public().clone()),
+// 			));
+// 			let proxy_public_key = Authorities::x25519_public_keys(proxy.public().clone());
+// 			let proxy_pk_32 = iris_primitives::slice_to_array_32(&proxy_public_key).unwrap();
+// 			let proxy_pk = BoxPublicKey::from(*proxy_pk_32);
+
+// 			let sk_box = EncryptedBox {
+// 				nonce: vec![102, 209, 34, 179, 214, 75, 129,  24, 
+// 							44, 14, 136, 104, 179, 34, 247, 161, 
+// 							168, 16, 131, 113, 43, 29, 165, 49], 
+// 				ciphertext: vec![76, 236, 32, 60, 161, 53, 11, 169, 11, 92, 15, 188, 173, 102, 6, 17, 88, 25, 228, 208, 149, 25, 5, 184, 97, 54, 40, 59, 237, 87, 50, 173, 62, 1, 200, 115, 87, 11, 160, 134, 139, 103, 194, 59, 123, 34, 227, 15], 
+// 				public_key: vec![136, 127, 175, 150, 142, 160, 194, 
+// 							185, 24, 43, 243, 37, 77, 126,  183, 
+// 							5, 114, 157, 167, 133, 183, 81, 29, 
+// 							217, 53, 237, 240, 233, 111, 29, 9, 84] 
+// 			};
+
+// 			let submit_encryption_artifacts_call = mock::Call::IrisProxy(Call::submit_encryption_artifacts { 
+// 				owner: owner.clone().public(), 
+// 				capsule: test_data.capsule.clone(), 
+// 				public_key: test_data.public_key.clone(), 
+// 				proxy: proxy.clone().public(), 
+// 				sk_encryption_info: sk_box.clone(),
+// 			});
+
+// 			// GIVEN: Some data has been encrypted and added to the ingestion staging map
+// 			let ciphertext = IrisProxy::do_encrypt(
+// 				&test_data.plaintext.clone(),
+// 				proxy_pk.clone(),
+// 				owner.clone().public(),
+// 				proxy.clone().public(),
+// 			);
+// 			let tx = pool_state.write().transactions.pop().unwrap();
+// 			assert!(pool_state.read().transactions.is_empty());
+// 			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
+// 			assert_eq!(tx.signature, None);
+// 			assert_eq!(submit_encryption_artifacts_call, tx.call);
+
+// 			// now we want to simulate the extrinsic being executed
+// 			assert_ok!(IrisProxy::submit_encryption_artifacts(
+// 				Origin::signed(owner.clone().public()), 
+// 				owner.clone().public(),  // owner
+// 				test_data.capsule.clone(), // capsule
+// 				test_data.public_key.clone(), // umbral pk
+// 				proxy.clone().public(), // proxy
+// 				sk_box.clone(), // encrypted sk to decrypt umbral sk 
+// 			));
+// 			// AND: I each validator has generated new keys using the authorities pallet
+// 			assert_ok!(Authorities::create_secrets(
+// 				Origin::signed(owner.public().clone()),
+// 			));
+
+// 			assert_ok!(Authorities::create_secrets(
+// 				Origin::signed(consumer.public().clone()),
+// 			));
+// 			for v in validators.clone() {
+// 				assert_ok!(Authorities::create_secrets(
+// 					Origin::signed(v.0.clone())
+// 				));
+// 			}
+
+// 			// THEN: The public key exists in the ingestion staging map
+// 			// let new_public_key = DataAssets::ingestion_staging(test_data.p.clone().public()).unwrap();
+// 			// WHEN: I simulate a new capsule recovery request for the data
+// 			// Is this function completely insecure?
+// 			IrisProxy::add_capsule_recovery_request(
+// 				consumer.clone().public(),
+// 				test_data.public_key.clone(),
+// 				consumer_sk.public_key().clone().as_bytes().to_vec(),
+// 			);
+
+
+// 			let sk = EncryptedBox { 
+// 				nonce: vec![102, 209, 34, 179, 214, 75, 129, 
+// 					24, 44, 14, 136, 104, 179, 34, 247, 161, 
+// 					168, 16, 131, 113, 43, 29, 165, 49], 
+// 				ciphertext: vec![219, 140, 164, 182, 194, 125, 129, 157, 29, 37, 228, 22, 170, 32, 105, 162, 248, 245, 156, 187, 107, 237, 70, 78, 154, 125, 13, 223, 27, 213, 129, 103, 190, 3, 28, 75, 213, 140, 88, 7, 187, 101, 243, 146, 172, 11, 234, 31], 
+// 				public_key: vec![136, 127, 175, 150, 142, 160, 
+// 					194, 185, 24, 43, 243, 37, 77, 126, 183, 
+// 					5, 114, 157, 167, 133, 183, 81, 29, 
+// 					217, 53, 237, 240, 233, 111, 29, 9, 84] 
+// 			};
+
+// 			let ephemeral_pk_vec = vec![
+// 				2, 74, 50, 75, 57, 138, 197, 
+// 				248, 204, 201, 125, 87, 177, 81, 
+// 				222, 20, 49, 128, 38, 251, 104, 
+// 				211, 77, 79, 11, 140, 181, 7, 
+// 				9, 76, 209, 226, 215
+// 			];
+
+// 			let frag_0 = EncryptedBox { 
+// 				nonce: vec![102, 209, 34, 179, 214, 75, 
+// 					129, 24, 44, 14, 136, 104, 179, 34, 247, 
+// 					161, 168, 16, 131, 113, 43, 29, 165, 49], 
+// 				ciphertext: vec![77, 44, 174, 139, 113, 253, 132, 254, 0, 152, 44, 45, 18, 40, 139, 120, 85, 230, 45, 38, 32, 131, 98, 47, 117, 199, 210, 149, 224, 6, 237, 179, 76, 113, 98, 251, 27, 159, 84, 102, 161, 36, 218, 98, 71, 176, 28, 157, 80, 206, 86, 9, 82, 190, 211, 66, 223, 148, 183, 45, 237, 119, 229, 165, 253, 133, 170, 185, 166, 87, 167, 156, 242, 189, 35, 61, 130, 59, 6, 53, 201, 188, 222, 72, 49, 120, 72, 123, 202, 155, 130, 205, 169, 52, 62, 211, 32, 214, 130, 119, 162, 250, 185, 57, 108, 122, 227, 244, 50, 9, 223, 164, 112, 145, 204, 30, 171, 254, 96, 165, 32, 196, 142, 176, 121, 81, 171, 187, 228, 110, 206, 248, 115, 32, 162, 76, 136, 99, 53, 92, 92, 102, 241, 193, 39, 181, 106, 68, 116, 146, 242, 239, 82, 245, 198, 176, 219, 104, 220, 7, 171, 85, 251, 170, 5, 255, 97, 73, 248, 138, 201, 69, 183, 217, 172, 108, 78, 20, 10, 72, 240, 113, 37, 47, 186, 171, 119, 164, 148, 126, 127, 163, 251, 195, 174, 204, 85, 164, 28, 54, 180, 88, 148, 88, 127, 35, 254, 124, 68, 53, 156, 171, 50, 178, 62, 8, 84, 4, 107, 249, 199, 97, 216, 214, 66, 181, 254, 240, 228, 65, 51, 243, 66, 240, 64, 117, 59, 178, 59, 96, 5, 191, 27, 140, 86, 240, 250, 55, 51, 169, 5, 53, 137, 245, 42, 186, 6, 39, 190, 127, 224, 179, 113, 102, 144, 154, 220, 108, 221, 186, 183, 163, 76, 96, 246, 96], 
+// 				public_key: vec![136, 127, 175, 150, 142, 160, 194, 185, 24, 43, 243, 37, 77, 126, 183, 5, 
+// 					114, 157, 167, 133, 183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84]
+// 			};
+
+// 			let frag_1 = EncryptedBox { 
+// 				nonce: vec![102, 209, 34, 179, 214, 75, 129, 24, 44, 14, 136, 104, 179, 34, 
+// 					247, 161, 168, 16, 131, 113, 43, 29, 165, 49], 
+// 				ciphertext: vec![231, 128, 154, 127, 160, 53, 16, 247, 143, 223, 24, 132, 166, 118, 11, 175, 101, 176, 255, 140, 209, 72, 126, 130, 164, 102, 59, 19, 60, 245, 81, 217, 122, 95, 138, 212, 60, 38, 18, 255, 98, 202, 221, 52, 217, 69, 19, 88, 129, 173, 123, 98, 119, 251, 147, 215, 60, 87, 253, 237, 21, 193, 20, 90, 230, 196, 94, 19, 42, 99, 252, 63, 184, 200, 148, 45, 67, 45, 33, 66, 201, 188, 222, 72, 49, 120, 72, 123, 202, 155, 130, 205, 169, 52, 62, 211, 32, 214, 130, 119, 162, 250, 185, 57, 108, 122, 227, 244, 50, 9, 223, 164, 112, 145, 58, 38, 7, 46, 15, 113, 84, 154, 84, 97, 129, 190, 237, 203, 94, 145, 210, 158, 149, 17, 235, 8, 94, 39, 36, 74, 112, 210, 96, 54, 12, 104, 17, 60, 123, 71, 18, 171, 126, 177, 200, 136, 73, 215, 113, 118, 142, 76, 243, 65, 236, 135, 192, 107, 115, 176, 56, 106, 126, 77, 245, 9, 23, 217, 52, 146, 224, 61, 95, 144, 225, 231, 70, 194, 156, 29, 208, 216, 198, 131, 246, 120, 30, 49, 126, 22, 197, 32, 250, 215, 168, 202, 131, 175, 217, 128, 110, 173, 254, 28, 14, 19, 236, 97, 31, 66, 236, 195, 172, 154, 40, 79, 75, 49, 111, 54, 13, 27, 191, 95, 132, 196, 34, 193, 105, 150, 35, 99, 106, 195, 226, 127, 10, 192, 107, 159, 195, 148, 91, 201, 168, 150, 5, 159, 9, 99, 27, 126, 171, 87, 201, 103, 170, 250, 38, 67, 212, 227, 180, 255, 246, 96], 
+// 				public_key: vec![136, 127, 175, 150, 142, 160, 194, 185, 24, 43, 243, 37, 77, 126, 183, 
+// 					5, 114, 157, 167, 133, 183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84] 
+// 			};
+// 			// TODO: MAKE THIS A TEST CONSTANT
+// 			let verifying_pk = vec![2, 32, 185, 106, 68, 174, 
+// 				201, 135, 191, 34, 180, 13, 32, 162, 229, 68, 52, 
+// 				118, 248, 52, 201, 84, 117, 230, 102, 195, 
+// 				66, 63, 150, 109, 251, 201, 116];
+
+// 			let call = mock::Call::IrisProxy(Call::submit_reencryption_keys 
+// 				{ 
+// 					consumer: consumer.clone().public(), 
+// 					ephemeral_public_key: ephemeral_pk_vec.clone(), 
+// 					data_public_key: vec![2, 32, 185, 106, 68, 174, 201, 135, 
+// 						191, 34, 180, 13, 32, 162, 229, 
+// 						68, 52, 118, 248, 52, 201, 84, 
+// 						117, 230, 102, 195, 66, 63, 
+// 						150, 109, 251, 201, 116], 
+// 					kfrag_assignments: vec![
+// 						(validators[0].clone().0, frag_0.clone()), 
+// 						(validators[1].clone().0, frag_1.clone())
+// 					],
+// 					encrypted_sk_box: sk.clone(),
+// 					consumer_public_key: consumer_sk.public_key().clone().as_bytes().to_vec(),
+// 					verifying_public_key: verifying_pk.clone(),
+// 				}
+// 			);
+
+// 			// THEN: I can generate new key fragments for the caller
+// 			assert_ok!(IrisProxy::proxy_process_kfrag_generation_requests(
+// 				proxy.clone().public(),
+// 				validators.clone().iter()
+// 					.map(|v| (
+// 						v.0,
+// 						Authorities::x25519_public_keys(v.0.clone())
+// 					)).collect::<Vec<_>>()
+// 			));
+// 			let tx = pool_state.write().transactions.pop().unwrap();
+// 			assert!(pool_state.read().transactions.is_empty());
+// 			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
+// 			assert_eq!(tx.signature.unwrap().0, 0);
+// 			assert_eq!(call, tx.call);
+// 			// WHEN: the extrinsic is executed
+			
+// 			assert_ok!(IrisProxy::submit_reencryption_keys(
+// 				Origin::signed(proxy.clone().public()),
+// 				consumer.clone().public(),
+// 				ephemeral_pk_vec.clone(),
+// 				test_data.public_key.clone(),
+// 				consumer_sk.public_key().clone().as_bytes().to_vec(),
+// 				verifying_pk.clone(),
+// 				vec![(validators[0].clone().0, frag_0.clone()), 
+// 					 (validators[1].clone().0, frag_1.clone())],
+// 				sk.clone(),
+// 			));	
+// 			// AND: I process reencryption requests for the first balidator
+// 			assert_ok!(IrisProxy::kfrag_holder_process_reencryption_requests(
+// 				validators[0].clone().0,
+// 			));
+
+// 			let encrypted_capsule_box = EncryptedBox { 
+// 				nonce: vec![102, 209, 34, 179, 214, 75, 129, 24, 44, 14, 136, 104, 179, 
+// 					34, 247, 161, 168, 16, 131, 113, 43, 29, 165, 49], 
+// 				ciphertext: vec![77, 122, 28, 96, 15, 97, 134, 229, 114, 51, 52, 102, 228, 50, 131, 185, 10, 53, 35, 131, 213, 209, 137, 31, 125, 35, 38, 165, 138, 34, 97, 137, 21, 96, 230, 68, 81, 127, 241, 56, 177, 96, 104, 197, 191, 32, 236, 151, 81, 191, 29, 87, 107, 83, 191, 120, 178, 158, 26, 94, 240, 196, 245, 156, 218, 177, 160, 32, 136, 24, 157, 170, 28, 115, 230, 156, 3, 172, 218, 78, 111, 26, 176, 47, 49, 72, 52, 198, 230, 253, 159, 226, 197, 242, 4, 193, 193, 166, 134, 187, 180, 77, 181, 49, 181, 81, 120, 172, 88, 193, 39, 208, 124, 222, 49, 41, 254, 92, 102, 194, 27, 38, 213, 213, 15, 86, 157, 116, 151, 224, 106, 248, 98, 192, 4, 54, 222, 19, 152, 83, 133, 178, 202, 228, 214, 56, 5, 249, 139, 216, 94, 211, 23, 218, 179, 159, 31, 198, 201, 1, 153, 89, 60, 111, 159, 53, 196, 186, 142, 71, 241, 151, 236, 131, 92, 226, 203, 2, 76, 93, 235, 95, 233, 255, 218, 61, 147, 203, 124, 85, 31, 243, 160, 173, 140, 32, 71, 228, 71, 162, 163, 236, 63, 140, 38, 166, 176, 149, 151, 32, 27, 1, 61, 141, 149, 162, 147, 141, 162, 22, 45, 84, 45, 145, 10, 147, 202, 218, 241, 127, 138, 89, 254, 128, 186, 83, 82, 219, 252, 38, 170, 74, 22, 55, 162, 136, 29, 57, 178, 176, 79, 212, 119, 45, 107, 96, 32, 62, 48, 120, 116, 165, 81, 147, 27, 66, 163, 243, 241, 4, 131, 125, 59, 79, 15, 190, 128, 154, 45, 211, 38, 25, 11, 104, 99, 178, 157, 40, 244, 91, 83, 252, 19, 39, 206, 67, 64, 43, 32, 47, 213, 43, 142, 141, 62, 112, 189, 54, 14, 195, 78, 37, 233, 72, 113, 28, 144, 95, 51, 147, 145, 236, 50, 189, 144, 125, 143, 254, 180, 138, 6, 70, 180, 206, 109, 191, 129, 143, 27, 57, 65, 3, 184, 8, 173, 87, 76, 243, 28, 200, 7, 200, 113, 254, 218, 193, 157, 133, 65, 208, 223, 61, 26, 43, 125, 137, 199, 152, 228, 85, 27, 62, 123, 38, 232], 
+// 				public_key: vec![136, 127, 175, 150, 142, 
+// 					160, 194, 185, 24, 43, 243, 37, 77, 126, 183, 5, 114, 157, 167, 133, 
+// 					183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84] 
+// 			};
+
+// 			let submit_capsule_fragment_call = mock::Call::IrisProxy(Call::submit_capsule_fragment { 
+// 				data_consumer: consumer.clone().public(), 
+// 				public_key: vec![2, 32, 185, 106, 68, 174, 201, 135, 191, 34, 180, 13, 32, 162, 229, 68, 52, 
+// 					118, 248, 52, 201, 84, 117, 230, 102, 195, 66, 63, 150, 109, 251, 201, 116], 
+// 				encrypted_cfrag_data: encrypted_capsule_box.clone(),
+// 			});
+
+// 			let next_tx = pool_state.write().transactions.pop().unwrap();
+// 			assert!(pool_state.read().transactions.is_empty());
+// 			let next_tx = mock::Extrinsic::decode(&mut &*next_tx).unwrap();
+// 			assert_eq!(next_tx.signature.unwrap().0, 1);
+// 			// panic!("{:?}", next_tx.call);
+// 			assert_eq!(submit_capsule_fragment_call, next_tx.call);
+// 			// And: the extrinsic is executed successfully
+// 			assert_ok!(IrisProxy::submit_capsule_fragment(
+// 				Origin::signed(validators[0].0.clone()),
+// 				consumer.clone().public(),
+// 				test_data.public_key.clone(),
+// 				encrypted_capsule_box.clone(),
+// 			));
+
+// 			// AND: I do the same for the second validator
+// 			assert_ok!(IrisProxy::kfrag_holder_process_reencryption_requests(
+// 				validators[1].clone().0,
+// 			));
+
+// 			let v1_encrypted_capsule_box = EncryptedBox { 
+// 				nonce: vec![102, 209, 34, 179, 214, 75, 129, 24, 44, 14, 136, 104, 179, 
+// 					34, 247, 161, 168, 16, 131, 113, 43, 29, 165, 49], 
+// 				ciphertext: vec![187, 97, 48, 87, 187, 103, 34, 175, 42, 13, 40, 72, 208, 144, 229, 29, 10, 163, 244, 187, 7, 123, 28, 48, 49, 73, 5, 69, 54, 19, 42, 64, 230, 68, 196, 103, 100, 115, 172, 229, 23, 234, 47, 21, 194, 237, 84, 122, 106, 191, 64, 173, 119, 119, 202, 29, 124, 110, 37, 171, 205, 64, 224, 65, 62, 104, 103, 11, 30, 184, 191, 19, 79, 216, 252, 189, 225, 200, 163, 38, 94, 84, 128, 121, 227, 226, 197, 13, 250, 80, 78, 67, 44, 116, 216, 50, 125, 204, 176, 149, 92, 98, 146, 136, 243, 200, 187, 66, 95, 151, 185, 37, 115, 27, 49, 41, 254, 92, 102, 194, 27, 38, 213, 213, 15, 86, 157, 116, 151, 224, 106, 248, 98, 192, 4, 54, 222, 19, 152, 83, 133, 178, 202, 228, 214, 56, 5, 249, 139, 216, 94, 211, 23, 218, 179, 159, 31, 198, 201, 1, 153, 89, 60, 111, 159, 53, 196, 186, 142, 71, 241, 151, 236, 131, 92, 226, 203, 2, 76, 93, 235, 95, 233, 255, 218, 61, 147, 203, 124, 85, 31, 243, 160, 173, 140, 32, 71, 228, 71, 162, 163, 236, 63, 140, 38, 166, 176, 149, 151, 32, 27, 1, 61, 141, 99, 154, 63, 93, 205, 194, 89, 10, 247, 64, 242, 124, 140, 170, 75, 128, 150, 63, 24, 177, 243, 23, 132, 159, 237, 48, 134, 254, 135, 192, 137, 85, 29, 57, 178, 176, 79, 212, 119, 45, 107, 96, 32, 62, 48, 120, 116, 165, 81, 147, 27, 66, 163, 243, 241, 4, 131, 125, 59, 79, 15, 190, 128, 154, 45, 65, 137, 102, 6, 13, 180, 230, 57, 177, 33, 228, 243, 220, 119, 79, 30, 175, 49, 248, 135, 162, 214, 221, 108, 156, 131, 3, 156, 235, 173, 17, 173, 215, 239, 132, 223, 44, 139, 231, 86, 231, 42, 199, 144, 201, 220, 23, 117, 75, 117, 1, 113, 120, 92, 51, 194, 123, 48, 150, 104, 107, 183, 37, 100, 121, 226, 227, 195, 3, 235, 144, 49, 14, 208, 44, 230, 67, 177, 134, 249, 103, 195, 198, 215, 241, 76, 208, 58, 238, 114, 174, 226, 93, 59, 222, 119], 
+// 				public_key: vec![136, 127, 175, 150, 142, 
+// 					160, 194, 185, 24, 43, 243, 37, 77, 126, 183, 5, 114, 157, 167, 133, 
+// 					183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84] 
+// 			};
+
+// 			let v1_submit_capsule_fragment_call = mock::Call::IrisProxy(Call::submit_capsule_fragment { 
+// 				data_consumer: consumer.clone().public(), 
+// 				public_key: vec![2, 32, 185, 106, 68, 174, 201, 135, 191, 34, 180, 13, 32, 162, 229, 68, 52, 
+// 					118, 248, 52, 201, 84, 117, 230, 102, 195, 66, 63, 150, 109, 251, 201, 116], 
+// 				encrypted_cfrag_data: v1_encrypted_capsule_box.clone(),
+// 			});
+
+// 			let next_tx = pool_state.write().transactions.pop().unwrap();
+// 			assert!(pool_state.read().transactions.is_empty());
+// 			let next_tx = mock::Extrinsic::decode(&mut &*next_tx).unwrap();
+// 			assert_eq!(next_tx.signature.unwrap().0, 2);
+// 			// panic!("{:?}", next_tx.call);
+// 			assert_eq!(v1_submit_capsule_fragment_call, next_tx.call);
+// 			// And: the extrinsic is executed successfully
+// 			assert_ok!(IrisProxy::submit_capsule_fragment(
+// 				Origin::signed(validators[1].0.clone()),
+// 				consumer.clone().public(),
+// 				test_data.public_key.clone(),
+// 				v1_encrypted_capsule_box.clone(),
+// 			));
+
+
+// 			let capsule_data = Capsules::<Test>::get(test_data.public_key.clone()).unwrap();
+// 			let capsule: Capsule = Capsule::from_bytes(capsule_data).unwrap();
+
+// 			let verifying_pk_bytes = VerifyingKeys::<Test>::get(consumer.public().clone(), verifying_pk.clone());
+// 			let verifying_pk = PublicKey::from_bytes(verifying_pk_bytes).unwrap();
+
+// 			// read secret key from SecretKeys
+// 			let encrypted_consumer_decryption_key_bytes = SecretKeys::<Test>::get(
+// 				consumer.public().clone(), test_data.public_key.clone(),
+// 			).unwrap();
+// 			// let consumer_decryption_key = 
+// 			// When: I try to decrypt data
+// 			let plaintext = IrisProxy::do_decrypt(
+// 				consumer.public().clone(),
+// 				ciphertext.to_vec().clone(),
+// 				test_data.public_key.clone(),
+// 				encrypted_consumer_decryption_key_bytes.clone(),
+// 				consumer_sk.clone(),
+// 				verifying_pk,
+// 				capsule,
+// 			);
+// 			// Then: the recovered plaintext matches the input plaintext
+// 			assert_eq!(test_data.plaintext.clone(), plaintext.to_vec());
+// 		});
+// 	});
+// }
+
 
 // #[test]
 // fn add_capsule_recovery_request_fails_if_no_proxy_for_public_key() {

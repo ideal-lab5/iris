@@ -188,9 +188,10 @@ pub mod pallet {
                                 match <T as pallet::Config>::MetadataProvider::get(asset_id.clone()) {
                                     Some(metadata) => {
                                         // use the metadata to get the associated public key used to encrypt the data
-                                        <pallet_iris_proxy::Pallet<T>>::add_capsule_recovery_request(
+                                        <pallet_iris_proxy::Pallet<T>>::add_kfrag_request(
                                             data_consumer_address.clone(), 
-                                            metadata.public_key
+                                            metadata.public_key,
+                                            data_consumer_ephemeral_pk
                                         );
                                     },
                                     None => { return Ok(()) }

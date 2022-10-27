@@ -97,9 +97,35 @@ pub const LOG_TARGET: &'static str = "runtime::proxy";
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
 
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-pub struct CapsuleRecoveryRequest<AccountId> {
+pub struct TPREEncryptionArtifact<AccountId> {
+	pub capsule: Vec<u8>,
+	pub proxy: AccountId,
+}
+
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+pub struct ReencryptionArtifact<AccountId> {
+	pub verifying_key: Vec<u8>,
+	pub secret: EncryptedBox,
+	/// The sr25519 public key created by a proxy node and intended for a 
+	/// specific authorized data consumer
+	pub ephemeral_public_key: Vec<u8>,
+	// can this be a hashmap isntead of Vec? BTreeMap?
+	// are there performance implications? this will never be very large
+	pub verified_kfrags: Vec<(AccountId, EncryptedBox)>,
+}
+
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+pub struct KeyFragGenerationRequest<AccountId> {
     pub caller: AccountId,
-    pub public_key: Vec<u8>,
+    pub data_public_key: Vec<u8>,
+	pub consumer_public_key: Vec<u8>,
+}
+
+#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
+pub struct CapsuleFragmentGenerationRequest<AccountId> {
+    pub caller: AccountId,
+    pub data_public_key: Vec<u8>,
+    pub caller_public_key: Vec<u8>,
 }
 
 pub mod crypto {
@@ -129,6 +155,13 @@ pub mod crypto {
 		type GenericPublic = sp_core::sr25519::Public;
 	}
 }
+
+/// the struct to hold reencryption key info
+// pub struct ReencryptionMetadata<AccountId> {
+// 	pub original_public_key: Vec<u8>,
+// 	pub ephemeral_publib_key: Vec<u8>,
+// 	pub encrypted_ephemeral_secret_key: EncryptedBox<AccountId>,
+// }
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -164,115 +197,66 @@ pub mod pallet {
 	#[pallet::without_storage_info]
 	pub struct Pallet<T>(_);
 
-	// storage
-	    // TODO: Explore making types for TPREPublicKey, Ciphertext
-    // maps pubkey to ciphertext/capsule
     #[pallet::storage]
-    pub type Capsules<T: Config> = StorageMap<
+    pub type EncryptionArtifacts<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
-        Vec<u8>,  // public key
-        Vec<u8>, // capsule data 
+        Vec<u8>,  // public key -> should use a type alias instead...
+        TPREEncryptionArtifact<T::AccountId>, // proxy accountid
         OptionQuery,
     >;
 
-    #[pallet::storage]
-    pub type Proxy<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        Vec<u8>,  // public key
-        T::AccountId, // proxy accountid
-        OptionQuery,
-    >;
-
-    #[pallet::storage]
-    pub type FragmentOwnerSet<T: Config> = StorageDoubleMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId, // consumer acct id
-        Blake2_128Concat,
-        Vec<u8>, // public key (umbral)
-        Vec<T::AccountId>,
-        ValueQuery,
-    >;
-
-    #[pallet::storage]
-    pub type Fragments<T: Config> = StorageNMap<
-        _,
-        (
-            NMapKey<Blake2_128Concat, T::AccountId>, // originator/consumer/decryptor/delegatee
-            NMapKey<Blake2_128Concat, Vec<u8>>,      // public key
-            NMapKey<Blake2_128Concat, T::AccountId>  // frag holder
-        ),
-        EncryptedFragment, // the information needed to decrypt encrypted fragment knowing secret key
-        OptionQuery,
-    >;
+	#[pallet::storage]
+	pub type ReencryptionArtifacts<T: Config> = StorageDoubleMap<
+		_,
+		Blake2_128Concat,
+		Vec<u8>, // "public key"
+		Blake2_128Concat,
+		T::AccountId, // "consumer"
+		ReencryptionArtifact<T::AccountId>,
+		OptionQuery,
+	>;
 
     /// maps a key fragment holder to a vec of public keys for which
     /// they have been tasked with recovering the capsule fragmentr
     #[pallet::storage]
-    pub type CapsuleRecoveryRequests<T: Config> = StorageMap<
+    pub type KeyFragGenerationRequests<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
         T::AccountId, // proxy address
-        Vec<CapsuleRecoveryRequest<T::AccountId>>, // public key associated with umbral encrypted data
+        Vec<KeyFragGenerationRequest<T::AccountId>>, // public key associated with umbral encrypted data
         ValueQuery,
     >;
 
     #[pallet::storage]
-    pub type VerifiedCapsuleFrags<T: Config> = StorageDoubleMap<
+    pub type EncryptedCapsuleFrags<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
         T::AccountId,
         Blake2_128Concat,
         Vec<u8>,
-        Vec<EncryptedFragment>, // <-- TODO: should rename this struct to something more generic
+        Vec<EncryptedBox>, // <-- TODO: should rename this struct to something more generic
         ValueQuery,
     >;
 
-    // could potentially exist elsewhere
-    // lots of these storage maps could probably be simplified, need to do more analysis
-    #[pallet::storage]
-    pub type ProxyCodes<T: Config> = StorageDoubleMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId, // proxy acct id
-        Blake2_128Concat,
-        Vec<u8>, // the public key
-        EncryptedFragment, // the info needed to decrypt the secret key
-        OptionQuery,
-    >;
-
-    #[pallet::storage]
-    pub type EphemeralKeys<T: Config> = StorageDoubleMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId, // the consumer
-        Blake2_128Concat,
-        Vec<u8>,    // the data pk
-        Vec<u8>,    // the ephemeral pk for the data/consumer combi
-        ValueQuery,
-    >;
-
-	// TODO get rid of this/merge with other maps
 	#[pallet::storage]
-	pub type SecretKeys<T: Config> = StorageDoubleMap<
-		_,
-		Blake2_128Concat,
-		T::AccountId, // the consumer
-		Blake2_128Concat,
-		Vec<u8>,    // the data pk
-		EncryptedFragment,    // the encrypted secret key info
-		OptionQuery,
-	>;
-
-	#[pallet::storage]
-	pub type ReencryptionRequests<T: Config> = StorageMap<
+	pub type CapsuleFragmentGenerationRequests<T: Config> = StorageMap<
 		_,
 		Blake2_128Concat,
 		T::AccountId, // the fragment holder
-		Vec<ReencryptionRequest<T::AccountId>>,
+		Vec<CapsuleFragmentGenerationRequest<T::AccountId>>,
 		ValueQuery,
+	>;
+
+	#[pallet::storage]
+	pub type ProxyCodes<T: Config> = StorageDoubleMap<
+		_,
+		Blake2_128Concat,
+		T::AccountId, // proxy acct id
+		Blake2_128Concat,
+		Vec<u8>, // the public key
+		EncryptedBox, // the info needed to decrypt the secret key
+		OptionQuery,
 	>;
 
 	#[pallet::event]
@@ -311,10 +295,10 @@ pub mod pallet {
 			origin: OriginFor<T>,
 			data_consumer: T::AccountId,
 			public_key: Vec<u8>,
-			encrypted_cfrag_data: iris_primitives::EncryptedFragment,
+			encrypted_cfrag_data: EncryptedBox,
 		) -> DispatchResult {
 			// should there be any verification that this public key was generated via the encryption? probably
-			VerifiedCapsuleFrags::<T>::mutate(data_consumer, public_key, |cfrags| {
+			EncryptedCapsuleFrags::<T>::mutate(data_consumer, public_key, |cfrags| {
             	cfrags.push(encrypted_cfrag_data);
         	});
 			// deposit event
@@ -327,57 +311,56 @@ pub mod pallet {
 			origin: OriginFor<T>,
 			consumer: T::AccountId, // should this be lookup instead?
 			ephemeral_public_key: Vec<u8>,
+			// TODO: rename to sender_public_key
 			data_public_key: Vec<u8>,
-			kfrag_assignments: Vec<(T::AccountId, EncryptedFragment)>,
-			encrypted_sk_box: EncryptedFragment, // recall: this key is encrypted with consumer's pk
+			// TODO: rename recipient_public_key? or is that the ephemeral key? terminology here is confused
+			consumer_public_key: Vec<u8>,
+			verifying_public_key: Vec<u8>,
+			kfrag_assignments: Vec<(T::AccountId, EncryptedBox)>,
+			encrypted_sk_box: EncryptedBox,
 		) -> DispatchResult {
-			// ensure_signed(origin)?;
-			let mut frag_holders = Vec::new();
-			// this is a lot of db writes... how can we minimize this?
+			ensure_signed(origin)?;
+			// this probably won't stay like this forever but it's fine for now I guess, makes testing easier
             for assignment in kfrag_assignments.iter() {
-				Fragments::<T>::insert(
-					(
-						consumer.clone(),
-						data_public_key.clone(),
-						assignment.0.clone(),
-					), 
-					assignment.1.clone(),
-				);
-				// just immediately add a reencryption request as well
-				// not sure if this is going to be the long term behavior however
-				ReencryptionRequests::<T>::mutate(
+				CapsuleFragmentGenerationRequests::<T>::mutate(
 					assignment.0.clone(), |mut requests| {
-						requests.push(ReencryptionRequest {
+						requests.push(CapsuleFragmentGenerationRequest {
 							caller: consumer.clone(),
 							data_public_key: data_public_key.clone(),
-							// caller_public_key: ephem
+							caller_public_key: consumer_public_key.clone(),
 						});
 					}
 				);
-
-                frag_holders.push(assignment.0.clone());
             }
-			EphemeralKeys::<T>::insert(consumer.clone(), data_public_key.clone(), ephemeral_public_key.clone());
-			FragmentOwnerSet::<T>::insert(consumer.clone(), data_public_key.clone(), frag_holders);
-			SecretKeys::<T>::insert(consumer.clone(), data_public_key.clone(), encrypted_sk_box.clone());
+
+			ReencryptionArtifacts::<T>::insert(
+				data_public_key.clone(), consumer.clone(), ReencryptionArtifact {
+					verifying_key: verifying_public_key.clone(),
+					secret: encrypted_sk_box.clone(),
+					verified_kfrags: kfrag_assignments.clone(),
+					ephemeral_public_key: ephemeral_public_key.clone(),
+				}
+			);
 			// TODO: emit event
 			Ok(())
 		}
 
+		// TODO: This is pretty insecure
 		#[pallet::weight(0)]
         pub fn submit_encryption_artifacts(
-            origin: OriginFor<T>,
+            _origin: OriginFor<T>,
             owner: T::AccountId,
-            data_capsule: Vec<u8>,
+			proxy: T::AccountId,
+            capsule: Vec<u8>,
             public_key: Vec<u8>,
-            proxy: T::AccountId,
-            sk_encryption_info: EncryptedFragment,
+            encrypted_sk_box: EncryptedBox,
         ) -> DispatchResult {
-            ensure_signed(origin)?;
-            Capsules::<T>::insert(public_key.clone(), data_capsule);
-            Proxy::<T>::insert(public_key.clone(), proxy.clone());
-            // need to store the sk_encryption_info
-            ProxyCodes::<T>::insert(proxy.clone(), public_key.clone(), sk_encryption_info.clone());
+            // ensure_signed(origin)?;
+			EncryptionArtifacts::<T>::insert(public_key.clone(), TPREEncryptionArtifact {
+				capsule: capsule.clone(),
+				proxy: proxy.clone(),
+			});
+            ProxyCodes::<T>::insert(proxy.clone(), public_key.clone(), encrypted_sk_box.clone());
 			T::QueueManager::add_ingestion_staging(owner.clone(), public_key.clone());
             // TODO: emit event
             Ok(())
@@ -394,7 +377,7 @@ impl<T: Config> Pallet<T> {
         message: Bytes,
 		ciphertext: Bytes,
 		asset_id: u32,
-		secret_key: Bytes, // uhm... yeah that's gonna be totally fine... for now...
+		secret_key: Bytes,
 	) -> Option<Bytes> {
 		
         let acct_bytes: [u8;32] = signer.to_vec().try_into().unwrap();
@@ -409,21 +392,28 @@ impl<T: Config> Pallet<T> {
 			let sk = BoxSecretKey::from(*sk_slice);
 			// map asset_id to public_key 
             let asset_id_as_type = TryInto::<T::AssetId>::try_into(asset_id).ok().unwrap();
-			// again shouldn't make this assumption... will fix later when testing
+			// shouldn't make this assumption... will fix later when testing
 			let metadata = T::MetadataProvider::get(asset_id_as_type.clone()).unwrap();
 
-			let capsule_vec = Capsules::<T>::get(metadata.public_key.clone()).unwrap();
-			let capsule: Capsule = Capsule::from_bytes(capsule_vec).unwrap();
-			let encrypted_sk = SecretKeys::<T>::get(acct_id.clone(), metadata.public_key.clone()).unwrap();
+			let encryption_artifact = EncryptionArtifacts::<T>::get(metadata.public_key.clone()).unwrap();
+			let reencryption_artifact = ReencryptionArtifacts::<T>::get(
+				metadata.public_key.clone(), acct_id.clone()
+			).unwrap();
+			let enc_capsule_fragments = EncryptedCapsuleFrags::<T>::get(
+				acct_id.clone(), metadata.public_key.clone()
+			);
+
+			let delegating_pk = PublicKey::from_bytes(metadata.public_key.clone(),).unwrap();
 
 			// decrypt secret key
 			return Some(Self::do_decrypt(
 				acct_id.clone(), 
 				ciphertext.to_vec(),
-				metadata.public_key.clone(),
-				encrypted_sk,
+				delegating_pk,
 				sk,
-				capsule,
+				encryption_artifact,
+				reencryption_artifact,
+				enc_capsule_fragments,
 			));
 
 		}
@@ -431,60 +421,80 @@ impl<T: Config> Pallet<T> {
 		Some(Bytes::from(Vec::new()))
 	}
 
+	// should make this function atomic: shouldn't directly read from rs
 	fn do_decrypt(
 		account_id: T::AccountId,
 		ciphertext: Vec<u8>,
-		data_public_key_vec: Vec<u8>,
-		encrypted_decryption_key: EncryptedFragment,
+		delegating_pk: PublicKey,
 		x25519_sk: BoxSecretKey,
-		capsule: Capsule,
+		encryption_artifact: TPREEncryptionArtifact<T::AccountId>,
+		reencryption_artifact: ReencryptionArtifact<T::AccountId>,
+		encrypted_capsule_fragments: Vec<EncryptedBox>,
 	) -> Bytes {
-		let encrypted_capsule_fragments = VerifiedCapsuleFrags::<T>::get(
-			account_id.clone(), data_public_key_vec.clone(),
-		);
+		// TODO: ERROR HANDLING?
+		// TODO: we need to check that there are enough capsule fragments available
+		let ephemeral_pk = PublicKey::from_bytes(reencryption_artifact.ephemeral_public_key.clone()).unwrap();
+		let verifying_pk = PublicKey::from_bytes(reencryption_artifact.verifying_key.clone()).unwrap();
+		let capsule_data = encryption_artifact.capsule.clone();
+		let capsule = Capsule::from_bytes(&capsule_data).unwrap();
 
-		let verified_capsule_fragments = iris_primitives::convert_encrypted_capsules(
-			encrypted_capsule_fragments, x25519_sk.clone(),
-		);
-
+		let mut verified_capsule_fragments: Vec<VerifiedCapsuleFrag> = Vec::new();
+		for enc_cap_frag in encrypted_capsule_fragments.into_iter() {
+			let raw_pk = enc_cap_frag.public_key.clone();
+			let pk_array = iris_primitives::slice_to_array_32(&raw_pk).unwrap();
+			let cap_pk = BoxPublicKey::from(*pk_array);
+			let decrypted_capsule_vec = decrypt_x25519(
+				cap_pk,
+				x25519_sk.clone(),
+				enc_cap_frag.ciphertext.clone(),
+				enc_cap_frag.nonce.clone(),
+			).unwrap();
+			let cfrag = CapsuleFrag::from_bytes(decrypted_capsule_vec).unwrap();
+			// verify each capsule fragment
+			let verified_cfrag = cfrag
+				.verify(&capsule, &verifying_pk, &delegating_pk, &ephemeral_pk)
+				.unwrap();
+			verified_capsule_fragments.push(verified_cfrag);
+		}
+		// ----------------
 		// the public key associated with secret that encrypted the cfrags
-		let pk_for_encrypted_sk = encrypted_decryption_key.public_key.clone();
-		let pk_slice = iris_primitives::slice_to_array_32(&pk_for_encrypted_sk).unwrap();
-		let pk = BoxPublicKey::from(*pk_slice);
-
+		// TODO: need to make better utility funcs to shorten this
+		let pk = iris_primitives::vec_to_box_public_key(&reencryption_artifact.secret.public_key.clone());
+		// recover secret key created by PROXY node and whose PK was used to generate kfrags
 		let decrypted_tpre_sk_bytes = iris_primitives::decrypt_x25519(
 			pk.clone(),
 			x25519_sk.clone(),
-			encrypted_decryption_key.ciphertext.clone(),
-			encrypted_decryption_key.nonce.clone(),
-		);
+			reencryption_artifact.secret.ciphertext.clone(),
+			reencryption_artifact.secret.nonce.clone(),
+		).unwrap();
 		let decrypted_sk = SecretKey::from_bytes(decrypted_tpre_sk_bytes).unwrap();
 
-		let pk_for_data = data_public_key_vec.clone();
-		let data_pk_slice = iris_primitives::slice_to_array_32(&pk_for_data).unwrap();
-		let data_public_key = PublicKey::from_bytes(&data_pk_slice).unwrap();
-
+		// ----------------
+		// here, the secret key should be the secret key whose pk was used to generate kfrags
+		// and the pub key should be the one whose sk created the frags
 		let plaintext = match umbral_pre::decrypt_reencrypted(
-			&decrypted_sk, &data_public_key, &capsule,
-			verified_capsule_fragments, &ciphertext,
+			&decrypted_sk,
+			&delegating_pk,
+			&capsule,
+			[verified_capsule_fragments[0].clone(), verified_capsule_fragments[1].clone()], 
+			&ciphertext,
 		) {
 			Ok(plaintext) => plaintext.to_vec(),
 			Err(e) => {
+				panic!("An error occurred {:?}", e);
 				"".as_bytes().to_vec()
 			}
 		};
 		Bytes::from(plaintext)
 	}
 
-    /// TODO: look at client\network\src\config.rs for sk generation/storage + write to file
+	/// TODO: look at client\network\src\config.rs for sk generation/storage + write to file
     /// Recover signing acct and use it to encrypt the data and submit unsigned tx
     pub fn encrypt(
         plaintext: Bytes,
         signature: Bytes,
         signer: Bytes,
         message: Bytes,
-        shares: usize,
-        threshold: usize,
         proxy: Bytes,
     ) -> Option<Bytes> {
         let proxy_acct_bytes: [u8;32] = proxy.to_vec().try_into().unwrap();
@@ -492,18 +502,15 @@ impl<T: Config> Pallet<T> {
 
         let acct_bytes: [u8;32] = signer.to_vec().try_into().unwrap();
         let acct_pubkey = Public::from_raw(acct_bytes);
+
         let sig: Signature = Signature::from_slice(signature.to_vec().as_ref()).unwrap();
         let msg: Vec<u8> = message.to_vec();
 
         let acct_id: T::AccountId = T::AccountId::decode(&mut &acct_bytes[..]).unwrap();
 
-		// how do I test this?
-        if sig.verify(msg.as_slice(), &acct_pubkey) {
-            let proxy_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(proxy_acct_id.clone());
-            let proxy_pk_slice = iris_primitives::slice_to_array_32(&proxy_pk_vec).unwrap();
-            let proxy_pk = BoxPublicKey::from(*proxy_pk_slice);
+        if !sig.verify(msg.as_slice(), &acct_pubkey) {
             let plaintext_as_slice: &[u8] = &plaintext.to_vec();
-			Self::do_encrypt(plaintext_as_slice, shares, threshold, proxy_pk, acct_id, proxy_acct_id.clone());
+			return Some(Self::do_encrypt(plaintext_as_slice, acct_id, proxy_acct_id.clone()));
         }
 
         None 
@@ -511,36 +518,48 @@ impl<T: Config> Pallet<T> {
 
 	fn do_encrypt(
 		plaintext: &[u8],
-		shares: usize,
-		threshold: usize,
-		proxy_pk: BoxPublicKey,
 		owner_account_id: T::AccountId,
 		proxy_account_id: T::AccountId,
 	) -> Bytes {
-		let ciphertext = match iris_primitives::encrypt(plaintext, shares, threshold, proxy_pk) {
-			// (capsule, ciphertext, public key, encrypted secret key)
-			Ok(result) => {
-				let data_capsule_vec: Vec<u8> = result.0.to_array().as_slice().to_vec();
-				let pk: Vec<u8> = result.2.to_array().as_slice().to_vec();
-
-				let call = Call::submit_encryption_artifacts { 
-					owner: owner_account_id,
-					data_capsule: data_capsule_vec,
-					public_key: pk.clone(),
-					proxy: proxy_account_id.clone(),
-					sk_encryption_info: result.3.clone(),
-				};
-	
-				SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
-					.map_err(|()| "Unable to submit unsigned transaction.");
+		let proxy_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(proxy_account_id.clone());
+		let proxy_pk_slice = iris_primitives::slice_to_array_32(&proxy_pk_vec).unwrap();
+		let proxy_pk = BoxPublicKey::from(*proxy_pk_slice);
 		
-				result.1.to_vec()
-			},
-			Err(e) => {
-				"".as_bytes().to_vec()
+		let mut rng = ChaCha20Rng::seed_from_u64(17u64);
+		let sk = SecretKey::random_with_rng(rng.clone());
+		let pk = sk.public_key();
+		let (capsule, ciphertext) = match umbral_pre::encrypt_with_rng(
+			&mut rng.clone(), &pk, plaintext)
+		{
+			Ok((capsule, ciphertext)) => (capsule, ciphertext),
+			Err(error) => {
+				// TODO: encode error in response
+				return Bytes::from("".as_bytes().to_vec());
+				// return Err(error);
 			}
 		};
-		Bytes::from(ciphertext)
+	
+		let sk_bytes = sk
+			.to_secret_array()
+			.as_secret()
+			.to_vec();
+		let encrypted_sk = encrypt_x25519(
+			proxy_pk, 
+			sk_bytes,
+		);
+
+		let call = Call::submit_encryption_artifacts { 
+			owner: owner_account_id,
+			proxy: proxy_account_id.clone(),
+			capsule: capsule.to_array().as_slice().to_vec(),
+			public_key: pk.clone().to_array().as_slice().to_vec(),
+			encrypted_sk_box: encrypted_sk,
+		};
+
+		SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
+			.map_err(|()| "Unable to submit unsigned transaction.");
+	
+		Bytes::from(ciphertext.to_vec())
 	}
 
 	/// A proxy processes requests to generate kfrags for an authorized caller
@@ -549,97 +568,139 @@ impl<T: Config> Pallet<T> {
 	///
 	fn proxy_process_kfrag_generation_requests(
 		account: T::AccountId,
-		candidates: Vec<(T::AccountId, Vec<u8>)>,
+		candidates: Vec<T::AccountId>,
 	) -> Result<(), Error<T>> {
-		let capsule_recovery_requests = CapsuleRecoveryRequests::<T>::get(account.clone());
+		let kfrag_generation_requests = KeyFragGenerationRequests::<T>::get(account.clone());
 		let secret_storage = StorageValueRef::persistent(b"iris::x25519");
 		if let Ok(Some(local_sk)) = secret_storage.get::<[u8;32]>() {
-			// key I need for decrypting SK_A
 			let local_secret_key: BoxSecretKey = BoxSecretKey::from(local_sk);
-			// each cap recovery request is an account id and a public key
-			for cap_recovery_request in capsule_recovery_requests {
+			for request in kfrag_generation_requests {
+
+				// ---------
+
 				// 1. recover secret key needed to generate kfrags
-				// TODO: handle error
 				let sk_box = ProxyCodes::<T>::get(
 					account.clone(), 
-					cap_recovery_request.public_key.clone()
+					request.data_public_key.clone()
 				).unwrap();
-
 				// convert pk vec to BoxPublicKey
-				let pk_clone = sk_box.public_key.clone();
-				let encrypted_sk_pk_slice = iris_primitives::slice_to_array_32(&pk_clone).unwrap();
-				let encrypted_sk_pub_key = BoxPublicKey::from(encrypted_sk_pk_slice.clone());
-				// decrypt appropriate secret key
+				let encrypted_sk_pub_key: BoxPublicKey = iris_primitives::vec_to_box_public_key(
+					&sk_box.public_key.clone()
+				);
+				// TODO ERROR HANDLING
 				let sk_plaintext = iris_primitives::decrypt_x25519(
 					encrypted_sk_pub_key.clone(),
 					local_secret_key.clone(),
-					sk_box.ciphertext,
-					sk_box.nonce,
-				);
-				// convert to SecretKey (umbral)
+					sk_box.ciphertext.clone(),
+					sk_box.nonce.clone(),
+				).unwrap();
 				let secret_key = SecretKey::from_bytes(sk_plaintext).unwrap();
+
+				// ---------
+
 				// generate new key pair 
 				let mut rng = ChaCha20Rng::seed_from_u64(211u64);
-				// TODO: should this happen here?
+				// TODO: is the signer the problem? is this hole thing a problem?
+				// it could be a safer if the consumer owns the sk only
 				let signer = umbral_pre::Signer::new(secret_key.clone());
+				// note: this is the secret key a consumer needs to decrypt the data
 				let ephemeral_sk = SecretKey::random_with_rng(rng.clone());
 				let ephemeral_pk = ephemeral_sk.public_key();
 				// generate kfrags
-				// TODO: store/pass threshold + shares values? hard coded at {5, 3} currently
-				// false/false  vs true/true? 
+				// TODO: store/pass threshold + shares values? hard coded at {3, 2} currently
 				let kfrags = generate_kfrags_with_rng(
-				    &mut rng.clone(), &secret_key.clone(), &ephemeral_pk, &signer, 5, 3, true, true
+				    &mut rng, 
+					&secret_key.clone(), // this is the original SK generated by the data owner
+					&ephemeral_pk.clone(), // newly generated ephemeral keypair
+					&signer, 
+					3, 2, true, true
 				);
-				// TODO: Is this really going to work? get recipient's x25519 public key
-				let consumer_pk_bytes = pallet_authorities::Pallet::<T>::x25519_public_keys(
-					cap_recovery_request.caller.clone()
-				);
-				match Self::choose_kfrag_holders(kfrags.to_vec(), candidates.clone()) {
-					Ok(kfrag_assignments) => {
-						// encrypt secret of new ephemeral umbral keypair
-						// consumer will require this in order to recover plaintext
-						// TODO: does this really need a match statement?
-						match iris_primitives::slice_to_array_32(&consumer_pk_bytes) {
-							Some(pk_slice) => {
-								let pk = BoxPublicKey::from(*pk_slice);
-								let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-								let data_owner_umbral_sk = SecretKey::random_with_rng(rng.clone());
-								let secret_key_bytes = data_owner_umbral_sk.to_secret_array()
-									.as_secret()
-									.to_vec();
-								let encrypted_ephem_sk_artifacts = iris_primitives::encrypt_x25519(
-									pk, secret_key_bytes,
-								);
-								// send signed tx to encode this on chain (potentially acting in capacity of proxy (substrate version))
-								let tx_signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-								if !tx_signer.can_sign() {
-									log::error!(
-										"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-									);
-								}
-								let _results = tx_signer.send_signed_transaction(|_account| {
-									Call::submit_reencryption_keys {
-										consumer: cap_recovery_request.caller.clone(),
-										// TODO: need to store the ephemeral pk somewhere, will be needed to generate cfrags
-										ephemeral_public_key: ephemeral_pk.clone().to_array().to_vec(),
-										data_public_key: cap_recovery_request.public_key.clone(),
-										kfrag_assignments: kfrag_assignments.clone(),
-										encrypted_sk_box: encrypted_ephem_sk_artifacts.clone(),
-									}
-								});
-							}, 
-							None => {
-								panic!("uhoh");
-								// do nothing?
-							}
-						};
-					},
-					Err(e) => {
-						panic!("I need to make this an actual error response {:?}", e);
-						// TODO: Define some error response?
-						// Some(Bytes::from("".as_bytes().to_vec()))
-					}
+
+				// ----------
+				let mut assignments = Vec::new();
+				let required_authorities_count = kfrags.len() - 1;
+				ensure!(candidates.len() > required_authorities_count, Error::<T>::InsufficientAuthorities);
+				for i in vec![0, required_authorities_count] {
+					let candidate = candidates[i].clone();
+					// get x25519 pk
+					let recipient_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(candidate.clone());
+					let recipient_pk = iris_primitives::vec_to_box_public_key(&recipient_pk_vec);
+					let key_fragment = kfrags[i].clone()
+						.unverify()
+						.to_array()
+						.as_slice()
+						.to_vec();
+					let encrypted_kfrag_data = iris_primitives::encrypt_x25519(
+						recipient_pk.clone(), key_fragment,
+					);
+					assignments.push((candidate.clone(), encrypted_kfrag_data.clone()));
 				}
+
+				let recipient_pk: BoxPublicKey = iris_primitives::vec_to_box_public_key(
+					&request.consumer_public_key.clone()
+				);
+				let ephemeral_sk_bytes = ephemeral_sk.to_secret_array()
+					.as_secret()
+					.to_vec();
+				let encrypted_ephem_sk_artifacts = iris_primitives::encrypt_x25519(
+					recipient_pk, ephemeral_sk_bytes,
+				);
+				// ----------
+				// send signed tx to encode this on chain (potentially acting in capacity of proxy (substrate version))
+				let tx_signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+				if !tx_signer.can_sign() {
+					log::error!(
+						"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+					);
+				}
+				let _results = tx_signer.send_signed_transaction(|_account| {
+					Call::submit_reencryption_keys {
+						consumer: request.caller.clone(),
+						ephemeral_public_key: ephemeral_pk.clone().to_array().to_vec(),
+						data_public_key: request.data_public_key.clone(),
+						verifying_public_key: signer.verifying_key().to_array().to_vec(),
+						consumer_public_key: request.consumer_public_key.clone(),
+						kfrag_assignments: assignments.clone(),
+						encrypted_sk_box: encrypted_ephem_sk_artifacts.clone(),
+					}
+				});
+
+				// match Self::choose_kfrag_holders(kfrags.to_vec(), candidates.clone()) {
+				// 	Ok(kfrag_assignments) => {
+				// 		// encrypt secret of new ephemeral umbral keypair
+				// 		let pk: BoxPublicKey = iris_primitives::vec_to_box_public_key(
+				// 			&request.consumer_public_key.clone()
+				// 		);
+				// 		let secret_key_bytes = ephemeral_sk.to_secret_array()
+				// 			.as_secret()
+				// 			.to_vec();
+				// 		let encrypted_ephem_sk_artifacts = iris_primitives::encrypt_x25519(
+				// 			pk, secret_key_bytes,
+				// 		);
+				// 		// ----------
+				// 		// send signed tx to encode this on chain (potentially acting in capacity of proxy (substrate version))
+				// 		let tx_signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+				// 		if !tx_signer.can_sign() {
+				// 			log::error!(
+				// 				"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+				// 			);
+				// 		}
+				// 		let _results = tx_signer.send_signed_transaction(|_account| {
+				// 			Call::submit_reencryption_keys {
+				// 				consumer: request.caller.clone(),
+				// 				ephemeral_public_key: ephemeral_pk.clone().to_array().to_vec(),
+				// 				data_public_key: request.data_public_key.clone(),
+				// 				verifying_public_key: signer.verifying_key().to_array().to_vec(),
+				// 				consumer_public_key: request.consumer_public_key.clone(),
+				// 				kfrag_assignments: kfrag_assignments.clone(),
+				// 				encrypted_sk_box: encrypted_ephem_sk_artifacts.clone(),
+				// 			}
+				// 		});
+				// 	},
+				// 	Err(e) => {
+				// 		panic!("I need to make this an actual error response {:?}", e);
+				// 	}
+				// }
 			}	
 		}
 		Ok(())
@@ -649,7 +710,8 @@ impl<T: Config> Pallet<T> {
 	fn kfrag_holder_process_reencryption_requests(
 		account: T::AccountId,
 	) -> Result<(), Error<T>> {
-		let reencryption_requests = ReencryptionRequests::<T>::get(account.clone());
+		let reencryption_requests = 
+			CapsuleFragmentGenerationRequests::<T>::get(account.clone());
 		
 		let secret_storage = StorageValueRef::persistent(b"iris::x25519");
 		// only proceed if we have the secret key
@@ -657,54 +719,62 @@ impl<T: Config> Pallet<T> {
 			let local_secret_key: BoxSecretKey = BoxSecretKey::from(local_sk);
 			// each request contains (caller (consumer), data_public_key, caller_public_key)
 			for request in reencryption_requests.iter() {
-				// decrypt and recover kfrag
-				let encrypted_frag = Fragments::<T>::get((
-					request.caller.clone(),
-					request.data_public_key.clone(), 
-					account.clone(),
-				)).unwrap();
-				// // convert to PublicKey
-				let pubkey_slice_32 = iris_primitives::slice_to_array_32(encrypted_frag.public_key.as_slice()).unwrap();
-				let kfrag_enc_public_key = BoxPublicKey::from(*pubkey_slice_32);
-				// // decrypt the kfrag
+				// ----------
+				let encryption_artifacts = EncryptionArtifacts::<T>::get(request.data_public_key.clone()).unwrap();
+				let reencryption_artifact: ReencryptionArtifact<T::AccountId> = ReencryptionArtifacts::<T>::get(
+					request.data_public_key.clone(), request.caller.clone()
+				).unwrap();
+				// TODO: not very safe but should work for now
+				let encrypted_frag = &reencryption_artifact.verified_kfrags.clone()
+					.iter()
+					.filter(|k| k.0 == account.clone())
+					.map(|k| k.1)
+					.collect::<Vec<_>>()[0];
+
+				// convert to PublicKey
+				let enc_pk_temp = *encrypted_frag.public_key.clone();
+				let pk_array = iris_primitives::slice_to_array_32(&enc_pk_temp).unwrap();
+				let kfrag_enc_public_key = BoxPublicKey::from(pk_array.clone());
+				// decrypt encrypted kfrag
 				let kfrag_bytes = iris_primitives::decrypt_x25519(
-					kfrag_enc_public_key, local_secret_key.clone(), encrypted_frag.ciphertext, encrypted_frag.nonce
-				);
+					kfrag_enc_public_key, 
+					local_secret_key.clone(), 
+					*encrypted_frag.ciphertext, 
+					*encrypted_frag.nonce
+				).unwrap();
 				let kfrag = KeyFrag::from_bytes(kfrag_bytes).unwrap();
 
-				// recover appropriate capsule
-				let capsule_data = Capsules::<T>::get(request.data_public_key.clone()).unwrap();
-				let capsule = Capsule::from_bytes(&capsule_data).unwrap();
-				// // 1. verify kfrag
-				let mut rng = ChaCha20Rng::seed_from_u64(51u64);
-				// generate keys
-				let sk = SecretKey::random_with_rng(rng.clone());
-				let signer = umbral_pre::Signer::new(sk.clone());
-				let verifying_pk = signer.verifying_key();
-
-				// let data_pubkey_clone = request.data_public_key.clone();
-				// panic!("{:?}", data_pubkey_clone.len());
-				// let data_pubkey_slice_32 = iris_primitives::slice_to_array_32(&data_pubkey_clone).unwrap();
-				// let data_public_key = PublicKey::from_bytes(data_pubkey_slice_32).unwrap();
+				// ----------
+				// KEY FRAGMENT VERIFICATION
+				// "PK_d"
 				let data_public_key = PublicKey::from_bytes(&request.data_public_key.clone()).unwrap();
-
-				let consumer_ephemeral_pk_vec = EphemeralKeys::<T>::get(request.caller.clone(), request.data_public_key.clone());
-				let consumer_public_key = PublicKey::from_bytes(&consumer_ephemeral_pk_vec).unwrap();
-
-				// TODO
+				// "PK_{ephem, C}"
+				let consumer_public_key = PublicKey::from_bytes(
+					&reencryption_artifact.ephemeral_public_key.clone()
+				).unwrap();
+				// "PK_signer"
+				let verifying_pk = PublicKey::from_bytes(reencryption_artifact.verifying_key.clone()).unwrap();
 				let verified_kfrag = kfrag.verify(&verifying_pk, Some(&data_public_key), Some(&consumer_public_key)).unwrap();
-
+				// ----------
+				// create capsule fragment
 				let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+				// recover capsule and pk (created by data owner)
+				let capsule_data = encryption_artifacts.capsule.clone();
+				let capsule = Capsule::from_bytes(&capsule_data).unwrap();
 				// generate a capsule fragment
 				let verified_cfrag = reencrypt_with_rng(&mut rng, &capsule, verified_kfrag);
+				// convert to bytes and encrypt
 				let cfrag_bytes = verified_cfrag.to_array().as_slice().to_vec();
 
-				let caller_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(request.caller.clone());
-            	let caller_pk_slice = iris_primitives::slice_to_array_32(&caller_pk_vec).unwrap();
-				let caller_pk = BoxPublicKey::from(*caller_pk_slice);
+				// this should also exist in 
+				let enc_caller_pk_temp = request.caller_public_key.clone();
+				let caller_pk_array = iris_primitives::slice_to_array_32(&enc_caller_pk_temp).unwrap();
+				let caller_pk = BoxPublicKey::from(caller_pk_array.clone());
+
 				let encrypted_cfrag_data = iris_primitives::encrypt_x25519(
 					caller_pk, cfrag_bytes,
 				);
+				// ----------
 				// send signed tx to encode this on chain (potentially acting in capacity of proxy (substrate version))
 				let tx_signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
 				if !tx_signer.can_sign() {
@@ -732,43 +802,38 @@ impl<T: Config> Pallet<T> {
 		Ok(())
 	}
 
-	///
-    /// Assign each verified key fragment to a validator account
-	/// 
-    /// `key_fragments`: A Vec of VerifiedKeyFrag to assign to validators
-    ///
-    pub fn choose_kfrag_holders(
-		key_fragments: Vec<VerifiedKeyFrag>,
-		candidates: Vec<(T::AccountId, Vec<u8>)>,
-	) -> Result<Vec<(T::AccountId, EncryptedFragment)>, Error<T>> {
-        let mut assignments = Vec::new();
-        let rng = ChaCha20Rng::seed_from_u64(17u64);
-        let required_authorities_count = key_fragments.len() - 1;
-        // let authorities: Vec<T::AccountId> = pallet_authorities::Pallet::<T>::validators();
-        ensure!(candidates.len() > required_authorities_count, Error::<T>::InsufficientAuthorities);
-        for i in vec![0, required_authorities_count] {
-            let candidate = candidates[i].clone();
-            // let pk_bytes: Vec<u8> = pallet_authorities::Pallet::<T>::x25519_public_keys(candidate.clone());
-            match iris_primitives::slice_to_array_32(&candidate.1) {
-                Some(pk_slice) => {
-                    let pk = BoxPublicKey::from(*pk_slice);
-                    let key_fragment = key_fragments[i].clone()
-						.unverify()
-						.to_array()
-						.as_slice()
-						.to_vec();
-                    let encrypted_kfrag_data = iris_primitives::encrypt_x25519(
-                        pk.clone(), key_fragment,
-                    );
-                    assignments.push((candidate.0.clone(), encrypted_kfrag_data.clone()));
-                },
-                None => {
-                    // idk yet
-                }
-            }
-        }
-        Ok(assignments)
-    }
+	// ///
+    // /// Assign each verified key fragment to a validator account
+	// /// Currently, it simply assigns based on the order that we receive validator addresses
+	// /// when we get them from the Authorities pallet. In the future, this function
+	// /// must be replaced by a more intelligent and fair solution.
+	// /// 
+    // /// `key_fragments`: A Vec of VerifiedKeyFrag to assign to validators
+    // ///
+    // pub fn choose_kfrag_holders(
+	// 	key_fragments: Vec<VerifiedKeyFrag>,
+	// 	candidates: Vec<T::AccountId>)>,
+	// ) -> Result<Vec<(T::AccountId, EncryptedBox)>, Error<T>> {
+    //     let mut assignments = Vec::new();
+    //     let required_authorities_count = key_fragments.len() - 1;
+    //     ensure!(candidates.len() > required_authorities_count, Error::<T>::InsufficientAuthorities);
+    //     for i in vec![0, required_authorities_count] {
+    //         let candidate = candidates[i].clone();
+	// 		// get x25519 pk
+	// 		let recipient_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(candidate.clone());
+	// 		let recipient_pk = iris_primitives::vec_to_box_public_key(&recipient_pk_vec);
+	// 		let key_fragment = key_fragments[i].clone()
+	// 			.unverify()
+	// 			.to_array()
+	// 			.as_slice()
+	// 			.to_vec();
+	// 		let encrypted_kfrag_data = iris_primitives::encrypt_x25519(
+	// 			recipient_pk.clone(), key_fragment,
+	// 		);
+	// 		assignments.push((candidate.0.clone(), encrypted_kfrag_data.clone()));
+    //     }
+    //     Ok(assignments)
+    // }
 
 	fn validate_transaction_parameters() -> TransactionValidity {
 		ValidTransaction::with_tag_prefix("iris")
@@ -778,39 +843,29 @@ impl<T: Config> Pallet<T> {
 	}
 
 	// what if public_key dne?
-	pub fn add_capsule_recovery_request(
+	pub fn add_kfrag_request(
         account: T::AccountId,
-        public_key: Vec<u8>, 
+        data_public_key: Vec<u8>,
+		consumer_public_key: Vec<u8>,
     ) {
         // NOTE: this assumes there's at least one proxy available.
         // TODO: revisit this when testing
-        let proxy = Proxy::<T>::get(public_key.clone()).unwrap();
-        // get proxy node accountid
-		// Q: should these requests live here or another pallet?
-        CapsuleRecoveryRequests::<T>::mutate(proxy, |mut pks| {
-            pks.push(CapsuleRecoveryRequest {
+        let proxy = EncryptionArtifacts::<T>::get(data_public_key.clone()).unwrap().proxy.clone();
+        KeyFragGenerationRequests::<T>::mutate(proxy, |mut pks| {
+            pks.push(KeyFragGenerationRequest {
                 caller: account,
-                public_key: public_key.clone(),
+                data_public_key: data_public_key.clone(),
+				consumer_public_key: consumer_public_key.clone(),
             });
         });
     }
-}
-
-pub trait Proxies<AccountId> {
-	fn proxy_for(public_key: Vec<u8>) -> Option<AccountId>;
-}
-
-impl<T: Config> Proxies<T::AccountId> for Pallet<T> {
-	fn proxy_for(public_key: Vec<u8>) -> Option<T::AccountId> {
-		Proxy::<T>::get(public_key)
-	}
 }
 
 pub trait OffchainKeyManager<AccountId> {
 	// should return Result<> instead
 	fn process_decryption_delegation(
 		account: AccountId,
-		candidates: Vec<(AccountId, Vec<u8>)>,
+		candidates: Vec<AccountId>,
 	);
 	fn process_reencryption_requests(account: AccountId);
 }
@@ -818,7 +873,7 @@ pub trait OffchainKeyManager<AccountId> {
 impl<T: Config> OffchainKeyManager<T::AccountId> for Pallet<T> {
 	fn process_decryption_delegation(
 		account: T::AccountId,
-		candidates: Vec<(T::AccountId, Vec<u8>)>
+		candidates: Vec<T::AccountId>
 	) {
 		Self::proxy_process_kfrag_generation_requests(account, candidates);
 	}

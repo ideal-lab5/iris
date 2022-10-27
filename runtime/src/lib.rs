@@ -882,8 +882,7 @@ impl_runtime_apis! {
 				plaintext, 
 				signature, 
 				signer, 
-				message, 
-				5, 3,
+				message,
 				proxy,
 			)
 		}

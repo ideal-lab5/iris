@@ -29,7 +29,7 @@ use sp_core::Pair;
 use sp_core::{
 	offchain::{testing, OffchainWorkerExt, TransactionPoolExt, OffchainDbExt}
 };
-use iris_primitives::{EncryptedFragment, IngestionCommand};
+use iris_primitives::{EncryptedBox, IngestionCommand};
 use sp_keystore::{testing::KeyStore, KeystoreExt, SyncCryptoStore};
 use std::sync::Arc;
 use sp_io::TestExternalities;
@@ -59,7 +59,7 @@ pub fn ipfs_can_submit_ingestion_complete() {
 	// Given: I am a valid node with a positive balance
 	TEST_CONSTANTS.with(|test_data| {
 		let pairs = vec![(test_data.p.clone().public(), 10)];
-		let encrypted_kfrag = EncryptedFragment {
+		let encrypted_kfrag = EncryptedBox {
 			nonce: test_data.name.clone(),
 			ciphertext: test_data.name.clone(),
 			public_key: test_data.name.clone(),
@@ -112,7 +112,7 @@ pub fn ipfs_can_submit_ingestion_complete() {
 #[test]
 pub fn ipfs_fail_to_create_asset_class_if_no_staging_exists() {
 	TEST_CONSTANTS.with(|test_data| {
-		let encrypted_kfrag = EncryptedFragment {
+		let encrypted_kfrag = EncryptedBox {
 			nonce: test_data.name.clone(),
 			ciphertext: test_data.name.clone(),
 			public_key: test_data.name.clone(),
@@ -159,7 +159,7 @@ pub fn ipfs_fail_to_create_asset_class_if_no_staging_exists() {
 pub fn ipfs_fail_submit_ingestion_complete_if_ingestion_cmd_not_assigned_to_you() {	
 	TEST_CONSTANTS.with(|test_data| {
 		// Given: I am a valid node with a positive balance
-		let encrypted_kfrag = EncryptedFragment {
+		let encrypted_kfrag = EncryptedBox {
 			nonce: test_data.name.clone(),
 			ciphertext: test_data.name.clone(),
 			public_key: test_data.name.clone(),
