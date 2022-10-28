@@ -292,14 +292,15 @@ pub mod pallet {
 								if let Err(e) = Self::handle_ingestion_queue(addr.clone()) {
 									log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
 								}
-								// TODO: should add a 'role' check here
-								// T::OffchainKeyManager::process_decryption_delegation(addr.clone());
-								// T::OffchainKeyManager::process_reencryption_requests(addr.clone(), );
-								// 	log::error!("Encountered an error while attempting to generate key fragments: {:?}", e);
-								// }
-								// if let Err(e) = OffchainKeyManager::<T>::process_reencryption_requests(addr.clone()) {
-								// 	log::error!("Encountered an error while attempting to reencrypt a key fragments: {:?}", e);
-								// }
+
+								let authorities = <pallet_authorities::Pallet<T>>::validators();
+								let candidates_map = authorities.iter()
+									.map(|a| 
+										(a, <pallet_authorities::Pallet<T>>::x25519_public_keys(a.clone()))
+									).collect::<Vec<_>>();
+
+								T::OffchainKeyManager::process_reencryption_requests(addr.clone());
+								T::OffchainKeyManager::process_decryption_delegation(addr.clone(), authorities);
 							},
 							None => {
 								// TODO: Should be an error
