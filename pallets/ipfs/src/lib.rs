@@ -22,7 +22,7 @@
 //! ## Description 
 //! 
 //! This pallet contains the integration and configuration
-//! with an external IPFS instance via the IPFS RPC endpoints.
+//! with an external IPFS instance via the IPFS API endpoints.
 //! 
 
 #![cfg_attr(not(feature = "std"), no_std)]

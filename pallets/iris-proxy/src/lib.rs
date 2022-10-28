@@ -665,43 +665,6 @@ impl<T: Config> Pallet<T> {
 						encrypted_sk_box: encrypted_ephem_sk_artifacts.clone(),
 					}
 				});
-
-				// match Self::choose_kfrag_holders(kfrags.to_vec(), candidates.clone()) {
-				// 	Ok(kfrag_assignments) => {
-				// 		// encrypt secret of new ephemeral umbral keypair
-				// 		let pk: BoxPublicKey = iris_primitives::vec_to_box_public_key(
-				// 			&request.consumer_public_key.clone()
-				// 		);
-				// 		let secret_key_bytes = ephemeral_sk.to_secret_array()
-				// 			.as_secret()
-				// 			.to_vec();
-				// 		let encrypted_ephem_sk_artifacts = iris_primitives::encrypt_x25519(
-				// 			pk, secret_key_bytes,
-				// 		);
-				// 		// ----------
-				// 		// send signed tx to encode this on chain (potentially acting in capacity of proxy (substrate version))
-				// 		let tx_signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-				// 		if !tx_signer.can_sign() {
-				// 			log::error!(
-				// 				"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-				// 			);
-				// 		}
-				// 		let _results = tx_signer.send_signed_transaction(|_account| {
-				// 			Call::submit_reencryption_keys {
-				// 				consumer: request.caller.clone(),
-				// 				ephemeral_public_key: ephemeral_pk.clone().to_array().to_vec(),
-				// 				data_public_key: request.data_public_key.clone(),
-				// 				verifying_public_key: signer.verifying_key().to_array().to_vec(),
-				// 				consumer_public_key: request.consumer_public_key.clone(),
-				// 				kfrag_assignments: kfrag_assignments.clone(),
-				// 				encrypted_sk_box: encrypted_ephem_sk_artifacts.clone(),
-				// 			}
-				// 		});
-				// 	},
-				// 	Err(e) => {
-				// 		panic!("I need to make this an actual error response {:?}", e);
-				// 	}
-				// }
 			}	
 		}
 		Ok(())
@@ -802,39 +765,6 @@ impl<T: Config> Pallet<T> {
 		
 		Ok(())
 	}
-
-	// ///
-    // /// Assign each verified key fragment to a validator account
-	// /// Currently, it simply assigns based on the order that we receive validator addresses
-	// /// when we get them from the Authorities pallet. In the future, this function
-	// /// must be replaced by a more intelligent and fair solution.
-	// /// 
-    // /// `key_fragments`: A Vec of VerifiedKeyFrag to assign to validators
-    // ///
-    // pub fn choose_kfrag_holders(
-	// 	key_fragments: Vec<VerifiedKeyFrag>,
-	// 	candidates: Vec<T::AccountId>)>,
-	// ) -> Result<Vec<(T::AccountId, EncryptedBox)>, Error<T>> {
-    //     let mut assignments = Vec::new();
-    //     let required_authorities_count = key_fragments.len() - 1;
-    //     ensure!(candidates.len() > required_authorities_count, Error::<T>::InsufficientAuthorities);
-    //     for i in vec![0, required_authorities_count] {
-    //         let candidate = candidates[i].clone();
-	// 		// get x25519 pk
-	// 		let recipient_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(candidate.clone());
-	// 		let recipient_pk = iris_primitives::vec_to_box_public_key(&recipient_pk_vec);
-	// 		let key_fragment = key_fragments[i].clone()
-	// 			.unverify()
-	// 			.to_array()
-	// 			.as_slice()
-	// 			.to_vec();
-	// 		let encrypted_kfrag_data = iris_primitives::encrypt_x25519(
-	// 			recipient_pk.clone(), key_fragment,
-	// 		);
-	// 		assignments.push((candidate.0.clone(), encrypted_kfrag_data.clone()));
-    //     }
-    //     Ok(assignments)
-    // }
 
 	fn validate_transaction_parameters() -> TransactionValidity {
 		ValidTransaction::with_tag_prefix("iris")

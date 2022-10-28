@@ -157,7 +157,6 @@ pub mod pallet {
             #[pallet::compact] asset_id: T::AssetId,
             data_consumer_address: T::AccountId,
             data_consumer_ephemeral_pk: Vec<u8>,
-            gateway: T::AccountId,
             execution_result: bool,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;

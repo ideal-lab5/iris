@@ -1076,16 +1076,13 @@ impl ChainExtension<Runtime> for IrisExtension {
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},
-			// IrisEjection: submit execution results from composable access rules
+			// IrisEjection: submit execution results from a rule executor
 			5 => {
 				let mut env = env.buf_in_buf_out();
-				let (caller_account, asset_id, pk, target, gateway, result): (AccountId, u32, [u8;32], AccountId, AccountId, bool) = env.read_as()?;
+				let (caller_account, target_account, asset_id, pk, result): (AccountId, AccountId, u32, [u8;32], bool) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-				// TODO: right now you're your own gateway
-				crate::Authorization::submit_execution_results(
-					origin, asset_id, target.clone(), pk.to_vec(), gateway.clone(), result,
-				)?;
+				crate::Authorization::submit_execution_results(origin, asset_id, target_account, pk.to_vec(), result)?;
 				Ok(RetVal::Converging(func_id))
 			},
             _ => {
