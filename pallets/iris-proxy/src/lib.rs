@@ -496,7 +496,7 @@ impl<T: Config> Pallet<T> {
         signer: Bytes,
         message: Bytes,
         proxy: Bytes,
-    ) -> Option<Bytes> {
+    ) -> Bytes {
         let proxy_acct_bytes: [u8;32] = proxy.to_vec().try_into().unwrap();
         let proxy_acct_id: T::AccountId = T::AccountId::decode(&mut &proxy_acct_bytes[..]).unwrap();
 
@@ -508,12 +508,12 @@ impl<T: Config> Pallet<T> {
 
         let acct_id: T::AccountId = T::AccountId::decode(&mut &acct_bytes[..]).unwrap();
 
-        if !sig.verify(msg.as_slice(), &acct_pubkey) {
+        if sig.verify(msg.as_slice(), &acct_pubkey) {
             let plaintext_as_slice: &[u8] = &plaintext.to_vec();
-			return Some(Self::do_encrypt(plaintext_as_slice, acct_id, proxy_acct_id.clone()));
+			return Self::do_encrypt(plaintext_as_slice, acct_id, proxy_acct_id.clone());
         }
 
-        None 
+        Bytes::from(b"Signature verification failed".to_vec())
     }
 
 	fn do_encrypt(

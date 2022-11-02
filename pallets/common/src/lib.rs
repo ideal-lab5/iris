@@ -58,11 +58,6 @@ pub struct IngestionCommand<AccountId, Balance> {
     pub cid: Vec<u8>,
     /// the multiaddress of the ipfs node where the data already exists
     pub multiaddress: Vec<u8>,
-    /// a 'self-reported' estimated size of data to be transferred
-    /// the true data size can only be known after querying the OCC within the OCW
-    pub estimated_size_gb: u128,
-    /// the id of the dataspace to associate the asset class with
-    // pub dataspace_id: AssetId,
     /// the balance used to create an asset class and pay a proxy node
     pub balance: Balance,
 }
@@ -221,7 +216,6 @@ pub fn slice_to_array_32(slice: &[u8]) -> Option<&[u8; 32]> {
         let ptr = slice.as_ptr() as *const [u8; 32];
         unsafe {Some(&*ptr)}
     } else {
-        panic!("Length should be 32 but was {:?}", slice.len());
         None
     }
 }

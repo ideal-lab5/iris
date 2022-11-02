@@ -129,19 +129,3 @@ fn duplicate_check() {
 		});
 	});
 }
-
-#[test]
-fn can_create_secrets() {
-	TEST_CONSTANTS.with(|test_data| {
-		let v = test_data.validators.clone();
-		let mut t = new_test_ext(vec![v[0].clone(), v[1].clone(), v[2].clone()]);
-		let (offchain, state) = testing::TestOffchainExt::new();
-		t.register_extension(OffchainDbExt::new(offchain));
-		t.execute_with(|| {
-			assert_ok!(Authorities::create_secrets(Origin::signed(v[3].0.clone())));
-			// check that a key was created
-			let key = crate::X25519PublicKeys::<Test>::get(v[3].0.clone());
-			assert_eq!(key.len(), 32);
-		});
-	});
-}

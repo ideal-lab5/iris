@@ -285,7 +285,14 @@ pub mod pallet {
 						let id = &id_json["ID"];
 						let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
 						match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
-							Some(addr) => { 
+							Some(addr) => {
+								if <pallet_authorities::Pallet<T>>::x25519_public_keys(addr.clone()).is_empty() {
+									log::info!("Proxy keys not configured");
+									// TODO: handle error
+									<pallet_authorities::Pallet<T>>::update_x25519(addr.clone());
+								} else {
+									log::info!("Proxy Status: Ready");
+								}
 								if let Err(e) = Self::ipfs_update_configs(addr.clone()) {
 									log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
 								} 
@@ -512,14 +519,14 @@ impl<T: Config> Pallet<T> {
 			// must disconnect from all current peers and makes oneself undiscoverable
 			// but since we aren't connected to anyone else... this is fine.
 			// connect to multiaddress from request
-			ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
+			// ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
 			// ipfs get cid 
 			let response = ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID);
 			// TODO: remove these logs
 			log::info!("Fetched data with CID {:?} from multiaddress {:?}", cid.clone(), cmd.multiaddress.clone());
 			log::info!("{:?}", response);
 			// disconnect from multiaddress
-			ipfs::disconnect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
+			// ipfs::disconnect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
 			// Q: is there some way we can verify that the data we received is from the correct maddr? is that needed?
 			let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
 			if !signer.can_sign() {

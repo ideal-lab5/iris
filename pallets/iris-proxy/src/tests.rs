@@ -217,6 +217,7 @@ fn encrypt_to_decrypt_happy_path() {
 
 		t.execute_with(|| {
 
+			// TODO: remoiving create_secret as extrinsic, need to call as function instead
 			// Given: validator and proxies have generated secrets
 			assert_ok!(Authorities::create_secrets(
 				Origin::signed(test_data.owner.public().clone()),

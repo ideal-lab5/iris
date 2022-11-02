@@ -117,13 +117,6 @@ pub struct EncryptedData {
     pub ciphertext: Vec<u8>,
 }
 
-// #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-// pub struct ReencryptionRequest<AccountId> {
-//     pub caller: AccountId,
-//     pub data_public_key: Vec<u8>,
-//     pub caller_public_key: Vec<u8>,
-// }
-
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"iris");
 
 /// Based on the above `KeyTypeId` we need to generate a pallet-specific crypto type wrappers.
@@ -304,7 +297,6 @@ pub mod pallet {
             gateway_reserve: BalanceOf<T>,
             cid: Vec<u8>,
             multiaddress: Vec<u8>,
-            estimated_size_gb: u128,
             #[pallet::compact] min_asset_balance: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -314,7 +306,6 @@ pub mod pallet {
                 owner: who.clone(),
                 cid: cid,
                 multiaddress: multiaddress,
-                estimated_size_gb: estimated_size_gb,
                 balance: min_asset_balance,
             };
             commands.push(cmd.clone());

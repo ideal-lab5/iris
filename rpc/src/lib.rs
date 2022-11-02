@@ -49,7 +49,7 @@ pub trait EncryptionApi<BlockHash, Balance> {
         message: Bytes,
 		proxy: Bytes,
 		at: Option<BlockHash>,
-	) -> RpcResult<Option<Bytes>>;
+	) -> RpcResult<Bytes>;
 
 	#[method(name = "iris_decrypt")]
 	fn decrypt(
@@ -109,7 +109,7 @@ where
         message: Bytes,
 		proxy: Bytes,
 		at: Option<<Block as BlockT>::Hash>
-	) -> RpcResult<Option<Bytes>> {
+	) -> RpcResult<Bytes> {
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			self.client.info().best_hash

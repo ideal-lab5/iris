@@ -43,7 +43,7 @@ sp_api::decl_runtime_apis! {
 			signer: Bytes,
 			message: Bytes,
 			proxy: Bytes,
-		) -> Option<Bytes>;
+		) -> Bytes;
 
 		fn decrypt(
 			ciphertext: Bytes,

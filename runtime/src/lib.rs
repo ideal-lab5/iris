@@ -528,7 +528,7 @@ impl pallet_gateway::Config for Runtime {
 }
 
 parameter_types! {
-	pub const NodeConfigBlockDuration: u32 = 10;
+	pub const NodeConfigBlockDuration: u32 = 2;
 }
 
 impl pallet_ipfs::Config for Runtime {
@@ -868,7 +868,6 @@ impl_runtime_apis! {
 		}
 	}
 
-	// USE {5 ,3}-Threshold encryption
 	impl encryption_rpc_runtime_api::EncryptionApi<Block, Balance> for Runtime {
 		fn encrypt(
 			plaintext: Bytes,
@@ -876,7 +875,7 @@ impl_runtime_apis! {
 			signer: Bytes,
 			message: Bytes,
 			proxy: Bytes,
-		) -> Option<Bytes> {
+		) -> Bytes {
 			// None
 			IrisProxy::encrypt(
 				plaintext, 

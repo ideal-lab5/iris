@@ -358,12 +358,14 @@ pub mod pallet {
 			Ok(())
 		}
 
+		// insert a public key
 		#[pallet::weight(100)]
 		pub fn create_secrets(
 			origin: OriginFor<T>,
+			public_key: Vec<u8>,
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
-			Self::update_keys(who);
+			X25519PublicKeys::<T>::insert(who.clone(), public_key);
 			Ok(())
 		}
 	}
@@ -449,20 +451,27 @@ impl<T: Config> Pallet<T> {
 		<OfflineValidators<T>>::put(Vec::<T::AccountId>::new());
 	}
 
-	fn update_keys(validator_id: T::AccountId) {
-		Self::update_x25519(validator_id);
-	}
-
-	fn update_x25519(validator_id: T::AccountId) {
+	pub fn update_x25519(validator_id: T::AccountId) {
 		// generate a new keypair
 		let mut rng = ChaCha20Rng::seed_from_u64(31u64);
 		let secret_key = BoxSecretKey::generate(&mut rng);
 		let pk: Vec<u8> = secret_key.public_key().as_bytes().to_vec();
 
+		// needs to happen offchain
 		let local_storage = StorageValueRef::persistent(b"iris::x25519");
 		local_storage.set(&secret_key.as_bytes());
 
-		X25519PublicKeys::<T>::insert(validator_id.clone(), pk);
+		let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+		if !signer.can_sign() {
+			log::error!(
+				"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+			);
+		}
+		let results = signer.send_signed_transaction(|_account| { 
+			Call::create_secrets {
+				public_key: pk.clone(),
+			}
+		});
 	}
 
 	fn validate_transaction_parameters() -> TransactionValidity {
