@@ -450,7 +450,9 @@ impl<T: Config> Pallet<T> {
 	fn ipfs_update_configs(account: T::AccountId) -> Result<(), Error<T>> {
 		match T::ProxyProvider::prefs(account.clone()) {
 			Some(prefs) => {
-				let val = format!("{}", prefs.storage_max_gb).as_bytes().to_vec();
+				// let val = format!("{}", prefs.storage_max_gb).as_bytes().to_vec();
+				// for now, default to 50mb
+				let val = format!("{}", 50).as_bytes().to_vec();
 				// 4. Make calls to update ipfs node config
 				let key = IpfsConfigKey::StorageMax.as_ref().as_bytes().to_vec();
 				let storage_size_config_item = ipfs::IpfsConfigRequest{
@@ -519,14 +521,13 @@ impl<T: Config> Pallet<T> {
 			// must disconnect from all current peers and makes oneself undiscoverable
 			// but since we aren't connected to anyone else... this is fine.
 			// connect to multiaddress from request
-			// ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
+			ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
 			// ipfs get cid 
 			let response = ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID);
 			// TODO: remove these logs
 			log::info!("Fetched data with CID {:?} from multiaddress {:?}", cid.clone(), cmd.multiaddress.clone());
-			log::info!("{:?}", response);
 			// disconnect from multiaddress
-			// ipfs::disconnect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
+			ipfs::disconnect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
 			// Q: is there some way we can verify that the data we received is from the correct maddr? is that needed?
 			let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
 			if !signer.can_sign() {

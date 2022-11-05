@@ -74,15 +74,15 @@ pub enum Endpoint {
 impl AsRef<str> for Endpoint {
 	fn as_ref(&self) -> &str {
 		match *self {
-            Endpoint::Add => "http://127.0.0.1:5001/api/v0/add",
-            Endpoint::Cat => "http://127.0.0.1:5001/api/v0/cat",
-            Endpoint::ConfigShow => "http://127.0.0.1:5001/api/v0/config/show",
-            Endpoint::ConfigUpdate => "http://127.0.0.1:5001/api/v0/config?",
-            Endpoint::Connect => "http://127.0.0.1:5001/api/v0/swarm/connect?",
-            Endpoint::Disconnect => "http://127.0.0.1:5001/api/v0/swarm/disconnect?",
-            Endpoint::Get => "http://127.0.0.1:5001/api/v0/get?",
-            Endpoint::Identity => "http://127.0.0.1:5001/api/v0/id",
-            Endpoint::Stat => "http://127.0.0.1:5001/api/v0/repo/stat",
+            Endpoint::Add => "http://host.docker.internal:5001/api/v0/add",
+            Endpoint::Cat => "http://host.docker.internal:5001/api/v0/cat",
+            Endpoint::ConfigShow => "http://host.docker.internal:5001/api/v0/config/show",
+            Endpoint::ConfigUpdate => "http://host.docker.internal:5001/api/v0/config?",
+            Endpoint::Connect => "http://host.docker.internal:5001/api/v0/swarm/connect?",
+            Endpoint::Disconnect => "http://host.docker.internal:5001/api/v0/swarm/disconnect?",
+            Endpoint::Get => "http://host.docker.internal:5001/api/v0/get?",
+            Endpoint::Identity => "http://host.docker.internal:5001/api/v0/id",
+            Endpoint::Stat => "http://host.docker.internal:5001/api/v0/repo/stat",
 			Endpoint::Other(m) => m,
 		}
 	}

@@ -22,16 +22,6 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y && \
 	rustup default stable && \
 	cargo build "--$PROFILE"
 
-# install go-ipfs
-# RUN apt-get install -y wget && \
-# 	wget https://dist.ipfs.io/go-ipfs/v0.13.0/go-ipfs_v0.13.0_linux-amd64.tar.gz && \
-# 	tar -xvzf go-ipfs_v0.13.0_linux-amd64.tar.gz && \
-# 	cd go-ipfs &&  \
-# 	bash install.sh && \ 
-# 	ipfs --version && \
-# 	cd /iris && \
-# 	rm go-ipfs_v0.13.0_linux-amd64.tar.gz
-
 # ===== SECOND STAGE ======
 
 FROM phusion/baseimage:0.11

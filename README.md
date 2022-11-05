@@ -28,7 +28,7 @@ Install from the docker hub
 **OR**
 
 From the latest sources, build the docker image:
-`docker build -t ideallabs/iris -f /Dockerfile .`
+`docker build -t ideallabs/iris -f ./Dockerfile .`
 
 ## Running
 

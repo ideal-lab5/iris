@@ -220,6 +220,15 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
+    pub type AssetClassOwnership<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Vec<T::AssetId>,
+        ValueQuery,
+    >;
+
+    #[pallet::storage]
     pub type Delay<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     /// The staging map maps account ids to the public key that 
@@ -426,7 +435,7 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
         let who = ensure_signed(origin)?;
 
         // verify that capsule exists (i.e. data is 'decryptable')
-        match IngestionStaging::<T>::get(cmd.owner.clone()) {
+        match IngestionStaging::<T>::get(who.clone()) {
             Some(pubkey) => {
                 let asset_id = Self::get_and_increment_asset_id();
                 let admin = T::Lookup::unlookup(cmd.clone().owner);
@@ -440,6 +449,7 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
                     cid: cmd.cid.clone(),
                     public_key: pubkey,
                 });
+                <AssetClassOwnership<T>>::mutate(cmd.owner.clone(), |ids| { ids.push(asset_id.clone()); });
                 IngestionStaging::<T>::remove(cmd.clone().owner);
                 // remove from ingestion commands, this must be done before the 'now + delay' number of blocks passes
                 // for now... let's just assume there is no time limit and test it out
