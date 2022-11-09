@@ -278,7 +278,7 @@ pub mod pallet {
 		/// Validate unsigned call to this module.
 		///
 		fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-			// TODO
+			// TODO: accept all for now
 			// if let Call::name{ .. } = call {
 				Self::validate_transaction_parameters()
 			// } else {
@@ -290,7 +290,7 @@ pub mod pallet {
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 
-		#[pallet::weight(0)]
+		#[pallet::weight(100_000)]
 		pub fn submit_capsule_fragment(
 			origin: OriginFor<T>,
 			data_consumer: T::AccountId,
@@ -306,7 +306,7 @@ pub mod pallet {
 		}
 		
 		/// called by a proxy who generated new kfrags for another node
-		#[pallet::weight(0)]
+		#[pallet::weight(100_000)]
 		pub fn submit_reencryption_keys(
 			origin: OriginFor<T>,
 			consumer: T::AccountId, // should this be lookup instead?
@@ -346,7 +346,7 @@ pub mod pallet {
 		}
 
 		// TODO: This is pretty insecure
-		#[pallet::weight(0)]
+		#[pallet::weight(100_000)]
         pub fn submit_encryption_artifacts(
             _origin: OriginFor<T>,
             owner: T::AccountId,
@@ -355,6 +355,7 @@ pub mod pallet {
             public_key: Vec<u8>,
             encrypted_sk_box: EncryptedBox,
         ) -> DispatchResult {
+			log::info!("Submitting encryption artifacts");
             // ensure_signed(origin)?;
 			EncryptionArtifacts::<T>::insert(public_key.clone(), TPREEncryptionArtifact {
 				capsule: capsule.clone(),
@@ -497,6 +498,7 @@ impl<T: Config> Pallet<T> {
         message: Bytes,
         proxy: Bytes,
     ) -> Bytes {
+		log::info!("Begin Encryption RPC");
         let proxy_acct_bytes: [u8;32] = proxy.to_vec().try_into().unwrap();
         let proxy_acct_id: T::AccountId = T::AccountId::decode(&mut &proxy_acct_bytes[..]).unwrap();
 
@@ -509,6 +511,7 @@ impl<T: Config> Pallet<T> {
         let acct_id: T::AccountId = T::AccountId::decode(&mut &acct_bytes[..]).unwrap();
 
         if sig.verify(msg.as_slice(), &acct_pubkey) {
+			log::info!("Provided signature and account is valid");
             let plaintext_as_slice: &[u8] = &plaintext.to_vec();
 			return Self::do_encrypt(plaintext_as_slice, acct_id, proxy_acct_id.clone());
         }
@@ -521,6 +524,7 @@ impl<T: Config> Pallet<T> {
 		owner_account_id: T::AccountId,
 		proxy_account_id: T::AccountId,
 	) -> Bytes {
+		log::info!("Begin Encryption");
 		let proxy_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(proxy_account_id.clone());
 		let proxy_pk_slice = iris_primitives::slice_to_array_32(&proxy_pk_vec).unwrap();
 		let proxy_pk = BoxPublicKey::from(*proxy_pk_slice);
@@ -548,6 +552,7 @@ impl<T: Config> Pallet<T> {
 			sk_bytes,
 		);
 
+		log::info!("End Encryption: Success!");
 		let call = Call::submit_encryption_artifacts { 
 			owner: owner_account_id,
 			proxy: proxy_account_id.clone(),
@@ -556,6 +561,7 @@ impl<T: Config> Pallet<T> {
 			encrypted_sk_box: encrypted_sk,
 		};
 
+		log::info!("Submitting unsigned transaction");
 		SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
 			.map_err(|()| "Unable to submit unsigned transaction.");
 	
@@ -767,7 +773,9 @@ impl<T: Config> Pallet<T> {
 	}
 
 	fn validate_transaction_parameters() -> TransactionValidity {
+		// TODO: need to refine this
 		ValidTransaction::with_tag_prefix("iris")
+			.priority(2048) 
 			.longevity(5)
 			.propagate(true)
 			.build()
