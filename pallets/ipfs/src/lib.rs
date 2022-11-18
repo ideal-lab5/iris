@@ -274,46 +274,55 @@ pub mod pallet {
 		// The offchain worker here will act as the main coordination point for all offchain functions
 		// that require a substrate acct id (as identified by ipfs pubkey)
 		fn offchain_worker(block_number: T::BlockNumber) {
-			if block_number % T::NodeConfigBlockDuration::get().into() == 0u32.into() {
-				if sp_io::offchain::is_validator() {
-					if let Err(e) = Self::ipfs_verify_identity() {
-						log::error!("Encountered an error while attempting to verify ipfs node identity: {:?}", e);
-					} else {
-						// TODO: properly handle error
-						let id_json = Self::fetch_identity_json().expect("IPFS should be reachable");
-						// get pubkey
+			if sp_io::offchain::is_validator() {
+				// try to get identity
+				match Self::fetch_identity_json() {
+					Ok(id_json) => {
+						// there is a reachable IPFS instance and we have it's identity
+						// now we need to make sure 
 						let id = &id_json["ID"];
 						let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
 						match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
 							Some(addr) => {
-								if <pallet_authorities::Pallet<T>>::x25519_public_keys(addr.clone()).is_empty() {
-									log::info!("Proxy keys not configured");
-									// TODO: handle error
-									<pallet_authorities::Pallet<T>>::update_x25519(addr.clone());
-								} else {
-									log::info!("Proxy Status: Ready");
-								}
-								if let Err(e) = Self::ipfs_update_configs(addr.clone()) {
-									log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
-								} 
-								if let Err(e) = Self::handle_ingestion_queue(addr.clone()) {
-									log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
+								if block_number % T::NodeConfigBlockDuration::get().into() == 0u32.into() {
+									if <pallet_authorities::Pallet<T>>::x25519_public_keys(addr.clone()).is_empty() {
+										log::info!("Proxy keys not configured");
+										// TODO: handle error
+										<pallet_authorities::Pallet<T>>::update_x25519(addr.clone());
+									} else {
+										log::info!("Proxy Status: Ready");
+									}
+									if let Err(e) = Self::ipfs_update_configs(addr.clone()) {
+										log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
+									} 
+									if let Err(e) = Self::handle_ingestion_queue(addr.clone()) {
+										log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
+									}
 								}
 
-								let authorities = <pallet_authorities::Pallet<T>>::validators();
-								let candidates_map = authorities.iter()
-									.map(|a| 
-										(a, <pallet_authorities::Pallet<T>>::x25519_public_keys(a.clone()))
-									).collect::<Vec<_>>();
-
-								T::OffchainKeyManager::process_reencryption_requests(addr.clone());
-								T::OffchainKeyManager::process_decryption_delegation(addr.clone(), authorities);
+								if block_number % 2u32.into() == 0u32.into() {
+									// process reencryption and decryption delegation each block
+									let authorities = <pallet_authorities::Pallet<T>>::validators();
+									log::info!("Processing reencryption requests");
+									T::OffchainKeyManager::process_reencryption_requests(addr.clone());
+									log::info!("Processing decryption delegation requests with {:?} authorities", authorities.len());
+									T::OffchainKeyManager::process_decryption_delegation(addr.clone(), authorities);
+								}
 							},
 							None => {
-								// TODO: Should be an error
-								log::info!("No identifiable ipfs-substrate association");
+								// this will always happen the first time through the loop
+								// we have fetched the IPFS node identity, but it hasn't been 
+								// encoded on-chain yet. So we will wait until the next time this
+								// logic executes, at which point it will be onchain
+								log::info!("No identifiable ipfs-substrate association.");
+								if let Err(e) = Self::ipfs_verify_identity() {
+									log::error!("Encountered an error while attempting to verify ipfs node identity: {:?}", e);
+								}
 							}
 						}
+					},
+					Err(e) => {
+						log::error!("There is no reachable IPFS node {:?}", e);
 					}
 				}
 			}
@@ -394,7 +403,6 @@ impl<T: Config> Pallet<T> {
 	/// Fetch the identity of a locally running ipfs node and convert it to json
 	/// TODO: could potentially move this into the ipfs.rs file
 	pub fn fetch_identity_json() -> Result<serde_json::Value, Error<T>> {
-		let cached_info = StorageValueRef::persistent(b"ipfs:id");
 		let id_res = match ipfs::identity() {
 			Ok(res) => {
 				res.body().collect::<Vec<u8>>()

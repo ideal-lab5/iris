@@ -450,13 +450,12 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
                     public_key: pubkey,
                 });
                 <AssetClassOwnership<T>>::mutate(cmd.owner.clone(), |ids| { ids.push(asset_id.clone()); });
-                IngestionStaging::<T>::remove(cmd.clone().owner);
+                IngestionStaging::<T>::remove(who.clone());
                 // remove from ingestion commands, this must be done before the 'now + delay' number of blocks passes
                 // for now... let's just assume there is no time limit and test it out
-                let mut cmds = IngestionCommands::<T>::get(who.clone());
-                let cmd_idx = cmds.iter().position(|c| *c == cmd.clone()).unwrap();
-                cmds.remove(cmd_idx);
-                IngestionCommands::<T>::insert(who.clone(), cmds); // needed?
+                IngestionCommands::<T>::mutate(who.clone(), |cmds| {
+                    cmds.retain(|c| *c != cmd);
+                });
                 // emit event?
                 Ok(())
             },

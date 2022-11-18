@@ -53,5 +53,6 @@ sp_api::decl_runtime_apis! {
 			asset_id: u32,
 			secret_key: Bytes,
 		) -> Option<Bytes>;
+
 	}
 }

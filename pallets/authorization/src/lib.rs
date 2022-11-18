@@ -156,8 +156,8 @@ pub mod pallet {
             origin: OriginFor<T>,
             #[pallet::compact] asset_id: T::AssetId,
             data_consumer_address: T::AccountId,
-            data_consumer_ephemeral_pk: Vec<u8>,
             execution_result: bool,
+            data_consumer_ephemeral_pk: Vec<u8>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // verify that the data_consumer holds an asset from the asset class
@@ -182,6 +182,7 @@ pub mod pallet {
                             ensure!(addr == who.clone(), Error::<T>::InvalidRuleExecutor);
                             // TODO: locks should expire after some number of blocks
                             // is there any way we can use the vesting schedule approach to facilitate this?
+                            // needed? Probably not any longer
                             <Lock::<T>>::insert(&data_consumer_address, &asset_id, execution_result);
                             if execution_result {
                                 match <T as pallet::Config>::MetadataProvider::get(asset_id.clone()) {
@@ -193,14 +194,22 @@ pub mod pallet {
                                             data_consumer_ephemeral_pk
                                         );
                                     },
-                                    None => { return Ok(()) }
+                                    None => {
+                                        log::info!("No metadata found for asset id {:?}", asset_id);
+                                        return Ok(());
+                                    }
                                 }
                             }
                         },
-                        None => { return Ok(()) }
+                        None => {
+                            log::info!("No rule has registered for the asset id {:?}", asset_id);
+                            return Ok(());
+                        }
                     }
                 },
-                None => {},
+                None => {
+                    // TODO: Refactor
+                },
             }
 
 			Ok(())

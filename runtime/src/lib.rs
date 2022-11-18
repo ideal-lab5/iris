@@ -528,7 +528,7 @@ impl pallet_gateway::Config for Runtime {
 }
 
 parameter_types! {
-	pub const NodeConfigBlockDuration: u32 = 2;
+	pub const NodeConfigBlockDuration: u32 = 4;
 }
 
 impl pallet_ipfs::Config for Runtime {
@@ -1001,9 +1001,18 @@ use pallet_contracts::chain_extension::{
 use sp_runtime::{
 	DispatchError,
 	traits::{ConvertInto},
+	offchain::storage::StorageValueRef,
 };
 use frame_system::{
 	self as system,
+};
+
+use crypto_box::{
+	SalsaBox, PublicKey, SecretKey as BoxSecretKey,
+};
+use rand_chacha::{
+	ChaCha20Rng,
+	rand_core::SeedableRng,
 };
 
 pub struct IrisExtension;
@@ -1078,10 +1087,13 @@ impl ChainExtension<Runtime> for IrisExtension {
 			// IrisEjection: submit execution results from a rule executor
 			5 => {
 				let mut env = env.buf_in_buf_out();
-				let (caller_account, target_account, asset_id, pk, result): (AccountId, AccountId, u32, [u8;32], bool) = env.read_as()?;
+				let (caller_account, target_account, asset_id, result, public_key): 
+					(AccountId, AccountId, u32, bool, [u8;32]) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-				crate::Authorization::submit_execution_results(origin, asset_id, target_account, pk.to_vec(), result)?;
+				crate::Authorization::submit_execution_results(
+					origin, asset_id, target_account, result, public_key.to_vec()
+				)?;
 				Ok(RetVal::Converging(func_id))
 			},
             _ => {
