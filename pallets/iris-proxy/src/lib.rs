@@ -603,6 +603,7 @@ impl<T: Config> Pallet<T> {
 		log::info!("Processing {:?} requests to reencrypt data", kfrag_generation_requests.len());
 		let secret_storage = StorageValueRef::persistent(b"iris::x25519");
 		if let Ok(Some(local_sk)) = secret_storage.get::<[u8;32]>() {
+			// panic!("{:?}", kfrag_generation_requests.len());
 			let local_secret_key: BoxSecretKey = BoxSecretKey::from(local_sk);
 			for request in kfrag_generation_requests.into_iter() {
 				log::info!("START: Processing reencryption request");

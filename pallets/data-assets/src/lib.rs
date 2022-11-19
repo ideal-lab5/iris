@@ -68,7 +68,6 @@ use sp_std::{
 };
 
 use scale_info::prelude::string::ToString;
-use sp_runtime::offchain::storage::StorageValueRef;
 use generic_array::{
     GenericArray,
     typenum::UTerm,

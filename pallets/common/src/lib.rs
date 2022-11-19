@@ -233,7 +233,7 @@ fn encryption_can_encrypt() {
 	let shares: usize = 3;
 	let threshold: usize = 3;
 
-	let result = encrypt(plaintext, shares, threshold, pk).unwrap();
+	let result = encrypt(plaintext, pk).unwrap();
 	assert_eq!(49, result.1.len());
 }
 

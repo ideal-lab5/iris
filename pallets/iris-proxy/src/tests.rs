@@ -165,7 +165,7 @@ fn can_submit_reencryption_keys() {
 			));
 
 			let reencryption_artifact = ReencryptionArtifacts::<Test>::get(
-				test_data.public_key.clone(), test_data.consumer.clone().public(),
+				test_data.consumer.clone().public(), test_data.public_key.clone(),
 			).unwrap();
 			assert_eq!(reencryption_artifact.verifying_key, test_data.public_key.clone());
 			assert_eq!(reencryption_artifact.ephemeral_public_key, test_data.public_key.clone());
@@ -176,9 +176,10 @@ fn can_submit_reencryption_keys() {
 		});
 	});
 }
-// /*
-// 	OFFCHAIN 
-// */
+
+/*
+	offchain functionality
+*/
 #[test]
 fn encrypt_to_decrypt_happy_path() {
 	TEST_CONSTANTS.with(|test_data| {
@@ -207,7 +208,7 @@ fn encrypt_to_decrypt_happy_path() {
 		SyncCryptoStore::sr25519_generate_new(
 			&keystore,
 			crate::crypto::Public::ID,
-			Some(&format!("{}/hunter1", PHRASE)),
+			Some(&format!("{}/tony1", PHRASE)),
 		).unwrap();
 
 		t.register_extension(OffchainWorkerExt::new(offchain.clone()));
@@ -217,19 +218,39 @@ fn encrypt_to_decrypt_happy_path() {
 
 		t.execute_with(|| {
 
+			// generate new public key
+			let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+			let secret_key = BoxSecretKey::generate(&mut rng);
+			let pk: Vec<u8> = secret_key.public_key().as_bytes().to_vec();
+
 			// TODO: remoiving create_secret as extrinsic, need to call as function instead
 			// Given: validator and proxies have generated secrets
-			assert_ok!(Authorities::create_secrets(
-				Origin::signed(test_data.owner.public().clone()),
+			Authorities::update_x25519(test_data.owner.public().clone());
+			let tx = pool_state.write().transactions.pop().unwrap();
+			assert!(pool_state.read().transactions.is_empty());
+
+
+			Authorities::update_x25519(test_data.proxy.public().clone());
+			let tx = pool_state.write().transactions.pop().unwrap();
+			assert!(pool_state.read().transactions.is_empty());
+
+			assert_ok!(Authorities::insert_key(
+				Origin::signed(test_data.owner.public().clone()), pk.clone(),
 			));
-			assert_ok!(Authorities::create_secrets(
-				Origin::signed(test_data.proxy.public().clone()),
+			
+			assert_ok!(Authorities::insert_key(
+				Origin::signed(test_data.proxy.public().clone()), pk.clone(),
 			));
+
 			for v in validators.clone() {
-				assert_ok!(Authorities::create_secrets(
-					Origin::signed(v.0.clone())
+				Authorities::update_x25519(v.0.clone());
+				let tx = pool_state.write().transactions.pop().unwrap();
+				assert!(pool_state.read().transactions.is_empty());
+				assert_ok!(Authorities::insert_key(
+					Origin::signed(v.0.clone()), pk.clone(),
 				));
 			}
+			
 
 			let sk_box = EncryptedBox {
 				nonce: vec![102, 209, 34, 179, 214, 75, 129,  24, 
@@ -267,11 +288,6 @@ fn encrypt_to_decrypt_happy_path() {
 			assert_eq!(submit_encryption_artifacts_call, tx.call);
 
 
-			/*
-				Kind of signifies 'end of part one'
-			*/
-
-
 			// now we want to simulate the extrinsic being executed
 			assert_ok!(IrisProxy::submit_encryption_artifacts(
 				Origin::signed(test_data.owner.clone().public()), 
@@ -282,9 +298,7 @@ fn encrypt_to_decrypt_happy_path() {
 				sk_box.clone(), // encrypted sk to decrypt umbral sk 
 			));
 
-			// THEN: The public key exists in the ingestion staging map
-			// let new_public_key = DataAssets::ingestion_staging(test_data.p.clone().public()).unwrap();
-			// WHEN: I simulate a new capsule recovery request for the data
+			// bypassing Authorization module
 			IrisProxy::add_kfrag_request(
 				test_data.consumer.clone().public(),
 				test_data.public_key.clone(),
@@ -359,7 +373,7 @@ fn encrypt_to_decrypt_happy_path() {
 			let tx = pool_state.write().transactions.pop().unwrap();
 			assert!(pool_state.read().transactions.is_empty());
 			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
-			assert_eq!(tx.signature.unwrap().0, 0);
+			assert_eq!(tx.signature.unwrap().0, 5);
 			assert_eq!(call, tx.call);
 			// // Then: When the extrinsic is executed
 			assert_ok!(IrisProxy::submit_reencryption_keys(
@@ -397,7 +411,7 @@ fn encrypt_to_decrypt_happy_path() {
 			let tx = pool_state.write().transactions.pop().unwrap();
 			assert!(pool_state.read().transactions.is_empty());
 			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
-			assert_eq!(tx.signature.unwrap().0, 1);
+			assert_eq!(tx.signature.unwrap().0, 6);
 			assert_eq!(v_0_call, tx.call);
 			// // And: I submit capsule fragments 
 			assert_ok!(IrisProxy::submit_capsule_fragment(
@@ -426,7 +440,7 @@ fn encrypt_to_decrypt_happy_path() {
 			let tx = pool_state.write().transactions.pop().unwrap();
 			assert!(pool_state.read().transactions.is_empty());
 			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
-			assert_eq!(tx.signature.unwrap().0, 2);
+			assert_eq!(tx.signature.unwrap().0, 7);
 			assert_eq!(v_1_call, tx.call);
 			// And: I submit capsule fragments 
 			assert_ok!(IrisProxy::submit_capsule_fragment(
@@ -436,17 +450,9 @@ fn encrypt_to_decrypt_happy_path() {
 				encrypted_cfrag_1.clone(),
 			));
 
-			// // let encrypted_sk = SecretKeys::<Test>::get(consumer.public().clone(), test_data.public_key.clone()).unwrap();
-			// // let verifying_pk_bytes = VerifyingKeys::<Test>::get(consumer.public().clone(), test_data.public_key.clone());
-			// // let new_verifying_pk = PublicKey::from_bytes(verifying_pk_bytes).unwrap();
-
-			// // let capsule_data = Capsules::<Test>::get(test_data.public_key.clone()).unwrap();
-			// // let capsule: Capsule = Capsule::from_bytes(capsule_data).unwrap();
-
-
 			let encryption_artifact = EncryptionArtifacts::<Test>::get(test_data.public_key.clone()).unwrap();
 			let reencryption_artifact = ReencryptionArtifacts::<Test>::get(
-				test_data.public_key.clone(), test_data.consumer.clone().public(),
+				test_data.consumer.clone().public(), test_data.public_key.clone()
 			).unwrap();
 			let enc_capsule_fragments = EncryptedCapsuleFrags::<Test>::get(
 				test_data.consumer.clone().public(), test_data.public_key.clone()

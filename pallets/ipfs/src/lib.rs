@@ -72,7 +72,6 @@ use frame_system::{
 use sp_runtime::{
 	offchain::{
 		http,
-		storage::StorageValueRef,
 	},
 	traits::StaticLookup,
 };

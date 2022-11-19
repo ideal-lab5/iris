@@ -360,7 +360,7 @@ pub mod pallet {
 
 		// insert a public key
 		#[pallet::weight(100)]
-		pub fn create_secrets(
+		pub fn insert_key(
 			origin: OriginFor<T>,
 			public_key: Vec<u8>,
 		) -> DispatchResult {
@@ -468,7 +468,7 @@ impl<T: Config> Pallet<T> {
 			);
 		}
 		let results = signer.send_signed_transaction(|_account| { 
-			Call::create_secrets {
+			Call::insert_key {
 				public_key: pk.clone(),
 			}
 		});
