@@ -528,7 +528,7 @@ impl pallet_gateway::Config for Runtime {
 }
 
 parameter_types! {
-	pub const NodeConfigBlockDuration: u32 = 4;
+	pub const NodeConfigBlockDuration: u32 = 2;
 }
 
 impl pallet_ipfs::Config for Runtime {

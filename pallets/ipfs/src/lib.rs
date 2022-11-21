@@ -95,6 +95,7 @@ use pallet_gateway::ProxyProvider;
 use pallet_data_assets::{MetadataProvider, ResultsHandler, QueueManager};
 use pallet_iris_proxy::OffchainKeyManager;
 use pallet_ipfs_primitives::{IpfsResult, IpfsError};
+use sp_runtime::offchain::storage::StorageValueRef;
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";
 
@@ -232,22 +233,6 @@ pub mod pallet {
 		IngestionComplete(),
 	}
 
-	
-	// #[pallet::validate_unsigned]
-	// impl<T: Config> ValidateUnsigned for Pallet<T> {
-	// 	type Call = Call<T>;
-
-	// 	/// Validate unsigned call to this module.
-	// 	///
-	// 	fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-	// 		if let Call::submit_ipfs_identity{ .. } = call {
-	// 			Self::validate_transaction_parameters()
-	// 		} else {
-	// 			InvalidTransaction::Call.into()
-	// 		}
-	// 	}
-	// }
-
 	#[pallet::error]
 	pub enum Error<T> {
 		PublicKeyConversionFailure,
@@ -275,6 +260,7 @@ pub mod pallet {
 		fn offchain_worker(block_number: T::BlockNumber) {
 			if sp_io::offchain::is_validator() {
 				// try to get identity
+				// I think this is taking too long... needs to be cached somehow?
 				match Self::fetch_identity_json() {
 					Ok(id_json) => {
 						// there is a reachable IPFS instance and we have it's identity
@@ -283,17 +269,16 @@ pub mod pallet {
 						let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
 						match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
 							Some(addr) => {
-								if block_number % T::NodeConfigBlockDuration::get().into() == 0u32.into() {
-									if <pallet_authorities::Pallet<T>>::x25519_public_keys(addr.clone()).is_empty() {
-										log::info!("Proxy keys not configured");
-										// TODO: handle error
-										<pallet_authorities::Pallet<T>>::update_x25519(addr.clone());
-									} else {
-										log::info!("Proxy Status: Ready");
-									}
+								if <pallet_authorities::Pallet<T>>::x25519_public_keys(addr.clone()).is_empty() {
+									log::info!("Proxy keys not configured");
+									// TODO: handle error
+									<pallet_authorities::Pallet<T>>::update_x25519(addr.clone());
+									// only doing once... for now
 									if let Err(e) = Self::ipfs_update_configs(addr.clone()) {
 										log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
 									} 
+								}
+								if block_number % T::NodeConfigBlockDuration::get().into() == 0u32.into() {
 									if let Err(e) = Self::handle_ingestion_queue(addr.clone()) {
 										log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
 									}
@@ -394,26 +379,37 @@ impl<T: Config> Pallet<T> {
 
 	fn validate_transaction_parameters() -> TransactionValidity {
 		ValidTransaction::with_tag_prefix("iris")
+			.priority(2 >> 20)
 			.longevity(5)
 			.propagate(true)
 			.build()
 	}
 
 	/// Fetch the identity of a locally running ipfs node and convert it to json
-	/// TODO: could potentially move this into the ipfs.rs file
+	/// TODO: could potentially move this into the ipfs.rs file?
+	/// it really doesn't seem like a great idea to have to make this api call every single block
+	/// I guess it's fine for now
 	pub fn fetch_identity_json() -> Result<serde_json::Value, Error<T>> {
-		let id_res = match ipfs::identity() {
-			Ok(res) => {
-				res.body().collect::<Vec<u8>>()
-			} 
-			Err(e) => {
-				return Err(Error::<T>::IpfsNotAvailable);
-			}
-		};
-
-		let body = sp_std::str::from_utf8(&id_res).map_err(|_| Error::<T>::ResponseParsingFailure)?;
+		let id_raw = Self::do_get_ipfs_id()?; 
+		let body = sp_std::str::from_utf8(&id_raw).map_err(|_| Error::<T>::ResponseParsingFailure)?;
 		let json = ipfs::parse(body).map_err(|_| Error::<T>::ResponseParsingFailure)?;
 		Ok(json)
+	}
+
+	fn do_get_ipfs_id() -> Result<Vec<u8>, Error<T>> {
+		let local_storage = StorageValueRef::persistent(b"iris::ipfs");
+		if let Ok(Some(id_res)) = local_storage.get::<Vec<u8>>() {
+			Ok(id_res)
+		} else {
+			match ipfs::identity() {
+				Ok(res) => {
+					return Ok(res.body().collect::<Vec<u8>>());
+				} 
+				Err(e) => {
+					return Err(Error::<T>::IpfsNotAvailable);
+				}
+			};
+		}
 	}
 
 	/// verify if an ipfs daemon is running and if so, report its identity on chain

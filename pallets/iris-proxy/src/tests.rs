@@ -181,7 +181,7 @@ fn can_submit_reencryption_keys() {
 	offchain functionality
 */
 #[test]
-fn encrypt_to_decrypt_happy_path() {
+fn test_iris_protocol_happy_path() {
 	TEST_CONSTANTS.with(|test_data| {
 		let pairs = vec![
 			(test_data.owner.clone().public(), 10),
@@ -228,16 +228,13 @@ fn encrypt_to_decrypt_happy_path() {
 			Authorities::update_x25519(test_data.owner.public().clone());
 			let tx = pool_state.write().transactions.pop().unwrap();
 			assert!(pool_state.read().transactions.is_empty());
-
+			assert_ok!(Authorities::insert_key(
+				Origin::signed(test_data.owner.public().clone()), pk.clone(),
+			));
 
 			Authorities::update_x25519(test_data.proxy.public().clone());
 			let tx = pool_state.write().transactions.pop().unwrap();
 			assert!(pool_state.read().transactions.is_empty());
-
-			assert_ok!(Authorities::insert_key(
-				Origin::signed(test_data.owner.public().clone()), pk.clone(),
-			));
-			
 			assert_ok!(Authorities::insert_key(
 				Origin::signed(test_data.proxy.public().clone()), pk.clone(),
 			));
@@ -249,8 +246,7 @@ fn encrypt_to_decrypt_happy_path() {
 				assert_ok!(Authorities::insert_key(
 					Origin::signed(v.0.clone()), pk.clone(),
 				));
-			}
-			
+			}	
 
 			let sk_box = EncryptedBox {
 				nonce: vec![102, 209, 34, 179, 214, 75, 129,  24, 
@@ -270,9 +266,6 @@ fn encrypt_to_decrypt_happy_path() {
 				public_key: test_data.public_key.clone(), 
 				encrypted_sk_box: sk_box.clone(),
 			});
-
-			// let proxy_pk_bytes = Authorities ::x25519_public_keys(proxy.public().clone());
-			// let proxy_pk = vec_to_box_public_key(&proxy_pk_bytes);
 
 			// GIVEN: Some data has been encrypted and added to the ingestion staging map
 			let ciphertext_bytes = IrisProxy::do_encrypt(
@@ -450,25 +443,12 @@ fn encrypt_to_decrypt_happy_path() {
 				encrypted_cfrag_1.clone(),
 			));
 
-			let encryption_artifact = EncryptionArtifacts::<Test>::get(test_data.public_key.clone()).unwrap();
-			let reencryption_artifact = ReencryptionArtifacts::<Test>::get(
-				test_data.consumer.clone().public(), test_data.public_key.clone()
-			).unwrap();
-			let enc_capsule_fragments = EncryptedCapsuleFrags::<Test>::get(
-				test_data.consumer.clone().public(), test_data.public_key.clone()
-			);
-
-			let delegating_pk = PublicKey::from_bytes(test_data.public_key.clone(),).unwrap();
-
 			// When: I try to decrypt data
 			let plaintext = IrisProxy::do_decrypt(
 				test_data.consumer.public().clone(),
 				ciphertext_bytes.to_vec().clone(),
-				delegating_pk,
+				test_data.public_key.clone(),
 				consumer_sk.clone(),
-				encryption_artifact,
-				reencryption_artifact,
-				enc_capsule_fragments,
 			);
 			// Then: the recovered plaintext matches the input plaintext
 			assert_eq!(test_data.plaintext.clone(), plaintext.to_vec());
