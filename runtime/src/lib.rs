@@ -78,6 +78,11 @@ use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
 use pallet_authorities::EraIndex;
 use pallet_ipfs_primitives::IpfsResult;
 
+use rand_chacha::{
+	ChaCha20Rng,
+	rand_core::{CryptoRng, RngCore, SeedableRng}
+};
+
 pub use pallet_data_assets;
 pub use pallet_authorization;
 pub use pallet_data_spaces;
@@ -465,14 +470,20 @@ impl pallet_data_assets::Config for Runtime {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
+parameter_types! {
+	// random number generator
+	pub const Rng: ChaCha20Rng = ChaCha20Rng::from_entropy();
+	// pub const Rng: ChaCha20Rng = ChaCha20Rng::seed_from_u64(17u64);;
+}
+
 impl pallet_iris_proxy::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type QueueManager = DataAssets;
 	type MetadataProvider = DataAssets;
+	type Rng = Rng;
 }
-
 
 impl pallet_authorization::Config for Runtime {
 	type Event = Event;
@@ -1009,10 +1020,6 @@ use frame_system::{
 
 use crypto_box::{
 	SalsaBox, PublicKey, SecretKey as BoxSecretKey,
-};
-use rand_chacha::{
-	ChaCha20Rng,
-	rand_core::SeedableRng,
 };
 
 pub struct IrisExtension;

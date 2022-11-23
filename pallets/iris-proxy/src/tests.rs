@@ -198,6 +198,7 @@ fn test_iris_protocol_happy_path() {
 		let proxy_sk = BoxSecretKey::generate(&mut rng);
 
 		let validators = validators();
+		let proxy = validators[0].clone();
 		let mut t = new_test_ext_funded(pairs, validators.clone());
 		let (offchain, state) = testing::TestOffchainExt::new();
 		let (pool, pool_state) = testing::TestTransactionPoolExt::new();
@@ -232,11 +233,11 @@ fn test_iris_protocol_happy_path() {
 				Origin::signed(test_data.owner.public().clone()), pk.clone(),
 			));
 
-			Authorities::update_x25519(test_data.proxy.public().clone());
+			Authorities::update_x25519(proxy.0.clone());
 			let tx = pool_state.write().transactions.pop().unwrap();
 			assert!(pool_state.read().transactions.is_empty());
 			assert_ok!(Authorities::insert_key(
-				Origin::signed(test_data.proxy.public().clone()), pk.clone(),
+				Origin::signed(proxy.0.clone()), pk.clone(),
 			));
 
 			for v in validators.clone() {
@@ -261,7 +262,7 @@ fn test_iris_protocol_happy_path() {
 
 			let submit_encryption_artifacts_call = mock::Call::IrisProxy(Call::submit_encryption_artifacts { 
 				owner: test_data.owner.clone().public(),
-				proxy: test_data.proxy.clone().public(), 
+				proxy: proxy.clone().0, 
 				capsule: test_data.capsule.clone(), 
 				public_key: test_data.public_key.clone(), 
 				encrypted_sk_box: sk_box.clone(),
@@ -271,7 +272,7 @@ fn test_iris_protocol_happy_path() {
 			let ciphertext_bytes = IrisProxy::do_encrypt(
 				&test_data.plaintext.clone(),
 				test_data.owner.clone().public(), // owner
-				test_data.proxy.clone().public(), // proxy
+				proxy.clone().0, // proxy
 			);
 			
 			let tx = pool_state.write().transactions.pop().unwrap();
@@ -285,7 +286,7 @@ fn test_iris_protocol_happy_path() {
 			assert_ok!(IrisProxy::submit_encryption_artifacts(
 				Origin::signed(test_data.owner.clone().public()), 
 				test_data.owner.clone().public(),  // owner
-				test_data.proxy.clone().public(), // proxy
+				proxy.clone().0, // proxy
 				test_data.capsule.clone(), // capsule 
 				test_data.public_key.clone(), // umbral pk
 				sk_box.clone(), // encrypted sk to decrypt umbral sk 
@@ -345,14 +346,14 @@ fn test_iris_protocol_happy_path() {
 
 			let call = mock::Call::IrisProxy(Call::submit_reencryption_keys { 
 				consumer: test_data.consumer.clone().public(), 
-				ephemeral_public_key: ephemeral_pk_vec.clone(), 
-				data_public_key: test_data.public_key.clone(), 
+				receiving_public_key: ephemeral_pk_vec.clone(), 
+				delegating_public_key: test_data.public_key.clone(), 
 				kfrag_assignments: vec![
 					(validators[0].clone().0, frag_0.clone()), 
 					(validators[1].clone().0, frag_1.clone()),
 					(validators[2].clone().0, frag_2.clone()),
 				],
-				encrypted_sk_box: sk.clone(),
+				encrypted_receiving_sk: sk.clone(),
 				consumer_public_key: consumer_pk.clone(),
 				verifying_public_key: test_data.public_key.clone(),
 			});
@@ -360,7 +361,7 @@ fn test_iris_protocol_happy_path() {
 			let candidates = validators.clone().iter().map(|v| v.0).collect::<Vec<_>>();
 			// // THEN: I can generate new key fragments for the caller
 			assert_ok!(IrisProxy::proxy_process_kfrag_generation_requests(
-				test_data.proxy.clone().public(),
+				proxy.clone().0,
 				candidates.clone(),
 			));
 			let tx = pool_state.write().transactions.pop().unwrap();
@@ -370,7 +371,7 @@ fn test_iris_protocol_happy_path() {
 			assert_eq!(call, tx.call);
 			// // Then: When the extrinsic is executed
 			assert_ok!(IrisProxy::submit_reencryption_keys(
-				Origin::signed(test_data.proxy.clone().public()),
+				Origin::signed(proxy.clone().0),
 				test_data.consumer.clone().public(),
 				ephemeral_pk_vec.clone(),
 				test_data.public_key.clone(),
@@ -441,6 +442,35 @@ fn test_iris_protocol_happy_path() {
 				test_data.consumer.public().clone(),
 				test_data.public_key.clone(),
 				encrypted_cfrag_1.clone(),
+			));
+
+
+			let encrypted_cfrag_2 = EncryptedBox { 
+				nonce: vec![102, 209, 34, 179, 214, 75, 129, 24, 44, 14, 136, 104, 179, 34, 247, 161, 168, 16, 131, 113, 43, 29, 165, 49], 
+				ciphertext: vec![107, 117, 156, 169, 113, 243, 136, 43, 106, 214, 81, 101, 177, 62, 208, 220, 11, 121, 241, 158, 163, 194, 124, 179, 167, 171, 147, 16, 176, 69, 149, 80, 117, 88, 47, 95, 47, 225, 40, 12, 169, 9, 72, 59, 29, 127, 35, 170, 105, 190, 47, 114, 215, 70, 179, 27, 37, 25, 124, 219, 84, 143, 184, 117, 61, 249, 171, 7, 219, 184, 84, 212, 128, 226, 239, 98, 54, 51, 164, 17, 97, 204, 56, 75, 89, 126, 25, 236, 7, 144, 174, 240, 216, 55, 93, 203, 32, 217, 49, 88, 66, 236, 76, 209, 184, 125, 216, 116, 228, 238, 206, 107, 36, 180, 49, 41, 254, 92, 102, 194, 27, 38, 213, 213, 15, 86, 157, 116, 151, 224, 106, 248, 98, 192, 4, 54, 222, 19, 152, 83, 133, 178, 202, 228, 214, 56, 5, 249, 139, 216, 94, 211, 23, 218, 179, 159, 31, 198, 201, 1, 153, 89, 60, 111, 159, 53, 196, 186, 142, 71, 241, 151, 236, 131, 92, 226, 203, 2, 76, 93, 235, 95, 233, 255, 218, 61, 147, 203, 124, 85, 31, 243, 160, 173, 140, 32, 71, 228, 71, 162, 163, 236, 63, 140, 38, 166, 176, 149, 151, 32, 27, 1, 61, 141, 138, 86, 173, 98, 197, 122, 7, 103, 117, 141, 160, 219, 115, 92, 12, 136, 212, 39, 38, 115, 16, 250, 255, 40, 187, 132, 2, 14, 65, 199, 45, 230, 29, 57, 178, 176, 79, 212, 119, 45, 107, 96, 32, 62, 48, 120, 116, 165, 81, 147, 27, 66, 163, 243, 241, 4, 131, 125, 59, 79, 15, 190, 128, 154, 45, 181, 191, 121, 3, 130, 165, 78, 64, 228, 191, 35, 32, 180, 16, 17, 8, 133, 184, 107, 41, 159, 133, 1, 49, 193, 80, 229, 85, 217, 108, 151, 78, 196, 199, 162, 142, 31, 53, 214, 150, 153, 58, 108, 245, 103, 18, 164, 173, 162, 237, 179, 26, 83, 85, 89, 80, 113, 93, 46, 13, 92, 176, 135, 94, 88, 27, 206, 116, 245, 118, 58, 91, 76, 17, 165, 155, 46, 65, 135, 108, 251, 154, 20, 76, 161, 244, 10, 175, 154, 35, 13, 169, 52, 63, 158, 16], 
+				public_key: vec![136, 127, 175, 150, 142, 160, 194, 185, 24, 43,
+					 243, 37, 77, 126, 183, 5, 114, 157, 167, 133, 183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84] 
+			};
+			let v_2_call = mock::Call::IrisProxy(Call::submit_capsule_fragment {
+				data_consumer: test_data.consumer.public().clone(), 
+				public_key: test_data.public_key.clone(), 
+				encrypted_cfrag_data: encrypted_cfrag_2.clone()
+			});
+
+			assert_ok!(IrisProxy::kfrag_holder_process_reencryption_requests(
+				validators[2].clone().0,
+			));
+			let tx = pool_state.write().transactions.pop().unwrap();
+			assert!(pool_state.read().transactions.is_empty());
+			let tx = mock::Extrinsic::decode(&mut &*tx).unwrap();
+			assert_eq!(tx.signature.unwrap().0, 8);
+			assert_eq!(v_2_call, tx.call);
+			// And: I submit capsule fragments 
+			assert_ok!(IrisProxy::submit_capsule_fragment(
+				Origin::signed(validators[2].0.clone()),
+				test_data.consumer.public().clone(),
+				test_data.public_key.clone(),
+				encrypted_cfrag_2.clone(),
 			));
 
 			// When: I try to decrypt data

@@ -77,8 +77,10 @@ use umbral_pre::*;
 
 use rand_chacha::{
 	ChaCha20Rng,
-	rand_core::SeedableRng,
+	rand_core::{CryptoRng, RngCore, SeedableRng},
 };
+
+// use rand_core::{CryptoRng, RngCore};
 
 use crypto_box::{
     aead::{Aead, AeadCore, Payload},
@@ -190,6 +192,7 @@ pub mod pallet {
 		type QueueManager: pallet_data_assets::QueueManager<Self::AccountId, Self::Balance>;
 		/// get metadata of data assets
 		type MetadataProvider: pallet_data_assets::MetadataProvider<Self::AssetId>;
+		type Rng: SeedableRng;
 	}
 
 	#[pallet::pallet]
@@ -581,16 +584,8 @@ impl<T: Config> Pallet<T> {
 			}
 		};
 	
-		let sk_bytes = sk
-			.to_secret_array()
-			.as_secret()
-			.to_vec();
-		let encrypted_sk = encrypt_x25519(
-			proxy_pk, 
-			sk_bytes,
-		);
-
-		log::info!("CAPSULE DATA: {:?}", capsule.clone().to_array().as_slice().to_vec());
+		let sk_bytes = sk.to_secret_array().as_secret().to_vec();
+		let encrypted_sk = encrypt_x25519(proxy_pk, sk_bytes);
 		log::info!("End Encryption: Success!");
 		let call = Call::submit_encryption_artifacts { 
 			owner: owner_account_id,
@@ -604,7 +599,7 @@ impl<T: Config> Pallet<T> {
 		SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
 			.map_err(|()| "Unable to submit unsigned transaction.");
 	
-		let out = ciphertext.to_vec();
+		let out = ciphertext.to_vec().clone();
 		log::info!("Generated ciphertext with length {:?}", out.clone().len());
 		Bytes::from(out.clone())
 	}
