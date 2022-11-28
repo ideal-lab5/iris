@@ -184,8 +184,6 @@ pub mod pallet {
 		/// Minimum number of validators to leave in the validator set during
 		/// auto removal.
 		type MinAuthorities: Get<u32>;
-		/// the maximum number of session that a node can earn less than MinEraRewardPoints before suspension
-		type MaxDeadSession: Get<u32>;
 		/// the authority id used for sending signed txs
         type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
 	}
@@ -395,7 +393,7 @@ impl<T: Config> Pallet<T> {
 		// Ensuring that the post removal, target validator count doesn't go
 		// below the minimum.
 		ensure!(
-			validators.len().saturating_sub(1) as u32 >= T::MinAuthorities::get(),
+			validators.len().saturating_sub(1) as u32 > T::MinAuthorities::get(),
 			Error::<T>::TooLowValidatorCount
 		);
 

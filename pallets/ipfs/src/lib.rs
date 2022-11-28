@@ -282,9 +282,6 @@ pub mod pallet {
 									if let Err(e) = Self::handle_ingestion_queue(addr.clone()) {
 										log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
 									}
-								}
-
-								if block_number % 2u32.into() == 0u32.into() {
 									// process reencryption and decryption delegation each block
 									let authorities = <pallet_authorities::Pallet<T>>::validators();
 									log::info!("Processing reencryption requests");
@@ -322,7 +319,7 @@ pub mod pallet {
         /// * `id`: The AssetId (passed through from the create_storage_asset call)
         /// * `balance`: The balance (passed through from the create_storage_asset call)
         ///
-        #[pallet::weight(100)]
+        #[pallet::weight(100_000)]
         pub fn submit_ingestion_completed(
             origin: OriginFor<T>,
 			cmd: IngestionCommand<T::AccountId, T::Balance>,
@@ -344,7 +341,7 @@ pub mod pallet {
         /// * public_key: The IPFS node's public key
         /// * multiaddresses: A vector of multiaddresses associate with the public key
         ///
-        #[pallet::weight(100)]
+        #[pallet::weight(100_000)]
         pub fn submit_ipfs_identity(
             origin: OriginFor<T>,
             public_key: Vec<u8>,
@@ -362,7 +359,7 @@ pub mod pallet {
             Ok(())
         }
 
-		#[pallet::weight(100)]
+		#[pallet::weight(100_000)]
 		pub fn submit_config_complete(
 			origin: OriginFor<T>,
 			reported_storage_size: u128,
@@ -379,7 +376,7 @@ impl<T: Config> Pallet<T> {
 
 	fn validate_transaction_parameters() -> TransactionValidity {
 		ValidTransaction::with_tag_prefix("iris")
-			.priority(2 >> 20)
+			.priority(2 << 20)
 			.longevity(5)
 			.propagate(true)
 			.build()

@@ -39,6 +39,7 @@ pallet-data-assets = { version = "1.0.0", default-features = false, path = "../d
 pallet-authorities = { version = "1.0.0", default-features = false, path = "../authorities" }
 iris-primitives = { version = "1.0.0", default-features = false, path = "../common" }
 
+# rand_core = { version = "0.6.4", deafult-features = false, features=["getrandom"] }
 umbral-pre = { version = "0.5.2", default-features = false, features = ["serde-support"] }
 # needed for umbral-pre
 getrandom = { version = "0.2", default-features = false, features = ["js"] }
@@ -76,6 +77,7 @@ std = [
 	'getrandom/std',
 	'rand_chacha/std',
 	'crypto_box/std',
+	# 'rand_core/std',
 ]
 
 runtime-benchmarks = ["frame-benchmarking"]

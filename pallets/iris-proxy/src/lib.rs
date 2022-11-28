@@ -33,7 +33,7 @@ use frame_support::{
 	pallet_prelude::*,
 	traits::{
 		EstimateNextSessionRotation, Get, Currency, LockableCurrency,
-		DefensiveSaturating, LockIdentifier, WithdrawReasons,
+		DefensiveSaturating, LockIdentifier, WithdrawReasons, Randomness,
 	},
 	BoundedVec,
 };
@@ -42,7 +42,7 @@ use scale_info::TypeInfo;
 pub use pallet::*;
 use sp_runtime::{
 	SaturatedConversion,
-	traits::{CheckedSub, Convert, Zero, Verify},
+	traits::{CheckedSub, Convert, TrailingZeroInput, Zero, Verify},
 };
 use sp_staking::offence::{Offence, OffenceError, ReportOffence};
 use sp_std::{
@@ -76,7 +76,7 @@ use pallet_data_assets::{MetadataProvider, QueueManager};
 use umbral_pre::*;
 
 use rand_chacha::{
-	ChaCha20Rng,
+	ChaCha20Rng, ChaCha20Core,
 	rand_core::{CryptoRng, RngCore, SeedableRng},
 };
 
@@ -192,7 +192,8 @@ pub mod pallet {
 		type QueueManager: pallet_data_assets::QueueManager<Self::AccountId, Self::Balance>;
 		/// get metadata of data assets
 		type MetadataProvider: pallet_data_assets::MetadataProvider<Self::AssetId>;
-		type Rng: SeedableRng;
+		/// Something that provides randomness in the runtime.
+		type Randomness: Randomness<Self::Hash, Self::BlockNumber>;
 	}
 
 	#[pallet::pallet]
@@ -428,7 +429,6 @@ impl<T: Config> Pallet<T> {
 				metadata.public_key.clone(),
 				sk,
 			));
-
 		}
 
 		Some(Bytes::from(Vec::new()))
@@ -570,7 +570,13 @@ impl<T: Config> Pallet<T> {
 		let proxy_pk_slice = iris_primitives::slice_to_array_32(&proxy_pk_vec).unwrap();
 		let proxy_pk = BoxPublicKey::from(*proxy_pk_slice);
 		
-		let mut rng = ChaCha20Rng::seed_from_u64(17u64);
+		let phrase = b"iris encryption";
+		let (seed, _) = T::Randomness::random(phrase);
+		// seed needs to be guaranteed to be 32 bytes.
+		let seed = <[u8; 32]>::decode(&mut TrailingZeroInput::new(seed.as_ref()))
+			.expect("input is padded with zeroes; qed");
+		let mut rng = ChaCha20Rng::from_seed(seed);
+
 		let sk = SecretKey::random_with_rng(rng.clone());
 		let pk = sk.public_key();
 		let (capsule, ciphertext) = match umbral_pre::encrypt_with_rng(
@@ -642,7 +648,14 @@ impl<T: Config> Pallet<T> {
 				log::info!("Secret Recovery: Success");
 				// ---------
 				// generate new key pair 
-				let mut rng = ChaCha20Rng::seed_from_u64(211u64);
+				
+				let phrase = b"iris reencapsulation";
+				let (seed, _) = T::Randomness::random(phrase);
+				// seed needs to be guaranteed to be 32 bytes.
+				let seed = <[u8; 32]>::decode(&mut TrailingZeroInput::new(seed.as_ref()))
+					.expect("input is padded with zeroes; qed");
+				let mut rng = ChaCha20Rng::from_seed(seed);
+
 				let signer = umbral_pre::Signer::new(delegating_secret_key.clone());
 				let receiving_sk = SecretKey::random_with_rng(rng.clone());
 				let receiving_pk = receiving_sk.public_key();
@@ -766,7 +779,12 @@ impl<T: Config> Pallet<T> {
 				let verified_kfrag = kfrag.verify(&verifying_pk, Some(&data_public_key), Some(&consumer_public_key)).unwrap();
 				// ----------
 				// create capsule fragment
-				let mut rng = ChaCha20Rng::seed_from_u64(31u64);
+				let phrase = b"iris reencryption";
+				let (seed, _) = T::Randomness::random(phrase);
+				// seed needs to be guaranteed to be 32 bytes.
+				let seed = <[u8; 32]>::decode(&mut TrailingZeroInput::new(seed.as_ref()))
+					.expect("input is padded with zeroes; qed");
+				let mut rng = ChaCha20Rng::from_seed(seed);
 				// recover capsule and pk (created by data owner)
 				let capsule_data = encryption_artifacts.capsule.clone();
 				let capsule = Capsule::from_bytes(&capsule_data).unwrap();
@@ -812,7 +830,7 @@ impl<T: Config> Pallet<T> {
 	fn validate_transaction_parameters() -> TransactionValidity {
 		// TODO: need to refine this
 		ValidTransaction::with_tag_prefix("iris")
-			.priority(2 >> 20) 
+			.priority(2 << 20) 
 			.longevity(5)
 			.propagate(true)
 			.build()

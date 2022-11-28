@@ -376,8 +376,7 @@ impl pallet_timestamp::Config for Runtime {
 
 parameter_types! {
 	// TODO: Increase this when done testing
-	pub const MinAuthorities: u32 = 1;
-	pub const MaxDeadSession: u32 = 3;
+	pub const MinAuthorities: u32 = 3;
 }
 
 impl pallet_authorities::Config for Runtime {
@@ -385,7 +384,6 @@ impl pallet_authorities::Config for Runtime {
 	type Call = Call;
 	type AddRemoveOrigin = EnsureRoot<AccountId>;
 	type MinAuthorities = MinAuthorities;
-	type MaxDeadSession = MaxDeadSession;
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
@@ -470,11 +468,10 @@ impl pallet_data_assets::Config for Runtime {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
-parameter_types! {
-	// random number generator
-	pub const Rng: ChaCha20Rng = ChaCha20Rng::from_entropy();
-	// pub const Rng: ChaCha20Rng = ChaCha20Rng::seed_from_u64(17u64);;
-}
+// parameter_types! {
+// 	// random number generator
+// 	pub const Rng: ChaCha20Rng = ChaCha20Rng::seed_from_u64(17u64);
+// }
 
 impl pallet_iris_proxy::Config for Runtime {
 	type Event = Event;
@@ -482,7 +479,7 @@ impl pallet_iris_proxy::Config for Runtime {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type QueueManager = DataAssets;
 	type MetadataProvider = DataAssets;
-	type Rng = Rng;
+	type Randomness = RandomnessCollectiveFlip;
 }
 
 impl pallet_authorization::Config for Runtime {
@@ -539,7 +536,7 @@ impl pallet_gateway::Config for Runtime {
 }
 
 parameter_types! {
-	pub const NodeConfigBlockDuration: u32 = 2;
+	pub const NodeConfigBlockDuration: u32 = 3;
 }
 
 impl pallet_ipfs::Config for Runtime {
@@ -1018,9 +1015,9 @@ use frame_system::{
 	self as system,
 };
 
-use crypto_box::{
-	SalsaBox, PublicKey, SecretKey as BoxSecretKey,
-};
+// use crypto_box::{
+// 	SalsaBox, PublicKey, SecretKey as BoxSecretKey,
+// };
 
 pub struct IrisExtension;
 
