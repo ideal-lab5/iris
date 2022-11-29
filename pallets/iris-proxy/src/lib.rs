@@ -828,11 +828,10 @@ impl<T: Config> Pallet<T> {
 	}
 
 	fn validate_transaction_parameters() -> TransactionValidity {
-		// TODO: need to refine this
 		ValidTransaction::with_tag_prefix("iris")
-			.priority(2 << 20) 
-			.longevity(5)
-			.propagate(true)
+			.priority(2 << 20) // very high priority... probably overkill but should always be on top
+			.longevity(5) // TTL 5 blocks
+			.propagate(false) // we want to be the only one submitting this tx
 			.build()
 	}
 
