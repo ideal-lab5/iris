@@ -220,7 +220,7 @@ pub fn get(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
     let mut endpoint = Endpoint::Get.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
         .map_err(|_| http::Error::Unknown).ok().unwrap();
-    let res = ipfs_post_request(&endpoint, None).unwrap();
+    let res = ipfs_post_request(&endpoint, None)?;
     Ok(res)
 }
 

@@ -304,7 +304,6 @@ pub mod pallet {
             gateway: <T::Lookup as StaticLookup>::Source,
             gateway_reserve: BalanceOf<T>,
             cid: Vec<u8>,
-            multiaddress: Vec<u8>,
             #[pallet::compact] min_asset_balance: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -313,7 +312,6 @@ pub mod pallet {
             let cmd = IngestionCommand {
                 owner: who.clone(),
                 cid: cid,
-                multiaddress: multiaddress,
                 balance: min_asset_balance,
             };
             commands.push(cmd.clone());

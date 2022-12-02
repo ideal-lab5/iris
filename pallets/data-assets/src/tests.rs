@@ -48,7 +48,6 @@ thread_local!(static TEST_CONSTANTS: TestData = TestData {
 	p: sp_core::sr25519::Pair::generate().0,
 	q: sp_core::sr25519::Pair::generate().0,
 	cid_vec: "QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9".as_bytes().to_vec(),
-	multiaddr_vec: "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWMvyvKxYcy9mjbFbXcogFSCvENzQ62ogRxHKZaksFCkAp".as_bytes().to_vec(),
 	name: "test space".as_bytes().to_vec(),
 	id: 1,
 	balance: 1,
@@ -80,7 +79,6 @@ fn data_assets_can_request_ingestion() {
 		let expected_ingestion_cmd = crate::IngestionCommand {
 			owner: test_data.p.clone().public(),
 			cid: test_data.cid_vec.clone(),
-			multiaddress: test_data.multiaddr_vec.clone(),
 			estimated_size_gb: test_data.size.clone(),
 			balance: test_data.balance.clone(),
 		};
@@ -108,58 +106,6 @@ fn data_assets_can_request_ingestion() {
 	})
 	
 }
-
-// #[test]
-// fn data_assets_can_submit_encryption_artifacts() {
-// 	TEST_CONSTANTS.with(|t| {
-// 		// Given: I am a valid node with a positive balance
-// 		let pairs = vec![(t.p.clone().public(), 10)];
-// 		let encrypted_key = EncryptedBox {
-// 			nonce: t.name.clone(),
-// 			ciphertext: t.name.clone(),
-// 			public_key: t.name.clone(),
-// 		};
-
-// 		new_test_ext_funded(pairs, validators()).execute_with(|| {
-// 			// When: I submit key fragments
-// 			assert_ok!(DataAssets::submit_encryption_artifacts(
-// 				Origin::signed(t.p.clone().public()),
-// 				t.p.clone().public(),
-// 				t.name.clone(),
-// 				t.name.clone(),
-// 				t.p.clone().public(),
-// 				encrypted_key.clone(),
-// 			));
-// 			// check proxy
-// 			// check proxy codes
-
-// 			let capsule_data = Capsules::<Test>::get(t.name.clone()).unwrap();
-// 			assert_eq!(t.name.clone(), capsule_data);
-
-// 			let pk = IngestionStaging::<Test>::get(t.p.public().clone()).unwrap();
-// 			assert_eq!(t.name.clone(), pk);
-// 		}); 
-// 	});
-// }
-
-// #[test]
-// pub fn rpc_encrypt_can_encrypt_and_submit_signed_tx() {
-// }
-
-// #[test]
-// pub fn rpc_encrypt_fails_if_shares_exceeds_validator_count() {
-	
-// }
-
-// #[test]
-// pub fn rpc_decrypt_can_decrypt() {
-
-// }
-
-// #[test]
-// pub fn rpc_decrypt_fail_if_no_cfrags() {
-
-// }
 
 fn validators() -> Vec<(sp_core::sr25519::Public, UintAuthorityId)> {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (

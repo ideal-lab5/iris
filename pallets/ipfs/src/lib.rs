@@ -258,53 +258,54 @@ pub mod pallet {
 		// The offchain worker here will act as the main coordination point for all offchain functions
 		// that require a substrate acct id (as identified by ipfs pubkey)
 		fn offchain_worker(block_number: T::BlockNumber) {
-			if sp_io::offchain::is_validator() {
-				// try to get identity
-				// I think this is taking too long... needs to be cached somehow?
-				match Self::fetch_identity_json() {
-					Ok(id_json) => {
-						// there is a reachable IPFS instance and we have it's identity
-						// now we need to make sure 
-						let id = &id_json["ID"];
-						let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-						match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
-							Some(addr) => {
-								if <pallet_authorities::Pallet<T>>::x25519_public_keys(addr.clone()).is_empty() {
-									log::info!("Proxy keys not configured");
-									// TODO: handle error
-									<pallet_authorities::Pallet<T>>::update_x25519(addr.clone());
-									// only doing once... for now
+			let is_validator = sp_io::offchain::is_validator();
+			// try to get identity
+			// we really don't need to do all of this every single block for every single node...
+			// this really needs to be revisted and optimized but for now it should work to allow
+			// all nodes FULL nodes (not light clients), not just validators, to ingest data into iris
+			match Self::fetch_identity_json() {
+				Ok(id_json) => {
+					// there is a reachable IPFS instance and we have it's identity
+					// now we need to make sure 
+					let id = &id_json["ID"];
+					let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
+					match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
+						Some(addr) => {
+							if <pallet_authorities::Pallet<T>>::x25519_public_keys(addr.clone()).is_empty() {
+								// should only happen once
+								log::info!("Proxy keys not configured");
+								<pallet_authorities::Pallet<T>>::update_x25519(addr.clone());
+								if is_validator {
 									if let Err(e) = Self::ipfs_update_configs(addr.clone()) {
 										log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
 									} 
 								}
-								if block_number % T::NodeConfigBlockDuration::get().into() == 0u32.into() {
-									if let Err(e) = Self::handle_ingestion_queue(addr.clone()) {
-										log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
-									}
-									// process reencryption and decryption delegation each block
-									let authorities = <pallet_authorities::Pallet<T>>::validators();
-									log::info!("Processing reencryption requests");
-									T::OffchainKeyManager::process_reencryption_requests(addr.clone());
-									log::info!("Processing decryption delegation requests with {:?} authorities", authorities.len());
-									T::OffchainKeyManager::process_decryption_delegation(addr.clone(), authorities);
+							}
+							if is_validator && block_number % T::NodeConfigBlockDuration::get().into() == 0u32.into() {
+								if let Err(e) = Self::handle_ingestion_queue(addr.clone()) {
+									log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
 								}
-							},
-							None => {
-								// this will always happen the first time through the loop
-								// we have fetched the IPFS node identity, but it hasn't been 
-								// encoded on-chain yet. So we will wait until the next time this
-								// logic executes, at which point it will be onchain
-								log::info!("No identifiable ipfs-substrate association.");
-								if let Err(e) = Self::ipfs_verify_identity() {
-									log::error!("Encountered an error while attempting to verify ipfs node identity: {:?}", e);
-								}
+								let authorities = <pallet_authorities::Pallet<T>>::validators();
+								log::info!("Processing reencryption requests");
+								T::OffchainKeyManager::process_reencryption_requests(addr.clone());
+								log::info!("Processing decryption delegation requests with {:?} authorities", authorities.len());
+								T::OffchainKeyManager::process_decryption_delegation(addr.clone(), authorities);
+							}
+						},
+						None => {
+							// this will always happen the first time through the loop
+							// we have fetched the IPFS node identity, but it hasn't been 
+							// encoded on-chain yet. So we will wait until the next time this
+							// logic executes, at which point it will be onchain
+							log::info!("No identifiable ipfs-substrate association.");
+							if let Err(e) = Self::ipfs_verify_identity() {
+								log::error!("Encountered an error while attempting to verify ipfs node identity: {:?}", e);
 							}
 						}
-					},
-					Err(e) => {
-						log::error!("There is no reachable IPFS node {:?}", e);
 					}
+				},
+				Err(e) => {
+					log::error!("There is no reachable IPFS node {:?}", e);
 				}
 			}
 		}
@@ -515,20 +516,15 @@ impl<T: Config> Pallet<T> {
 	/// it finally sends a signed tx to create an asset class on behalf of the caller
 	fn handle_ingestion_queue(account: T::AccountId) -> Result<(), Error<T>> {
 		let queued_commands = T::QueueManager::ingestion_requests(account);
+		log::info!("Processing {:?} items in the ingestion queue", queued_commands.len());
 		for cmd in queued_commands.iter() {
 			let owner = cmd.owner.clone();
 			let cid = cmd.cid.clone();
-			// must disconnect from all current peers and makes oneself undiscoverable
-			// but since we aren't connected to anyone else... this is fine.
-			// connect to multiaddress from request
-			ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
-			// ipfs get cid 
-			let response = ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID);
-			// TODO: remove these logs
-			log::info!("Fetched data with CID {:?} from multiaddress {:?}", cid.clone(), cmd.multiaddress.clone());
-			// disconnect from multiaddress
-			ipfs::disconnect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
-			// Q: is there some way we can verify that the data we received is from the correct maddr? is that needed?
+			// we make the assumption that the data consumer has added the 
+			// data to a node connected through some route to the iris validator ipfs node
+			// TODO: can remove the multiaddress field completely! 
+			ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID)?;
+			log::info!("Fetched data with CID {:?}", cid.clone());
 			let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
 			if !signer.can_sign() {
 				log::error!(

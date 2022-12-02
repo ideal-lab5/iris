@@ -490,6 +490,25 @@ fn test_iris_protocol_happy_path() {
 
 // }
 
+// #[test]
+// pub fn rpc_encrypt_can_encrypt_and_submit_signed_tx() {
+// }
+
+// #[test]
+// pub fn rpc_encrypt_fails_if_shares_exceeds_validator_count() {
+	
+// }
+
+// #[test]
+// pub fn rpc_decrypt_can_decrypt() {
+
+// }
+
+// #[test]
+// pub fn rpc_decrypt_fail_if_no_cfrags() {
+
+// }
+
 // TODO: move this into TEST_DATA
 fn validators() -> Vec<(sp_core::sr25519::Public, UintAuthorityId)> {
 	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
