@@ -258,56 +258,49 @@ pub mod pallet {
 		// The offchain worker here will act as the main coordination point for all offchain functions
 		// that require a substrate acct id (as identified by ipfs pubkey)
 		fn offchain_worker(block_number: T::BlockNumber) {
-			let is_validator = sp_io::offchain::is_validator();
-			// try to get identity
-			// we really don't need to do all of this every single block for every single node...
-			// this really needs to be revisted and optimized but for now it should work to allow
-			// all nodes FULL nodes (not light clients), not just validators, to ingest data into iris
-			match Self::fetch_identity_json() {
-				Ok(id_json) => {
-					// there is a reachable IPFS instance and we have it's identity
-					// now we need to make sure 
-					let id = &id_json["ID"];
-					let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-					match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
-						Some(addr) => {
-							if <pallet_authorities::Pallet<T>>::x25519_public_keys(addr.clone()).is_empty() {
-								// should only happen once
-								log::info!("Proxy keys not configured");
-								<pallet_authorities::Pallet<T>>::update_x25519(addr.clone());
-								if is_validator {
-									if let Err(e) = Self::ipfs_update_configs(addr.clone()) {
-										log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
-									} 
+			if sp_io::offchain::is_validator() {
+				match Self::fetch_identity_json() {
+					Ok(id_json) => {
+						let id = &id_json["ID"];
+						let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
+						match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
+							Some(addr) => {
+								if <pallet_authorities::Pallet<T>>::x25519_public_keys(addr.clone()).is_empty() {
+									// should only happen once
+									log::info!("Proxy keys not configured");
+									<pallet_authorities::Pallet<T>>::update_x25519(addr.clone());
+										if let Err(e) = Self::ipfs_update_configs(addr.clone()) {
+											log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
+										}
 								}
-							}
-							if is_validator && block_number % T::NodeConfigBlockDuration::get().into() == 0u32.into() {
-								if let Err(e) = Self::handle_ingestion_queue(addr.clone()) {
-									log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
+								if block_number % T::NodeConfigBlockDuration::get().into() == 0u32.into() {
+									if let Err(e) = Self::handle_ingestion_queue(addr.clone()) {
+										log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
+									}
+									// TODO: using 'initial validators' for test/demo purposes due to issue with
+									// validators getting kicked out of the validator pool though still being online
+									let authorities = <pallet_authorities::Pallet<T>>::initial_validators();
+									log::info!("Processing reencryption requests");
+									T::OffchainKeyManager::process_reencryption_requests(addr.clone());
+									log::info!("Processing decryption delegation requests with {:?} authorities", authorities.len());
+									T::OffchainKeyManager::process_decryption_delegation(addr.clone(), authorities);
+								} 
+							},
+							None => {
+								// this will always happen the first time through the loop
+								// we have fetched the IPFS node identity, but it hasn't been 
+								// encoded on-chain yet. So we will wait until the next time this
+								// logic executes, at which point it will be onchain
+								log::info!("No identifiable ipfs-substrate association.");
+								if let Err(e) = Self::ipfs_verify_identity() {
+									log::error!("Encountered an error while attempting to verify ipfs node identity: {:?}", e);
 								}
-								// TODO: using 'initial validators' for test/demo purposes due to issue with
-								// validators getting kicked out of the validator pool though still being online
-								let authorities = <pallet_authorities::Pallet<T>>::initial_validators();
-								log::info!("Processing reencryption requests");
-								T::OffchainKeyManager::process_reencryption_requests(addr.clone());
-								log::info!("Processing decryption delegation requests with {:?} authorities", authorities.len());
-								T::OffchainKeyManager::process_decryption_delegation(addr.clone(), authorities);
-							} 
-						},
-						None => {
-							// this will always happen the first time through the loop
-							// we have fetched the IPFS node identity, but it hasn't been 
-							// encoded on-chain yet. So we will wait until the next time this
-							// logic executes, at which point it will be onchain
-							log::info!("No identifiable ipfs-substrate association.");
-							if let Err(e) = Self::ipfs_verify_identity() {
-								log::error!("Encountered an error while attempting to verify ipfs node identity: {:?}", e);
 							}
 						}
+					},
+					Err(e) => {
+						log::error!("There is no reachable IPFS node {:?}", e);
 					}
-				},
-				Err(e) => {
-					log::error!("There is no reachable IPFS node {:?}", e);
 				}
 			}
 		}
@@ -315,6 +308,22 @@ pub mod pallet {
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
+
+		#[pallet::weight(100)]
+		pub fn submit_ingestion_initialized(
+			origin: OriginFor<T>,
+			cmd: IngestionCommand<T::AccountId, T::Balance>,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			let queued_commands = T::QueueManager::ingestion_requests(who.clone());
+			ensure!(queued_commands.contains(&cmd), Error::<T>::NotAuthorized);
+			// we need to find the puiblic key as well..
+			let new_origin = system::RawOrigin::Signed(who.clone()).into();
+			T::ResultsHandler::claim_ingestion_command(new_origin, cmd)?;
+			// TODO: event
+			Ok(())
+		}
+
         /// submits IPFS results on chain and creates new ticket config in runtime storage
         ///
         /// * `admin`: The admin account
@@ -520,16 +529,23 @@ impl<T: Config> Pallet<T> {
 		let queued_commands = T::QueueManager::ingestion_requests(account);
 		log::info!("Processing {:?} items in the ingestion queue", queued_commands.len());
 		for cmd in queued_commands.iter() {
-			let owner = cmd.owner.clone();
-			let cid = cmd.cid.clone();
-			ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID)?;
-			log::info!("Fetched data with CID {:?}", cid.clone());
 			let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
 			if !signer.can_sign() {
 				log::error!(
 					"No local accounts available. Consider adding one via `author_insertKey` RPC.",
 				);
 			}
+			// submit a signed tx to mark the cmd as being processed
+			signer.send_signed_transaction(|_| {
+				Call::submit_ingestion_initialized {
+					cmd: cmd.clone(),
+				}
+			});
+			let cid = cmd.cid.clone();
+			// this could potentially take a *long* time
+			ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID)?;
+			log::info!("Fetched data with CID {:?}", cid.clone());
+			
 			let results = signer.send_signed_transaction(|_acct| { 
 				Call::submit_ingestion_completed{
 					cmd: cmd.clone(),
@@ -546,3 +562,8 @@ impl<T: Config> Pallet<T> {
 		Ok(())
 	}
 }
+
+
+
+
+
