@@ -462,9 +462,8 @@ impl<T: Config> Pallet<T> {
 	fn ipfs_update_configs(account: T::AccountId) -> Result<(), Error<T>> {
 		match T::ProxyProvider::prefs(account.clone()) {
 			Some(prefs) => {
-				// let val = format!("{}", prefs.storage_max_gb).as_bytes().to_vec();
 				// for now, default to 50mb
-				let val = format!("{}", 50).as_bytes().to_vec();
+				let val = format!("{}GB", 50).as_bytes().to_vec();
 				// 4. Make calls to update ipfs node config
 				let key = IpfsConfigKey::StorageMax.as_ref().as_bytes().to_vec();
 				let storage_size_config_item = ipfs::IpfsConfigRequest{
@@ -541,9 +540,12 @@ impl<T: Config> Pallet<T> {
 					cmd: cmd.clone(),
 				}
 			});
+			log::info!("Submitted signed tx to mark ignestion cmd as complete and create active cmd.");
 			let cid = cmd.cid.clone();
 			// this could potentially take a *long* time
+			log::info!("About to call ifps get %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
 			ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID)?;
+			log::info!("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
 			log::info!("Fetched data with CID {:?}", cid.clone());
 			
 			let results = signer.send_signed_transaction(|_acct| { 

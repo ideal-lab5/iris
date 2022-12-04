@@ -126,9 +126,9 @@ pub fn identity() -> Result<http::Response, http::Error> {
 pub fn config_update(config_item: IpfsConfigRequest) -> Result<(), http::Error> {
     let mut endpoint = Endpoint::ConfigUpdate.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), &config_item.key, true)
-        .map_err(|_| http::Error::Unknown).ok().unwrap();
+        .map_err(|_| http::Error::Unknown).unwrap();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), &config_item.value, false)
-        .map_err(|_| http::Error::Unknown).ok().unwrap();
+        .map_err(|_| http::Error::Unknown).unwrap();
     ipfs_post_request(&endpoint, None)?;
     Ok(())
 }
@@ -159,7 +159,7 @@ pub fn repo_stat() -> Result<serde_json::Value, http::Error> {
 pub fn connect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
     let mut endpoint = Endpoint::Connect.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), multiaddress, false)
-        .map_err(|_| http::Error::Unknown).ok().unwrap();
+        .map_err(|_| http::Error::Unknown).unwrap();
     ipfs_post_request(&endpoint, None)?;
     Ok(())
 }
@@ -171,7 +171,7 @@ pub fn connect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
 pub fn disconnect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
     let mut endpoint = Endpoint::Disconnect.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), multiaddress, false)
-        .map_err(|_| http::Error::Unknown).ok().unwrap();
+        .map_err(|_| http::Error::Unknown).unwrap();
     ipfs_post_request(&endpoint, None)?;
     Ok(())
 }
@@ -215,11 +215,10 @@ pub fn add(ipfs_add_request: IpfsAddRequest) -> Result<http::Response, http::Err
 /// 
 /// * cid: The CID to fetch.
 /// 
-/// 
 pub fn get(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
     let mut endpoint = Endpoint::Get.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
-        .map_err(|_| http::Error::Unknown).ok().unwrap();
+        .map_err(|_| http::Error::Unknown).unwrap();
     let res = ipfs_post_request(&endpoint, None)?;
     Ok(res)
 }
@@ -231,7 +230,7 @@ pub fn get(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
 pub fn cat(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
     let mut endpoint = Endpoint::Cat.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
-        .map_err(|_| http::Error::Unknown).ok().unwrap();
+        .map_err(|_| http::Error::Unknown).unwrap();
     let res = ipfs_post_request(&endpoint, None);
     Ok(res.unwrap())
 }
@@ -276,7 +275,7 @@ fn add_arg(
                 },
                 Err(e) => return Err(e),
             }
-        }, 
+        },
         Err(e) => return Err(e)
     }
     Ok(endpoint)
@@ -300,7 +299,7 @@ fn ipfs_post_request(endpoint: &str, body: Option<Vec<&[u8]>>) -> Result<http::R
                 .unwrap();
     let response = pending.wait()?;
     if response.code != 200 {
-        log::warn!("Unexpected status code: {}", response.code);
+        log::errorz!("Unexpected status code: {}", response.code);
         return Err(http::Error::Unknown);
     }
     Ok(response)

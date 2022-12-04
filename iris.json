@@ -8,8 +8,12 @@
     "/ip4/3.14.26.5/tcp/30333/p2p/12D3KooWJ2TotUBBrwenuKHabxPoVwewZBCxEcnGpQG4ZTueH1WW"
 ],
   "telemetryEndpoints": null,
-  "protocolId": null,
-  "properties": null,
+  "protocolId": "iris",
+  "properties": {
+    "ss58Format": 0,
+    "tokenDecimals": 10,
+    "tokenSymbol": "IRIS"
+  },
   "codeSubstitutes": {},
   "genesis": {
     "raw": {
