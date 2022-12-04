@@ -216,6 +216,10 @@ pub mod pallet {
 	#[pallet::getter(fn validators)]
 	pub type Validators<T: Config> = StorageValue<_, Vec<T::AccountId>, ValueQuery>;
 
+	#[pallet::storage]
+	#[pallet::getter(fn initial_validators)]
+	pub type InitialValidators<T: Config> = StorageValue<_, Vec<T::AccountId>, ValueQuery>;
+
 	///
 	/// 
 	#[pallet::storage]
@@ -372,10 +376,12 @@ pub mod pallet {
 impl<T: Config> Pallet<T> {
 
 	fn initialize_validators(validators: &[T::AccountId]) {
+		log::info!("Initializing validators defined in the chain spec.");
 		assert!(validators.len() > 1, "At least 2 validators should be initialized");
 		assert!(<Validators<T>>::get().is_empty(), "Validators are already initialized!");
 		<Validators<T>>::put(validators);
 		<ApprovedValidators<T>>::put(validators);
+		<InitialValidators<T>>::put(validators);
 	}
 
 	fn do_add_validator(validator_id: T::AccountId) -> DispatchResult {
@@ -474,6 +480,7 @@ impl<T: Config> Pallet<T> {
 
 	fn validate_transaction_parameters() -> TransactionValidity {
 		ValidTransaction::with_tag_prefix("iris")
+			.priority(2 << 20)
 			.longevity(5)
 			.propagate(true)
 			.build()
@@ -498,7 +505,9 @@ impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 	fn new_session(new_index: u32) -> Option<Vec<T::AccountId>> {
 		log:: info!("Starting new session with index: {:?}", new_index);
 		CurrentEra::<T>::mutate(|s| *s = Some(new_index));
-		Self::remove_offline_validators();
+		// TODO: uncomment the below line! I'm commenting it out for now
+		// only for testing + verification of milestone 2
+		// Self::remove_offline_validators();
 		log::debug!(target: LOG_TARGET, "New session called; updated validator set provided, proxy node elections started.");
 		Some(Self::validators())
 	}

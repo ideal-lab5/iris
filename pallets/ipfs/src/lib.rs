@@ -285,12 +285,14 @@ pub mod pallet {
 								if let Err(e) = Self::handle_ingestion_queue(addr.clone()) {
 									log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
 								}
-								let authorities = <pallet_authorities::Pallet<T>>::validators();
+								// TODO: using 'initial validators' for test/demo purposes due to issue with
+								// validators getting kicked out of the validator pool though still being online
+								let authorities = <pallet_authorities::Pallet<T>>::initial_validators();
 								log::info!("Processing reencryption requests");
 								T::OffchainKeyManager::process_reencryption_requests(addr.clone());
 								log::info!("Processing decryption delegation requests with {:?} authorities", authorities.len());
 								T::OffchainKeyManager::process_decryption_delegation(addr.clone(), authorities);
-							}
+							} 
 						},
 						None => {
 							// this will always happen the first time through the loop
@@ -520,9 +522,6 @@ impl<T: Config> Pallet<T> {
 		for cmd in queued_commands.iter() {
 			let owner = cmd.owner.clone();
 			let cid = cmd.cid.clone();
-			// we make the assumption that the data consumer has added the 
-			// data to a node connected through some route to the iris validator ipfs node
-			// TODO: can remove the multiaddress field completely! 
 			ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID)?;
 			log::info!("Fetched data with CID {:?}", cid.clone());
 			let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
