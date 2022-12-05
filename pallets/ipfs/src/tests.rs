@@ -68,6 +68,7 @@ pub fn ipfs_can_submit_ingestion_complete() {
 		let cmd = IngestionCommand {
 			owner: test_data.p.public().clone(),
 			cid: test_data.cid_vec.clone(),
+			multiaddress: test_data.name.clone(),
 			estimated_size_gb: 1u128,
 			balance: test_data.balance,
 		};
@@ -122,6 +123,7 @@ pub fn ipfs_fail_to_create_asset_class_if_no_staging_exists() {
 		let cmd = IngestionCommand {
 			owner: test_data.p.public().clone(),
 			cid: test_data.cid_vec.clone(),
+			multiaddress: test_data.name.clone(),
 			estimated_size_gb: 1u128,
 			balance: test_data.balance,
 		};
@@ -168,6 +170,7 @@ pub fn ipfs_fail_submit_ingestion_complete_if_ingestion_cmd_not_assigned_to_you(
 		let cmd = IngestionCommand {
 			owner: test_data.p.public().clone(),
 			cid: test_data.cid_vec.clone(),
+			multiaddress: test_data.name.clone(),
 			estimated_size_gb: 1u128,
 			balance: test_data.balance,
 		};
@@ -500,6 +503,7 @@ pub fn ipfs_offchain_can_handle_ingestion_commands() {
 		let cmd = IngestionCommand {
 			owner: test_data.p.public().clone(),
 			cid: test_data.cid_vec.clone(),
+			multiaddress: test_data.name.clone(),
 			estimated_size_gb: 1u128,
 			balance: test_data.balance,
 		};

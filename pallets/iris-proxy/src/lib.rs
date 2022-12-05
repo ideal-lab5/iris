@@ -361,7 +361,7 @@ pub mod pallet {
 		}
 
 		// TODO: This is pretty insecure
-		#[pallet::weight(100_000)]
+		#[pallet::weight(0)]
         pub fn submit_encryption_artifacts(
             _origin: OriginFor<T>,
             owner: T::AccountId,

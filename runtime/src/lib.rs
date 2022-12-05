@@ -537,7 +537,7 @@ impl pallet_gateway::Config for Runtime {
 
 parameter_types! {
 	// roughly 35 seconds
-	pub const NodeConfigBlockDuration: u32 = 4;
+	pub const NodeConfigBlockDuration: u32 = 2;
 }
 
 impl pallet_ipfs::Config for Runtime {
@@ -885,7 +885,6 @@ impl_runtime_apis! {
 			message: Bytes,
 			proxy: Bytes,
 		) -> Bytes {
-			// None
 			IrisProxy::encrypt(
 				plaintext, 
 				signature, 

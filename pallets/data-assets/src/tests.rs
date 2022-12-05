@@ -49,6 +49,7 @@ thread_local!(static TEST_CONSTANTS: TestData = TestData {
 	q: sp_core::sr25519::Pair::generate().0,
 	cid_vec: "QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9".as_bytes().to_vec(),
 	name: "test space".as_bytes().to_vec(),
+	multiaddr_vec: "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWMvyvKxYcy9mjbFbXcogFSCvENzQ62ogRxHKZaksFCkAp".as_bytes().to_vec(),
 	id: 1,
 	balance: 1,
 	size: 1,
@@ -79,6 +80,7 @@ fn data_assets_can_request_ingestion() {
 		let expected_ingestion_cmd = crate::IngestionCommand {
 			owner: test_data.p.clone().public(),
 			cid: test_data.cid_vec.clone(),
+			multiaddress: test_data.multiaddr_vec.clone(),
 			estimated_size_gb: test_data.size.clone(),
 			balance: test_data.balance.clone(),
 		};

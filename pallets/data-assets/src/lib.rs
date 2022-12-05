@@ -204,15 +204,6 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
-    pub(super) type ActiveIngestionCommands<T: Config> = StorageMap<
-        _, 
-        Blake2_128Concat,
-        T::AccountId, 
-        Vec<IngestionCommand<T::AccountId, T::Balance>>, 
-        ValueQuery,
-    >;
-
-    #[pallet::storage]
     #[pallet::getter(fn next_asset_id)]
     pub(super) type NextAssetId<T: Config> = StorageValue<_, T::AssetId, ValueQuery>;
 
@@ -313,6 +304,7 @@ pub mod pallet {
             gateway: <T::Lookup as StaticLookup>::Source,
             gateway_reserve: BalanceOf<T>,
             cid: Vec<u8>,
+            multiaddress: Vec<u8>,
             #[pallet::compact] min_asset_balance: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -321,6 +313,7 @@ pub mod pallet {
             let cmd = IngestionCommand {
                 owner: who.clone(),
                 cid: cid,
+                multiaddress: multiaddress,
                 balance: min_asset_balance,
             };
             commands.push(cmd.clone());
@@ -407,7 +400,6 @@ pub trait QueueManager<AccountId, Balance> {
 
     fn add_ingestion_staging(owner: AccountId, public_key: Vec<u8>);
     fn ingestion_requests(gateway: AccountId) -> Vec<IngestionCommand<AccountId, Balance>>;
-    fn active_ingestion_requests(gateway: AccountId) -> Vec<IngestionCommand<AccountId, Balance>>;
 }
 
 impl<T: Config> QueueManager<T::AccountId, T::Balance> for Pallet<T> {
@@ -419,10 +411,6 @@ impl<T: Config> QueueManager<T::AccountId, T::Balance> for Pallet<T> {
     fn ingestion_requests(gateway: T::AccountId) -> Vec<IngestionCommand<T::AccountId, T::Balance>> {
         IngestionCommands::<T>::get(gateway)
     }
-
-    fn active_ingestion_requests(gateway: T::AccountId) -> Vec<IngestionCommand<T::AccountId, T::Balance>> {
-        ActiveIngestionCommands::<T>::get(gateway)
-    }
 }
 
 /// The result handler allows other modules to submit "execution"
@@ -432,11 +420,6 @@ impl<T: Config> QueueManager<T::AccountId, T::Balance> for Pallet<T> {
 /// basically I'm implementing a parallel consensus mechanism to determine who gets to proxy requests
 pub trait ResultsHandler<T: frame_system::Config, AccountId, Balance> {
 
-    fn claim_ingestion_command(
-        origin: OriginFor<T>,
-        cmd: IngestionCommand<AccountId, Balance>
-    ) -> DispatchResult;
-
     fn create_asset_class(
         origin: OriginFor<T>,
         cmd: IngestionCommand<AccountId, Balance>
@@ -444,27 +427,6 @@ pub trait ResultsHandler<T: frame_system::Config, AccountId, Balance> {
 }
 
 impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
-
-    fn claim_ingestion_command(
-        origin: OriginFor<T>,
-        cmd: IngestionCommand<T::AccountId, T::Balance>,
-    ) -> DispatchResult {
-        let who = ensure_signed(origin)?;
-        // verify that capsule exists (i.e. data is 'decryptable')
-        if let Some(_) = IngestionStaging::<T>::get(who.clone()) {
-            // remove from ingestion commands, this must be done before the 'now + delay' number of blocks passes
-            // for now... let's just assume there is no time limit and test it out
-            IngestionCommands::<T>::mutate(who.clone(), |cmds| {
-                cmds.retain(|c| *c != cmd);
-            });
-            ActiveIngestionCommands::<T>::mutate(who.clone(), |cmds| {
-                cmds.push(cmd);
-            });
-            // emit event?
-            // Ok(())
-        }
-        Ok(())
-    }
 
     // this is just an extrinsic...
     fn create_asset_class(
@@ -489,7 +451,7 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
                 });
                 <AssetClassOwnership<T>>::mutate(cmd.owner.clone(), |ids| { ids.push(asset_id.clone()); });
                 IngestionStaging::<T>::remove(who.clone());
-                ActiveIngestionCommands::<T>::mutate(who.clone(), |cmds| {
+                IngestionCommands::<T>::mutate(who.clone(), |cmds| {
                     cmds.retain(|c| *c != cmd);
                 });
                 Ok(())

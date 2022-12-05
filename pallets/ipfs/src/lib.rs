@@ -309,21 +309,6 @@ pub mod pallet {
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 
-		#[pallet::weight(100)]
-		pub fn submit_ingestion_initialized(
-			origin: OriginFor<T>,
-			cmd: IngestionCommand<T::AccountId, T::Balance>,
-		) -> DispatchResult {
-			let who = ensure_signed(origin)?;
-			let queued_commands = T::QueueManager::ingestion_requests(who.clone());
-			ensure!(queued_commands.contains(&cmd), Error::<T>::NotAuthorized);
-			// we need to find the puiblic key as well..
-			let new_origin = system::RawOrigin::Signed(who.clone()).into();
-			T::ResultsHandler::claim_ingestion_command(new_origin, cmd)?;
-			// TODO: event
-			Ok(())
-		}
-
         /// submits IPFS results on chain and creates new ticket config in runtime storage
         ///
         /// * `admin`: The admin account
@@ -528,26 +513,17 @@ impl<T: Config> Pallet<T> {
 		let queued_commands = T::QueueManager::ingestion_requests(account);
 		log::info!("Processing {:?} items in the ingestion queue", queued_commands.len());
 		for cmd in queued_commands.iter() {
+			let cid = cmd.cid.clone();
+			ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
+			ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID)?;
+			log::info!("Fetched data with CID {:?}", cid.clone());
+			
 			let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
 			if !signer.can_sign() {
 				log::error!(
 					"No local accounts available. Consider adding one via `author_insertKey` RPC.",
 				);
 			}
-			// submit a signed tx to mark the cmd as being processed
-			signer.send_signed_transaction(|_| {
-				Call::submit_ingestion_initialized {
-					cmd: cmd.clone(),
-				}
-			});
-			log::info!("Submitted signed tx to mark ignestion cmd as complete and create active cmd.");
-			let cid = cmd.cid.clone();
-			// this could potentially take a *long* time
-			log::info!("About to call ifps get %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
-			ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID)?;
-			log::info!("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
-			log::info!("Fetched data with CID {:?}", cid.clone());
-			
 			let results = signer.send_signed_transaction(|_acct| { 
 				Call::submit_ingestion_completed{
 					cmd: cmd.clone(),

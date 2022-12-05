@@ -219,7 +219,7 @@ pub fn get(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
     let mut endpoint = Endpoint::Get.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
         .map_err(|_| http::Error::Unknown).unwrap();
-    let res = ipfs_post_request(&endpoint, None)?;
+    let res = ipfs_post_request(&endpoint, None).unwrap();
     Ok(res)
 }
 
@@ -299,7 +299,7 @@ fn ipfs_post_request(endpoint: &str, body: Option<Vec<&[u8]>>) -> Result<http::R
                 .unwrap();
     let response = pending.wait()?;
     if response.code != 200 {
-        log::errorz!("Unexpected status code: {}", response.code);
+        log::error!("Unexpected status code: {}", response.code);
         return Err(http::Error::Unknown);
     }
     Ok(response)

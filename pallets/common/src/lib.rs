@@ -56,6 +56,8 @@ pub struct IngestionCommand<AccountId, Balance> {
     pub owner: AccountId,
     /// the CID of the data to be ingested
     pub cid: Vec<u8>,
+    /// the multiaddress of the ipfs node where the data already exists
+    pub multiaddress: Vec<u8>,
     /// the balance used to create an asset class and pay a proxy node
     pub balance: Balance,
 }
