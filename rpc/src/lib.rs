@@ -16,15 +16,14 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use jsonrpsee::{
-	core::{async_trait, Error as JsonRpseeError, RpcResult},
+	core::{async_trait, RpcResult},
 	proc_macros::rpc,
-	types::error::{CallError, ErrorCode, ErrorObject},
+	types::error::{CallError, ErrorObject},
 };
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::{
 	Bytes,
-	sr25519::{Signature, Public}
 };
 use sp_runtime::{
 	generic::BlockId,
@@ -32,8 +31,7 @@ use sp_runtime::{
 };
 use sp_rpc::number::NumberOrHex;
 use std::sync::Arc;
-use codec::{Codec, Decode, Encode};
-use sp_std::vec::Vec;
+use codec::Codec;
 
 pub use encryption_rpc_runtime_api::EncryptionApi as EncryptionRuntimeApi;
 

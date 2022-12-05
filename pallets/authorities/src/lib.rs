@@ -67,28 +67,17 @@ use sp_std::{
 	vec::Vec,
 	prelude::*
 };
-use sp_core::{
-    offchain::{
-        OpaqueMultiaddr, StorageKind,
-    },
-	crypto::KeyTypeId,
-};
+use sp_core::crypto::KeyTypeId;
 use frame_system::{
-	self as system, 
 	ensure_signed,
 	offchain::{
 		SendSignedTransaction,
 		Signer,
 	}
 };
-use sp_runtime::{
-	offchain::http,
-	traits::StaticLookup,
-};
 
-use umbral_pre::*;
 use crypto_box::{
-	SalsaBox, PublicKey, SecretKey as BoxSecretKey,
+	SecretKey as BoxSecretKey,
 };
 use rand_chacha::{
 	ChaCha20Rng,
@@ -455,7 +444,7 @@ impl<T: Config> Pallet<T> {
 		<OfflineValidators<T>>::put(Vec::<T::AccountId>::new());
 	}
 
-	pub fn update_x25519(validator_id: T::AccountId) {
+	pub fn update_x25519() {
 		// generate a new keypair
 		let mut rng = ChaCha20Rng::seed_from_u64(31u64);
 		let secret_key = BoxSecretKey::generate(&mut rng);
@@ -471,7 +460,7 @@ impl<T: Config> Pallet<T> {
 				"No local accounts available. Consider adding one via `author_insertKey` RPC.",
 			);
 		}
-		let results = signer.send_signed_transaction(|_account| { 
+		signer.send_signed_transaction(|_account| { 
 			Call::insert_key {
 				public_key: pk.clone(),
 			}
@@ -507,7 +496,7 @@ impl<T: Config> pallet_session::SessionManager<T::AccountId> for Pallet<T> {
 		CurrentEra::<T>::mutate(|s| *s = Some(new_index));
 		// TODO: uncomment the below line! I'm commenting it out for now
 		// only for testing + verification of milestone 2
-		// Self::remove_offline_validators();
+		Self::remove_offline_validators();
 		log::debug!(target: LOG_TARGET, "New session called; updated validator set provided, proxy node elections started.");
 		Some(Self::validators())
 	}

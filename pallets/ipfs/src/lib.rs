@@ -258,6 +258,7 @@ pub mod pallet {
 		// The offchain worker here will act as the main coordination point for all offchain functions
 		// that require a substrate acct id (as identified by ipfs pubkey)
 		fn offchain_worker(block_number: T::BlockNumber) {
+			// only validators are allowed to perform these permissioned offchain operations
 			if sp_io::offchain::is_validator() {
 				match Self::fetch_identity_json() {
 					Ok(id_json) => {
@@ -268,7 +269,7 @@ pub mod pallet {
 								if <pallet_authorities::Pallet<T>>::x25519_public_keys(addr.clone()).is_empty() {
 									// should only happen once
 									log::info!("Proxy keys not configured");
-									<pallet_authorities::Pallet<T>>::update_x25519(addr.clone());
+									<pallet_authorities::Pallet<T>>::update_x25519();
 										if let Err(e) = Self::ipfs_update_configs(addr.clone()) {
 											log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
 										}
@@ -278,9 +279,10 @@ pub mod pallet {
 										log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
 									}
 									// TODO: using 'initial validators' for test/demo purposes due to issue with
-									// validators getting kicked out of the validator pool though still being online
-									let authorities = <pallet_authorities::Pallet<T>>::initial_validators();
-									log::info!("Processing reencryption requests");
+									// validators getting kicked out of the validator pool though still being online.. idk why this is happening
+									// it only happens when processing OCW commands that take a long time
+									// let authorities = <pallet_authorities::Pallet<T>>::initial_validators();
+									let authorities = <pallet_authorities::Pallet<T>>::validators();
 									T::OffchainKeyManager::process_reencryption_requests(addr.clone());
 									log::info!("Processing decryption delegation requests with {:?} authorities", authorities.len());
 									T::OffchainKeyManager::process_decryption_delegation(addr.clone(), authorities);
@@ -316,11 +318,12 @@ pub mod pallet {
         /// * `id`: The AssetId (passed through from the create_storage_asset call)
         /// * `balance`: The balance (passed through from the create_storage_asset call)
         ///
-        #[pallet::weight(100_000)]
+        #[pallet::weight(100)]
         pub fn submit_ingestion_completed(
             origin: OriginFor<T>,
 			cmd: IngestionCommand<T::AccountId, T::Balance>,
         ) -> DispatchResult {
+			log::info!("Submitting ingestion complete");
 			let who = ensure_signed(origin)?;
 			let queued_commands = T::QueueManager::ingestion_requests(who.clone());
 			ensure!(queued_commands.contains(&cmd), Error::<T>::NotAuthorized);
@@ -514,9 +517,7 @@ impl<T: Config> Pallet<T> {
 		log::info!("Processing {:?} items in the ingestion queue", queued_commands.len());
 		for cmd in queued_commands.iter() {
 			let cid = cmd.cid.clone();
-			ipfs::connect(&cmd.multiaddress.clone()).map_err(|_| Error::<T>::InvalidMultiaddress);
 			ipfs::get(&cid.clone()).map_err(|_| Error::<T>::InvalidCID)?;
-			log::info!("Fetched data with CID {:?}", cid.clone());
 			
 			let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
 			if !signer.can_sign() {
@@ -524,8 +525,9 @@ impl<T: Config> Pallet<T> {
 					"No local accounts available. Consider adding one via `author_insertKey` RPC.",
 				);
 			}
+			log::info!("Signer can sign: submitting command completion.");
 			let results = signer.send_signed_transaction(|_acct| { 
-				Call::submit_ingestion_completed{
+				Call::submit_ingestion_completed {
 					cmd: cmd.clone(),
 				}
 			});

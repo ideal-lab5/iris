@@ -17,8 +17,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 // use std::fmt;
-use codec::{Decode, Encode, CompactAs, HasCompact, Compact, alloc::string::ToString};
-use sp_core::Bytes;
+use codec::{Decode, Encode};
 use sp_runtime::RuntimeDebug;
 use sp_std::vec::Vec;
 use scale_info::TypeInfo;
@@ -27,21 +26,11 @@ use frame_support::pallet_prelude::MaxEncodedLen;
 use umbral_pre::*;
 use crypto_box::{
     aead::{Aead, AeadCore, Payload},
-	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
+	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey,
 };
 use rand_chacha::{
 	ChaCha20Rng,
 	rand_core::SeedableRng,
-};
-
-#[cfg(feature = "std")]
-use sp_rpc::number::NumberOrHex;
-
-#[cfg(feature = "std")]
-use serde::{
-    Deserialize, 
-    Serialize,
-    de::{Visitor},
 };
 
 #[derive(Eq, Ord, PartialOrd, Encode, Decode, RuntimeDebug, PartialEq, TypeInfo, Clone)]
@@ -79,53 +68,6 @@ pub struct EncryptedBox {
 /*
     ENCRYPTION FUNCTIONS
 */
-
-/// generates a new keypair and uses it to encrypt the plaintext
-/// also encrypts the secret key with itself and generates 'shares' keyfragments
-/// of which 'threshold' pieces are needed to re-encrypt the encrypted secret key
-///
-/// * 'plaintext': the plaintext to encrypt
-/// * 'shares': The number of shares to create (i.e. key fragments to create and distribute)
-/// * 'threshold': The number of key fragments needed to re-encrypt the encrypted secret key
-/// * 'proxy_public_key': A public key of a node who will be allowed to reencrypt the secret
-///
-/// return encryption artifacts (Capsule, ciphertext, and public key) if successful, otherwise returns None
-///
-pub fn encrypt(
-    plaintext: &[u8], 
-    proxy_public_key: BoxPublicKey,
-) -> Result<(Capsule, Vec<u8>, PublicKey, EncryptedBox), EncryptionError> {
-    let mut rng = ChaCha20Rng::seed_from_u64(17u64);
-    // generate keys
-    let sk = SecretKey::random_with_rng(rng.clone());
-    let pk = sk.public_key();
-
-    let (capsule, ciphertext) = match umbral_pre::encrypt_with_rng(
-        &mut rng.clone(), &pk, plaintext)
-    {
-        Ok((capsule, ciphertext)) => (capsule, ciphertext),
-        Err(error) => {
-            return Err(error);
-        }
-    };
-
-    let secret_key_bytes = sk
-        .to_secret_array()
-        .as_secret()
-        .to_vec();
-    let encrypted_sk = encrypt_x25519(
-        proxy_public_key, 
-        secret_key_bytes,
-    );
-
-    Ok((
-        capsule,
-        ciphertext.to_vec(),
-        pk,
-        encrypted_sk,
-    ))
-}
-
 ///
 /// Encrypt the bytes with an ephemeral secret key and your provided public key.
 ///
@@ -151,27 +93,6 @@ pub fn encrypt_x25519(
 /*
     DECRYPTION FUNCTIONS
 */
-
-/// A helper functio to decrypt and convert encrypted capsule fragments back to capsule fragments
-pub fn convert_encrypted_capsules(
-    encrypted_capsule_frags: Vec<EncryptedBox>,
-    x25519_sk: BoxSecretKey,
-) -> Result<Vec<CapsuleFrag>, crypto_box::aead::Error> {
-    let mut capsules = Vec::new();
-    for enc_cap_frag in encrypted_capsule_frags.into_iter() {
-        let raw_pk = enc_cap_frag.public_key.clone();
-        let pk_slice = slice_to_array_32(&raw_pk).unwrap();
-        let pk = BoxPublicKey::from(*pk_slice);
-        let decrypted_capsule_vec = decrypt_x25519(
-            pk,
-            x25519_sk.clone(),
-            enc_cap_frag.ciphertext.clone(),
-            enc_cap_frag.nonce.clone(),
-        )?;
-        capsules.push(CapsuleFrag::from_bytes(decrypted_capsule_vec).unwrap());
-    }
-    Ok(capsules)    
-}
 
 /// Decrypt message encrypted with X25519 keys
 /// 

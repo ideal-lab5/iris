@@ -45,7 +45,7 @@ use frame_system::{
     ensure_signed, 
     pallet_prelude::*,
     offchain::{
-        AppCrypto, CreateSignedTransaction, SendUnsignedTransaction, SignedPayload, SubmitTransaction,
+        AppCrypto, CreateSignedTransaction,
     },
 };
 
@@ -55,10 +55,8 @@ use sp_runtime::{
     traits::{
         Convert,
         StaticLookup,
-        Verify,
     },
     transaction_validity::{
-        InvalidTransaction, 
         TransactionValidity, 
         ValidTransaction
     },
@@ -67,30 +65,11 @@ use sp_std::{
     prelude::*,
 };
 
-use scale_info::prelude::string::ToString;
-use generic_array::{
-    GenericArray,
-    typenum::UTerm,
-};
-
-use sp_core::{
-    Bytes,
-    sr25519::{Public, Signature},
-};
-
-use umbral_pre::*;
-use rand_chacha::{
-    ChaCha20Rng,
-    rand_core::SeedableRng,
-};
-use crypto_box::{
-    aead::{ AeadCore, Aead },
-	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
-};
+// use scale_info::prelude::string::ToString;
 
 use core::convert::TryInto;
 use pallet_vesting::VestingInfo;
-use iris_primitives::{IngestionCommand, EncryptedBox};
+use iris_primitives::IngestionCommand;
 
 /// struct to store metadata of an asset class
 #[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]

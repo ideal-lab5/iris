@@ -19,19 +19,13 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use codec::{Decode, Encode};
 use sp_core::Bytes;
 use sp_std::vec::Vec;
-use scale_info::TypeInfo;
 
 use codec::Codec;
 use sp_runtime::{
-	RuntimeDebug,
 	traits::MaybeDisplay,
 };
-
-#[cfg(feature = "std")]
-use serde::{Deserialize, Serialize};
 
 sp_api::decl_runtime_apis! {
 	pub trait EncryptionApi<Balance> 
