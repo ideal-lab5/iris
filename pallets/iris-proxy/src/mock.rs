@@ -40,10 +40,10 @@ use sp_core::{
 	sr25519::Signature,
 	H256,
 	Pair,
-	offchain::OffchainDbExt,
 };
 use core::convert::{TryInto, TryFrom};
 use std::cell::RefCell;
+use frame_support_test::TestRandomness;
 
 pub type Balance = u64;
 
@@ -100,6 +100,7 @@ frame_support::construct_runtime!(
 		Assets: pallet_assets,
 		Authorities: pallet_authorities,
 		DataAssets: pallet_data_assets,
+		// RandomnessCollectiveFlip: pallet_randomness_collective_flip,
 		IrisProxy: pallet_iris_proxy,
 	}
 );
@@ -156,9 +157,9 @@ impl ShouldEndSession<u64> for TestShouldEndSession {
 	}
 }
 
-pub fn authorities() -> Vec<UintAuthorityId> {
-	AUTHORITIES.with(|l| l.borrow().to_vec())
-}
+// pub fn authorities() -> Vec<UintAuthorityId> {
+// 	AUTHORITIES.with(|l| l.borrow().to_vec())
+// }
 
 parameter_types! {
 	pub const MinimumPeriod: u64 = 5;
@@ -242,6 +243,8 @@ impl pallet_session::Config for Test {
 	type Event = Event;
 }
 
+// impl pallet_randomness_collective_flip::Config for Test {}
+
 // implement assets pallet for iris_assets 
 parameter_types! {
 	pub const AssetDeposit: u64 = 1;
@@ -278,7 +281,6 @@ impl pallet_data_assets::Config for Test {
 
 parameter_types! {
 	pub const MinAuthorities: u32 = 2;
-	pub const MaxDeadSession: u32 = 3;
 }
 
 impl pallet_authorities::Config for Test {
@@ -287,7 +289,6 @@ impl pallet_authorities::Config for Test {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type Event = Event;
 	type MinAuthorities = MinAuthorities;
-	type MaxDeadSession = MaxDeadSession;
 }
 
 impl Config for Test {
@@ -296,6 +297,7 @@ impl Config for Test {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type QueueManager = DataAssets;
 	type MetadataProvider = DataAssets;
+	type Randomness = TestRandomness<Self>;
 }
 
 pub type Extrinsic = TestXt<Call, ()>;

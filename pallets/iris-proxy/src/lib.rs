@@ -576,7 +576,6 @@ impl<T: Config> Pallet<T> {
 		let seed = <[u8; 32]>::decode(&mut TrailingZeroInput::new(seed.as_ref()))
 			.expect("input is padded with zeroes; qed");
 		let mut rng = ChaCha20Rng::from_seed(seed);
-
 		let sk = SecretKey::random_with_rng(rng.clone());
 		let pk = sk.public_key();
 		let (capsule, ciphertext) = match umbral_pre::encrypt_with_rng(
@@ -622,7 +621,6 @@ impl<T: Config> Pallet<T> {
 		log::info!("Processing {:?} requests to reencrypt data", kfrag_generation_requests.len());
 		let secret_storage = StorageValueRef::persistent(b"iris::x25519");
 		if let Ok(Some(local_sk)) = secret_storage.get::<[u8;32]>() {
-			// panic!("{:?}", kfrag_generation_requests.len());
 			let local_secret_key: BoxSecretKey = BoxSecretKey::from(local_sk);
 			for request in kfrag_generation_requests.into_iter() {
 				log::info!("START: Processing reencryption request");
