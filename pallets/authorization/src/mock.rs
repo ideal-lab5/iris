@@ -96,9 +96,10 @@ construct_runtime!(
 		Session: pallet_session,
 		Vesting: pallet_vesting,
 		Authorities: pallet_authorities,
-		Authorization: pallet_authorization,
 		DataAssets: pallet_data_assets,
 		IrisProxy: pallet_iris_proxy,
+		RandomnessCollectiveFlip: pallet_randomness_collective_flip,
+		Authorization: pallet_authorization,
 	}
 );
 
@@ -191,7 +192,6 @@ pub const MILLICENTS: Balance = 1_000_000_000;
 
 parameter_types! {
 	pub const MinAuthorities: u32 = 2;
-	pub const MaxDeadSession: u32 = 3;
 }
 
 impl pallet_authorities::Config for Test {
@@ -200,7 +200,6 @@ impl pallet_authorities::Config for Test {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type Event = Event;
 	type MinAuthorities = MinAuthorities;
-	type MaxDeadSession = MaxDeadSession;
 }
 
 parameter_types! {
@@ -218,6 +217,8 @@ impl pallet_session::Config for Test {
 	type WeightInfo = ();
 	type Event = Event;
 }
+
+impl pallet_randomness_collective_flip::Config for Test {}
 
 parameter_types! {
 	pub const MinVestedTransfer: Balance = 1 * MILLICENTS;
@@ -240,6 +241,7 @@ impl pallet_iris_proxy::Config for Test {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type QueueManager = DataAssets;
 	type MetadataProvider = DataAssets;
+	type Randomness = RandomnessCollectiveFlip;
 }
 
 thread_local! {
