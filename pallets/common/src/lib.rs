@@ -23,7 +23,6 @@ use sp_std::vec::Vec;
 use scale_info::TypeInfo;
 use frame_support::pallet_prelude::MaxEncodedLen;
 
-use umbral_pre::*;
 use crypto_box::{
     aead::{Aead, AeadCore, Payload},
 	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey,
