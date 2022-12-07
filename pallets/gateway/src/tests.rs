@@ -20,15 +20,10 @@
 use super::*;
 use crate::mock::*;
 use frame_support::{
-	assert_noop, assert_ok, assert_err, bounded_vec, pallet_prelude::*
+	assert_ok, assert_err, bounded_vec,
 };
 use sp_runtime::testing::UintAuthorityId;
 use sp_core::Pair;
-use sp_core::{
-	offchain::{testing, OffchainWorkerExt, TransactionPoolExt, OffchainDbExt}
-};
-use sp_keystore::{testing::KeyStore, KeystoreExt, SyncCryptoStore};
-use std::sync::Arc;
 
 /*
 BOND extrinsic tests
@@ -127,7 +122,6 @@ fn proxy_bond_already_bonded_err_when_bonded() {
 		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
 		UintAuthorityId(1)
 	);
-	let (not_validator, _) = sp_core::sr25519::Pair::generate();
 	// AND: I have properly setup the mock runtime
 	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
 		// WHEN: I have properly setup the runtime
@@ -160,7 +154,6 @@ fn gateway_bond_already_paired_when_controller_in_ledger() {
 		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
 		UintAuthorityId(1)
 	);
-	let (not_validator, _) = sp_core::sr25519::Pair::generate();
 	// AND: I have properly setup the mock runtime
 	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
 		// WHEN: I have properly setup the runtime
@@ -193,7 +186,6 @@ fn gateway_bond_insufficient_balance_err_when_value_too_low() {
 		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
 		UintAuthorityId(1)
 	);
-	let (not_validator, _) = sp_core::sr25519::Pair::generate();
 	// AND: I have properly setup the mock runtime
 	new_test_ext_default_funded_validators(vec![v0.clone(), v1.clone()]).execute_with(|| {
 		// WHEN: I have properly setup the runtime

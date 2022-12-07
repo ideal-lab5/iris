@@ -19,17 +19,12 @@
 
 use super::*;
 use crate::mock::{
-	authorities, new_test_ext, new_test_ext_funded, 
+	authorities, new_test_ext, 
 	Origin, Session, Test, Authorities,
 };
 use frame_support::{assert_noop, assert_ok, pallet_prelude::*};
 use sp_runtime::testing::UintAuthorityId;
 use sp_core::Pair;
-use sp_core::{
-	offchain::{testing, OffchainWorkerExt, TransactionPoolExt, OffchainDbExt}
-};
-use sp_keystore::{testing::KeyStore, KeystoreExt, SyncCryptoStore};
-use std::sync::Arc;
 
 struct TestData {
 	pub validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>,

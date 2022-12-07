@@ -224,24 +224,17 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // check that the caller has dataspace access
-            match <pallet_assets::Pallet<T>>::account(dataspace_id.clone(), who.clone()) {
-                Some(_) => {
-                    let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
-                    let balance_primitive = TryInto::<u128>::try_into(balance).ok();
-                    ensure!(balance_primitive != Some(0), Error::<T>::DataSpaceNotAccessible);
-                    let mut metadata = <Metadata::<T>>::get(dataspace_id.clone()).unwrap();
-                    //  duplicate avoidance 
-                    if !metadata.asset_ids.contains(&asset_class_id.clone()) {
-                        metadata.asset_ids.push(asset_class_id.clone());
-                        <Metadata<T>>::insert(dataspace_id.clone(), metadata);
-                        Self::deposit_event(Event::DataSpaceAssociationSuccess(
-                            dataspace_id.clone(), asset_class_id.clone()
-                        ));
-                    }
-                },
-                None => {
-                    // do nothing
-                }
+            let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
+            let balance_primitive = TryInto::<u128>::try_into(balance).ok();
+            ensure!(balance_primitive != Some(0), Error::<T>::DataSpaceNotAccessible);
+            let mut metadata = <Metadata::<T>>::get(dataspace_id.clone()).unwrap();
+            //  duplicate avoidance 
+            if !metadata.asset_ids.contains(&asset_class_id.clone()) {
+                metadata.asset_ids.push(asset_class_id.clone());
+                <Metadata<T>>::insert(dataspace_id.clone(), metadata);
+                Self::deposit_event(Event::DataSpaceAssociationSuccess(
+                    dataspace_id.clone(), asset_class_id.clone()
+                ));
             }
             
             Ok(())

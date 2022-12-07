@@ -263,6 +263,27 @@ pub mod pallet {
 	#[pallet::getter(fn ledger)]
 	pub type Ledger<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, StakingLedger<T>>;
 
+	/// map a gateway node to its slot
+	#[pallet::storage]
+	pub type Slot<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		T::AccountId,
+		u32,
+	>;
+
+	#[pallet::storage]
+	pub type NextAvailableSlot<T: Config> = StorageValue<_, u32, OptionQuery>;
+
+	#[pallet::storage]
+	pub type CallCount<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		T::AccountId,
+		u32, 
+		ValueQuery
+	>;
+
 	/// Number of eras to keep in history.
 	///
 	/// Information is kept for eras in `[current_era - history_depth; current_era]`.
@@ -336,6 +357,7 @@ pub mod pallet {
 		fn build(&self) {
 			Pallet::<T>::initialize_proxies(&self.initial_proxies);
 			// HistoryDepth::<T>::put(self.history_depth);
+			NextAvailableSlot::<T>::put(1);
 			MinGatewayBond::<T>::put(self.min_proxy_bond);
 			if let Some(x) = self.max_proxy_count {
 				MaxProxyCount::<T>::put(x);
@@ -599,9 +621,11 @@ impl<T: Config> Pallet<T> {
 	/// * prefs: The GatewayPrefs to insert
 	/// 
 	fn do_add_proxy(who: &T::AccountId, prefs: GatewayPrefs) {
-		Proxies::<T>::insert(who, prefs.clone());
-		// let new_origin = system::RawOrigin::Signed(who.clone()).into();
-		// <pallet_ipfs::Pallet<T>>::update_node_config(new_origin, prefs.clone().storage_max_gb);
+		Proxies::<T>::insert(who.clone(), prefs.clone());
+		
+		let slot = NextAvailableSlot::<T>::get().unwrap();
+		NextAvailableSlot::<T>::put(slot.clone() + 1);
+		Slot::<T>::insert(who.clone(), slot.clone());
 	}
 
 	/// Update the ledger for a controller.
@@ -628,7 +652,8 @@ pub trait ProxyProvider<AccountId, Balance> {
 	fn prefs(acct: AccountId) -> Option<GatewayPrefs>;
 	/// most some active tokens to reserved
 	fn reserve(acct: AccountId, balance: Balance);
-	// fn unreserve(acct: AccountId, balance: Option<Balance>) -> Result<(), Error<T>>;
+	// fn unreserve(acct: AccountId, balance: Option<Balance>) -> Result<(), Error<T>>; 
+	fn next_asset_id(acct: AccountId) -> u32;
 }
 
 impl<T: Config> ProxyProvider<T::AccountId, T::Balance> for Pallet<T> {
@@ -673,4 +698,14 @@ impl<T: Config> ProxyProvider<T::AccountId, T::Balance> for Pallet<T> {
 	// fn unreserve(acct: T::AccountId, balance: Option<T::Balance>) -> Result<(), Error<T>> {
 	// 	Ok(())
 	// }
+
+	fn next_asset_id(acct: T::AccountId) -> u32 {
+		if let Some(slot) = Slot::<T>::get(acct.clone()) {
+			let index = CallCount::<T>::get(acct.clone());
+			// increment callcount
+			CallCount::<T>::insert(acct.clone(), index + 1);
+			return slot * index;
+		}
+		0
+	}
 }

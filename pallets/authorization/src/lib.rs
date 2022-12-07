@@ -159,46 +159,38 @@ pub mod pallet {
             data_consumer_ephemeral_pk: Vec<u8>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // check that the asset class exists
-            match <pallet_assets::Pallet<T>>::asset(asset_id.clone()) {
-                Some(_) => {
-                    // verify the caller is the registered rule executor contract
-                    match <Registry::<T>>::get(asset_id.clone()) {
-                        Some(addr) => {
-                            ensure!(addr == who.clone(), Error::<T>::InvalidRuleExecutor);
-                            // TODO: locks should expire after some number of blocks
-                            // is there any way we can use the vesting schedule approach to facilitate this?
-                            // needed? Probably not any longer
-                            <Lock::<T>>::insert(&data_consumer_address, &asset_id, execution_result);
-                            if execution_result {
-                                match <T as pallet::Config>::MetadataProvider::get(asset_id.clone()) {
-                                    Some(metadata) => {
-                                        // use the metadata to get the associated public key used to encrypt the data
-                                        <pallet_iris_proxy::Pallet<T>>::add_kfrag_request(
-                                            data_consumer_address.clone(), 
-                                            metadata.public_key,
-                                            data_consumer_ephemeral_pk
-                                        );
-                                        Self::deposit_event(Event::ExecutionSuccess);
-                                    },
-                                    None => {
-                                        Self::deposit_event(Event::ExecutionFailed);
-                                        log::info!("No metadata found for asset id {:?}", asset_id);
-                                        return Ok(());
-                                    }
-                                }
+            // verify the caller is the registered rule executor contract
+            match <Registry::<T>>::get(asset_id.clone()) {
+                Some(addr) => {
+                    ensure!(addr == who.clone(), Error::<T>::InvalidRuleExecutor);
+                    // TODO: locks should expire after some number of blocks
+                    // is there any way we can use the vesting schedule approach to facilitate this?
+                    // needed? Probably not any longer
+                    <Lock::<T>>::insert(&data_consumer_address, &asset_id, execution_result);
+                    if execution_result {
+                        match <T as pallet::Config>::MetadataProvider::get(asset_id.clone()) {
+                            Some(metadata) => {
+                                // use the metadata to get the associated public key used to encrypt the data
+                                <pallet_iris_proxy::Pallet<T>>::add_kfrag_request(
+                                    data_consumer_address.clone(), 
+                                    metadata.public_key,
+                                    data_consumer_ephemeral_pk
+                                );
+                                Self::deposit_event(Event::ExecutionSuccess);
+                            },
+                            None => {
+                                Self::deposit_event(Event::ExecutionFailed);
+                                log::info!("No metadata found for asset id {:?}", asset_id);
+                                return Ok(());
                             }
-                        },
-                        None => {
-                            Self::deposit_event(Event::ExecutionFailed);
-                            log::info!("No rule has registered for the asset id {:?}", asset_id);
-                            return Ok(());
                         }
                     }
                 },
                 None => {
-                    // TODO: Refactor
-                },
+                    Self::deposit_event(Event::ExecutionFailed);
+                    log::info!("No rule has registered for the asset id {:?}", asset_id);
+                    return Ok(());
+                }
             }
 
 			Ok(())

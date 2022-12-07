@@ -24,8 +24,7 @@ use rand_chacha::{
     rand_core::SeedableRng,
 };
 use crypto_box::{
-    aead::{ AeadCore, Aead },
-	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
+	SecretKey as BoxSecretKey,
 };
 
 #[test]
@@ -62,7 +61,6 @@ fn cant_register_rules_when_not_owned() {
 	let (contract_address, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];
 	let id = 1;
-	let balance = 1;
 
 	new_test_ext_funded(pairs).execute_with(|| {
 		// AND: I don't own the asset class

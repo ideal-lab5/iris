@@ -214,7 +214,7 @@ fn test_iris_protocol_happy_path() {
 			let pk: Vec<u8> = secret_key.public_key().as_bytes().to_vec();
 
 			Authorities::update_x25519();
-			let tx = pool_state.write().transactions.pop().unwrap();
+			pool_state.write().transactions.pop().unwrap();
 			assert!(pool_state.read().transactions.is_empty());
 			
 			assert_ok!(Authorities::insert_key(
@@ -276,12 +276,6 @@ fn test_iris_protocol_happy_path() {
 				test_data.public_key.clone(),
 				consumer_ephemeral_pk.as_bytes().to_vec().clone(),
 			);
-
-			let sk = EncryptedBox { 
-				nonce: test_data.nonce.clone(), 
-				public_key: test_data.public_key.clone(),
-				ciphertext: vec![219, 140, 164, 182, 194, 125, 129, 157, 29, 37, 228, 22, 170, 32, 105, 162, 248, 245, 156, 187, 107, 237, 70, 78, 154, 125, 13, 223, 27, 213, 129, 103, 190, 3, 28, 75, 213, 140, 88, 7, 187, 101, 243, 146, 172, 11, 234, 31], 
-			};
 
 			let ephemeral_pk_vec = vec![2, 63, 144, 248, 248, 201, 242, 155, 168, 30, 228, 157, 83, 19, 180, 139, 103, 158, 42, 198, 120, 113, 17, 126, 29, 187, 84, 22, 248, 203, 182, 239, 145];
 

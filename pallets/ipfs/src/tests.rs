@@ -21,7 +21,6 @@ use super::*;
 use crate::mock::*;
 use frame_support::{assert_ok, assert_err, pallet_prelude::*};
 use sp_runtime::{
-	traits::{Extrinsic as ExtrinsicT},
 	RuntimeAppPublic,
 };
 use sp_core::Pair;
@@ -54,12 +53,6 @@ thread_local!(static TEST_CONSTANTS: TestData = TestData {
 pub fn ipfs_can_submit_ingestion_complete() { 
 	// Given: I am a valid node with a positive balance
 	TEST_CONSTANTS.with(|test_data| {
-		let pairs = vec![(test_data.p.clone().public(), 10)];
-		let encrypted_kfrag = EncryptedBox {
-			nonce: test_data.name.clone(),
-			ciphertext: test_data.name.clone(),
-			public_key: test_data.name.clone(),
-		};
 	
 		let cmd = IngestionCommand {
 			owner: test_data.p.public().clone(),
@@ -113,14 +106,6 @@ pub fn ipfs_can_submit_ingestion_complete() {
 #[test]
 pub fn ipfs_fail_to_create_asset_class_if_no_staging_exists() {
 	TEST_CONSTANTS.with(|test_data| {
-		let encrypted_kfrag = EncryptedBox {
-			nonce: test_data.name.clone(),
-			ciphertext: test_data.name.clone(),
-			public_key: test_data.name.clone(),
-		};
-		let kfrag_assignments = vec![(test_data.p.public().clone(), encrypted_kfrag.clone())];
-		
-	
 		let cmd = IngestionCommand {
 			owner: test_data.p.public().clone(),
 			cid: test_data.cid_vec.clone(),
@@ -158,14 +143,6 @@ pub fn ipfs_fail_to_create_asset_class_if_no_staging_exists() {
 pub fn ipfs_fail_submit_ingestion_complete_if_ingestion_cmd_not_assigned_to_you() {	
 	TEST_CONSTANTS.with(|test_data| {
 		// Given: I am a valid node with a positive balance
-		let encrypted_kfrag = EncryptedBox {
-			nonce: test_data.name.clone(),
-			ciphertext: test_data.name.clone(),
-			public_key: test_data.name.clone(),
-		};
-		let kfrag_assignments = vec![(test_data.p.public().clone(), encrypted_kfrag.clone())];
-		
-
 		let cmd = IngestionCommand {
 			owner: test_data.p.public().clone(),
 			cid: test_data.cid_vec.clone(),
@@ -307,8 +284,8 @@ pub fn ipfs_offchain_fetch_identity_with_invalid_json() {
 		}
 		t.execute_with(|| {
 			match Ipfs::fetch_identity_json() {
-				Ok(json) => panic!("json should be unparseable"),
-				Err(e) => {
+				Ok(_) => panic!("json should be unparseable"),
+				Err(_) => {
 					// as expected
 					// assert_eq!(e.kind(), crate::Error::<Test>::ResponseParsingFailure);
 				},

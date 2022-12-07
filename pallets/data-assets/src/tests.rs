@@ -26,21 +26,15 @@ struct TestData {
 	pub _q: sp_core::sr25519::Pair,
 	pub cid_vec: Vec<u8>,
 	pub multiaddr_vec: Vec<u8>,
-	pub name: Vec<u8>,
-	pub id: u32,
 	pub balance: u64,
-	pub size: u128,
 }
 
 thread_local!(static TEST_CONSTANTS: TestData = TestData {
 	p: sp_core::sr25519::Pair::generate().0,
 	_q: sp_core::sr25519::Pair::generate().0,
 	cid_vec: "QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9".as_bytes().to_vec(),
-	name: "test space".as_bytes().to_vec(),
 	multiaddr_vec: "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWMvyvKxYcy9mjbFbXcogFSCvENzQ62ogRxHKZaksFCkAp".as_bytes().to_vec(),
-	id: 1,
 	balance: 1,
-	size: 1,
 });
 
 #[test]
@@ -94,22 +88,40 @@ fn data_assets_can_request_ingestion() {
 }
 
 #[test]
+#[should_panic]
 fn data_assets_can_not_create_request_if_funds_too_low() {
 	// Given: I am a valid node with a zero balance
 	TEST_CONSTANTS.with(|test_data| {
 		let pairs = vec![(test_data.p.clone().public(), 0)];
 		new_test_ext_funded(pairs, validators()).execute_with(|| {
 			// When: I call to create a new ingestion request
-			assert_err!(DataAssets::create_request(
+			DataAssets::create_request(
 				Origin::signed(test_data.p.clone().public()),
 				test_data.p.clone().public(),
 				test_data.balance.clone(),
 				test_data.cid_vec.clone(),
 				test_data.multiaddr_vec.clone(),
 				test_data.balance.clone().try_into().unwrap(),
-			), crate::Error::<Test>::InsufficientBalance);
+			).unwrap();
 		});
 	})
+}
+
+fn validators() -> Vec<(sp_core::sr25519::Public, UintAuthorityId)> {
+	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
+		UintAuthorityId(0)
+	);
+	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
+		UintAuthorityId(1)
+	);
+	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
+		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
+		UintAuthorityId(2)
+	);
+
+	vec![v0.clone(), v1.clone(), v2.clone()]
 }
 
 // TODO: Test QueueProvider functions

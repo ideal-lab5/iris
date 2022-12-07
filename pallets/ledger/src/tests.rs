@@ -18,10 +18,6 @@ use super::*;
 use frame_support::{assert_ok};
 use crate::mock::{Ledger, Origin, Test, new_test_ext_funded};
 use sp_core::Pair;
-use sp_core::{
-	offchain::{testing, OffchainWorkerExt, TransactionPoolExt, OffchainDbExt}
-};
-use std::sync::Arc;
 
 #[test]
 fn ledger_can_lock() {
@@ -29,7 +25,7 @@ fn ledger_can_lock() {
 	let pairs = vec![(p.clone().public(), 10)];
 	new_test_ext_funded(pairs).execute_with(|| {
 		assert_ok!(Ledger::lock_currency(Origin::signed(p.clone().public()), 1));
-		let mut locked_amount = crate::Ledger::<Test>::get(p.public().clone());
+		let locked_amount = crate::Ledger::<Test>::get(p.public().clone());
 		assert_eq!(1, locked_amount);
 	});
 }
@@ -49,7 +45,7 @@ fn ledger_can_unlock_and_transfer() {
 				p2.clone().public(),
 			)
 		);
-		let mut locked_amount = crate::Ledger::<Test>::get(p.public().clone());
+		let locked_amount = crate::Ledger::<Test>::get(p.public().clone());
 		assert_eq!(0, locked_amount);
 	});
 }

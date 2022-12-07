@@ -151,7 +151,7 @@ pub mod pallet {
 		/// provides asset metadata
 		type MetadataProvider: pallet_data_assets::MetadataProvider<Self::AssetId>;
 		/// handle results after executing a command
-		type ResultsHandler: pallet_data_assets::ResultsHandler<Self, Self::AccountId, Self::Balance>;
+		type ResultsHandler: pallet_data_assets::ResultsHandler<Self, Self::AccountId, Self::AssetId, Self::Balance>;
 		#[pallet::constant]
 		type NodeConfigBlockDuration: Get<u32>;
 		/// TODO: this really is a bad design.
@@ -286,7 +286,11 @@ pub mod pallet {
 			ensure!(queued_commands.contains(&cmd), Error::<T>::NotAuthorized);
 			// we need to find the puiblic key as well..
 			let new_origin = system::RawOrigin::Signed(who.clone()).into();
-			T::ResultsHandler::create_asset_class(new_origin, cmd)?;
+			// next asset id is: 
+			// (gateway node's slot number) x (current era index)
+			// assumes a slot exists
+			let new_asset_id = T::ProxyProvider::next_asset_id(who.clone());
+			T::ResultsHandler::create_asset_class(new_origin, cmd, new_asset_id.into())?;
 			Self::deposit_event(Event::IngestionComplete());
             Ok(())
         }

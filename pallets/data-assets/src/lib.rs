@@ -320,16 +320,18 @@ impl<T: Config> Pallet<T> {
     // a super simple asset id generator and mutator
     // needs to be modified so we don't have duplicate asset id
     // TODO: this approach will fail, undoubtedly
-    fn get_and_increment_asset_id() -> T::AssetId {
-        let next = NextAssetId::<T>::get();
-        let primitive = TryInto::<u32>::try_into(next).ok().unwrap();
-        let new_id = primitive + 1u32;
-        let new_next_asset_id = TryInto::<T::AssetId>::try_into(new_id).ok().unwrap();
-        NextAssetId::<T>::mutate(|id| *id = new_next_asset_id);
-        next
-    }
+    // fn get_and_increment_asset_id() -> T::AssetId {
+    //     let next = NextAssetId::<T>::get();
+    //     let t: u32 = next as u32 + 1;
+    //     // let primitive = TryInto::<u32>::try_into(next).ok().unwrap();
+    //     // let new_id = primitive + 1u32;
+    //     // let new_next_asset_id = TryInto::<T::AssetId>::try_into(new_id).ok().unwrap();
+    //     // NextAssetId::<T>::mutate(|id| *id);
+    //     next
+    // }
 }
 
+/// 
 pub trait MetadataProvider<AssetId> {
     fn get(asset_id: AssetId) -> Option<AssetMetadata>;
 }
@@ -372,30 +374,33 @@ impl<T: Config> QueueManager<T::AccountId, T::Balance> for Pallet<T> {
 /// honestly at this point... it almost seems like it'd make more sense to bake all this
 /// into the consensus mechanism itself, i.e. babe/aura
 /// basically I'm implementing a parallel consensus mechanism to determine who gets to proxy requests
-pub trait ResultsHandler<T: frame_system::Config, AccountId, Balance> {
+pub trait ResultsHandler<T: frame_system::Config, AccountId, AssetId, Balance> {
 
     fn create_asset_class(
         origin: OriginFor<T>,
-        cmd: IngestionCommand<AccountId, Balance>
+        cmd: IngestionCommand<AccountId, Balance>,
+        asset_id: AssetId,
     ) -> DispatchResult;
 }
 
-impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
+impl<T: Config> ResultsHandler<T, T::AccountId, T::AssetId, T::Balance> for Pallet<T> {
 
     /// Create a new data asset class
     /// 
     /// * TODO: right now it takes an IngestionCommand parameter but we don't need the whole thing
     /// should pass specific items
+    /// * `asset_id`: The id to assign to the new asset class
     /// 
     fn create_asset_class(
         origin: OriginFor<T>,
         cmd: IngestionCommand<T::AccountId, T::Balance>,
+        asset_id: T::AssetId,
     ) -> DispatchResult {
         let who = ensure_signed(origin)?;
         // verify that capsule exists (i.e. data is 'decryptable')
         match IngestionStaging::<T>::get(who.clone()) {
             Some(pubkey) => {
-                let asset_id = Self::get_and_increment_asset_id();
+                // let asset_id = Self::get_and_increment_asset_id();
                 let admin = T::Lookup::unlookup(cmd.clone().owner);
                 let new_origin = system::RawOrigin::Signed(who.clone()).into();
                 <pallet_assets::Pallet<T>>::create(new_origin, asset_id.clone(), admin.clone(), cmd.balance.clone())

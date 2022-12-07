@@ -155,10 +155,6 @@ impl ShouldEndSession<u64> for TestShouldEndSession {
 	}
 }
 
-pub fn authorities() -> Vec<UintAuthorityId> {
-	AUTHORITIES.with(|l| l.borrow().to_vec())
-}
-
 parameter_types! {
 	pub const MinimumPeriod: u64 = 5;
 	pub const BlockHashCount: u64 = 250;

@@ -163,7 +163,7 @@ pub mod pallet {
 		/// read/write to data ingestion/ejection queues
 		type QueueManager: pallet_data_assets::QueueManager<Self::AccountId, Self::Balance>;
 		/// get metadata of data assets
-		type MetadataProvider: pallet_data_assets::MetadataProvider<Self::AssetId>;
+		type MetadataProvider: pallet_data_assets::MetadataProvider<u32>;
 		/// Something that provides randomness in the runtime.
 		type Randomness: Randomness<Self::Hash, Self::BlockNumber>;
 	}
@@ -392,9 +392,10 @@ impl<T: Config> Pallet<T> {
 			let sk_slice = iris_primitives::slice_to_array_32(&sk_vec).unwrap();
 			let sk = BoxSecretKey::from(*sk_slice);
 			// map asset_id to public_key 
-            let asset_id_as_type = TryInto::<T::AssetId>::try_into(asset_id).ok().unwrap();
+            // let asset_id_as_type = TryInto::<T::AssetId>::try_into(asset_id).ok().unwrap();
 			// shouldn't make this assumption... will fix later when testing
-			let metadata = T::MetadataProvider::get(asset_id_as_type.clone()).unwrap();
+			// let metadata = T::MetadataProvider::get(asset_id_as_type.clone()).unwrap();
+			let metadata = T::MetadataProvider::get(asset_id).unwrap();
 			// decrypt secret key
 			return Some(Self::do_decrypt(
 				acct_id.clone(), 
@@ -410,7 +411,7 @@ impl<T: Config> Pallet<T> {
 	/// decrypt reencrypted data
 	/// 
 	/// * `account_id`: The account id of the caller requesting decryption.
-	/// * `ciphertext`: The ciphertext to be decryptedf
+	/// * `ciphertext`: The ciphertext to be decrypted
 	/// * `delegating_public_key`: The delegating public key created by
 	/// 						   to the entity that encrypted the data (i.e. data owner)
 	/// * `x25518_sk`: An x25519 secret whose public key was passed via a rule executor (by the same account id

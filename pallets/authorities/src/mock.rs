@@ -291,35 +291,3 @@ pub fn new_test_ext(validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>
 
 	sp_io::TestExternalities::new(t)
 }
-
-// Build genesis storage according to the mock runtime.
-pub fn new_test_ext_funded(pair1_funded: sp_core::sr25519::Pair) -> sp_io::TestExternalities {
-	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
-	let keys: Vec<_> = NEXT_VALIDATORS
-		.with(|l| l.borrow().iter().cloned().map(|i| (i.0, i.0, i.1.into())).collect());
-	BasicExternalities::execute_with_storage(&mut t, || {
-		for (ref k, ..) in &keys {
-			frame_system::Pallet::<Test>::inc_providers(k);
-		}
-	});
-
-	pallet_authorities::GenesisConfig::<Test> {
-		initial_validators: keys.iter().map(|x| x.0).collect::<Vec<_>>(),
-	}
-	.assimilate_storage(&mut t)
-	.unwrap();
-	
-	pallet_session::GenesisConfig::<Test> { keys: keys.clone() }
-		.assimilate_storage(&mut t)
-		.unwrap();
-
-	let (pair2, _) = sp_core::sr25519::Pair::generate();
-	let (pair3, _) = sp_core::sr25519::Pair::generate();
-	pallet_balances::GenesisConfig::<Test> {
-		balances: vec![(pair1_funded.public(), 10), (pair2.public(), 20), (pair3.public(), 30)],
-	}
-	.assimilate_storage(&mut t)
-	.unwrap();
-
-	sp_io::TestExternalities::new(t)
-}
