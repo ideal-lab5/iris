@@ -19,9 +19,8 @@
 
 use super::*;
 use crate::mock::*;
-use frame_support::{assert_noop, assert_ok, assert_err, pallet_prelude::*};
+use frame_support::{assert_ok, assert_err, pallet_prelude::*};
 use sp_runtime::{
-	testing::UintAuthorityId,
 	traits::{Extrinsic as ExtrinsicT},
 	RuntimeAppPublic,
 };
@@ -32,14 +31,12 @@ use sp_core::{
 use iris_primitives::{EncryptedBox, IngestionCommand};
 use sp_keystore::{testing::KeyStore, KeystoreExt, SyncCryptoStore};
 use std::sync::Arc;
-use sp_io::TestExternalities;
 
 struct TestData {
 	pub p: sp_core::sr25519::Pair,
 	pub q: sp_core::sr25519::Pair,
 	pub cid_vec: Vec<u8>,
 	pub name: Vec<u8>,
-	pub id: u32,
 	pub balance: u64,
 	pub public_key: Vec<u8>,
 }
@@ -49,7 +46,6 @@ thread_local!(static TEST_CONSTANTS: TestData = TestData {
 	q: sp_core::sr25519::Pair::generate().0,
 	cid_vec: "QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9".as_bytes().to_vec(),
 	name: "test space".as_bytes().to_vec(),
-	id: 1,
 	balance: 1,
 	public_key: "public_key".as_bytes().to_vec(),
 });
@@ -69,19 +65,25 @@ pub fn ipfs_can_submit_ingestion_complete() {
 			owner: test_data.p.public().clone(),
 			cid: test_data.cid_vec.clone(),
 			multiaddress: test_data.name.clone(),
-			estimated_size_gb: 1u128,
 			balance: test_data.balance,
 		};
 	
 		new_test_ext_funded(test_data.p.clone()).execute_with(|| {
 			// And: A user has encrypted data and submitted capsule/kfrags
+			let sk_box = EncryptedBox {
+				nonce: vec![102, 209, 34, 179, 214, 75, 129,  24, 44, 14, 136, 104, 179, 34, 247, 161, 168, 16, 131, 113, 43, 29, 165, 49],
+				ciphertext: vec![155, 157, 182, 50, 148, 238, 223, 196, 62, 153, 134, 37, 58, 199, 71, 176, 83, 180, 73, 235, 143, 230, 221, 40, 9, 182, 4, 129, 230, 192, 13, 6, 47, 52, 14, 161, 121, 219, 204, 224, 237, 21, 139, 241, 15, 168, 189, 181], 
+				public_key: vec![136, 127, 175, 150, 142, 160, 194, 185, 24, 43, 243, 37, 77, 126,  183, 5, 114, 157, 167, 133, 183, 81, 29, 217, 53, 237, 240, 233, 111, 29, 9, 84],
+			};
+			let capsule = vec![2, 7, 178, 91, 140, 23, 162, 73, 101, 16, 100, 140, 126, 128, 189, 51, 190, 43, 204, 101, 196, 187, 116, 242, 164, 135, 50, 62, 121, 21, 39, 191, 68, 3, 10, 130, 168, 14, 115, 158, 226, 143, 244, 181, 223, 210, 201, 139, 29, 65, 97, 32, 168, 140, 68, 186, 173, 72, 150, 112, 244, 66, 162, 46, 142, 226, 82, 104, 238, 89, 28, 1, 76, 159, 68, 159, 87, 201, 28, 254, 143, 212, 222, 42, 254, 44, 100, 100, 157, 252, 43, 91, 34, 219, 192, 199, 123, 25];
+
 			assert_ok!(IrisProxy::submit_encryption_artifacts(
 				Origin::signed(test_data.p.clone().public()),
 				test_data.p.clone().public(),
-				test_data.name.clone(),
-				test_data.name.clone(),
 				test_data.p.clone().public(),
-				encrypted_kfrag.clone(),
+				capsule,
+				test_data.public_key.clone(),
+				sk_box.clone(),
 			));
 			// And: There is an ingestion request in the queue for a gateway 
 			assert_ok!(DataAssets::create_request(
@@ -90,7 +92,6 @@ pub fn ipfs_can_submit_ingestion_complete() {
 				test_data.balance.clone(),
 				test_data.cid_vec.clone(),
 				test_data.name.clone(),
-				1u128,
 				test_data.balance.clone().try_into().unwrap(),
 			));
 			// WHEN: I invoke the create_storage_assets extrinsic
@@ -124,7 +125,6 @@ pub fn ipfs_fail_to_create_asset_class_if_no_staging_exists() {
 			owner: test_data.p.public().clone(),
 			cid: test_data.cid_vec.clone(),
 			multiaddress: test_data.name.clone(),
-			estimated_size_gb: 1u128,
 			balance: test_data.balance,
 		};
 		new_test_ext_funded(test_data.p.clone()).execute_with(|| {
@@ -135,7 +135,6 @@ pub fn ipfs_fail_to_create_asset_class_if_no_staging_exists() {
 				test_data.balance.clone(),
 				test_data.cid_vec.clone(),
 				test_data.name.clone(),
-				1u128,
 				test_data.balance.clone().try_into().unwrap(),
 			));
 			// WHEN: I invoke the create_storage_assets extrinsic
@@ -171,7 +170,6 @@ pub fn ipfs_fail_submit_ingestion_complete_if_ingestion_cmd_not_assigned_to_you(
 			owner: test_data.p.public().clone(),
 			cid: test_data.cid_vec.clone(),
 			multiaddress: test_data.name.clone(),
-			estimated_size_gb: 1u128,
 			balance: test_data.balance,
 		};
 		new_test_ext_funded(test_data.p.clone()).execute_with(|| {
@@ -182,7 +180,6 @@ pub fn ipfs_fail_submit_ingestion_complete_if_ingestion_cmd_not_assigned_to_you(
 				test_data.balance.clone(),
 				test_data.cid_vec.clone(),
 				test_data.name.clone(),
-				1u128,
 				test_data.balance.clone().try_into().unwrap(),
 			));
 			// WHEN: I invoke the create_storage_assets extrinsic
@@ -270,12 +267,13 @@ pub fn ipfs_offchain_can_fetch_identity_json() {
 	TEST_CONSTANTS.with(|test_data| {
 		let mut t = new_test_ext_funded(test_data.p.clone());
 		let (offchain, state) = testing::TestOffchainExt::new();
-		t.register_extension(OffchainWorkerExt::new(offchain));		
+		t.register_extension(OffchainWorkerExt::new(offchain.clone()));	
+		t.register_extension(OffchainDbExt::new(offchain.clone()));	
 		{
 			let mut state = state.write();
 			state.expect_request(testing::PendingRequest {
 				method: "POST".into(),
-				uri: "http://127.0.0.1:5001/api/v0/id".into(),
+				uri: "http://host.docker.internal:5001/api/v0/id".into(),
 				response: Some(ipfs_id_response_body()),
 				sent: true,
 				..Default::default()
@@ -294,12 +292,13 @@ pub fn ipfs_offchain_fetch_identity_with_invalid_json() {
 	TEST_CONSTANTS.with(|test_data| {
 		let mut t = new_test_ext_funded(test_data.p.clone());
 		let (offchain, state) = testing::TestOffchainExt::new();
-		t.register_extension(OffchainWorkerExt::new(offchain));		
+		t.register_extension(OffchainWorkerExt::new(offchain.clone()));
+		t.register_extension(OffchainDbExt::new(offchain.clone()));
 		{
 			let mut state = state.write();
 			state.expect_request(testing::PendingRequest {
 				method: "POST".into(),
-				uri: "http://127.0.0.1:5001/api/v0/id".into(),
+				uri: "http://host.docker.internal:5001/api/v0/id".into(),
 				response: Some(br#"{:}
 				"#.to_vec()),
 				sent: true,
@@ -334,7 +333,8 @@ pub fn ipfs_offchain_can_verify_identity_and_submit_tx() {
 		)
 		.unwrap();
 
-		t.register_extension(OffchainWorkerExt::new(offchain));
+		t.register_extension(OffchainWorkerExt::new(offchain.clone()));
+		t.register_extension(OffchainDbExt::new(offchain.clone()));
 		t.register_extension(TransactionPoolExt::new(pool));
 		t.register_extension(KeystoreExt(Arc::new(keystore)));
 
@@ -342,7 +342,7 @@ pub fn ipfs_offchain_can_verify_identity_and_submit_tx() {
 			let mut state = state.write();
 			state.expect_request(testing::PendingRequest {
 				method: "POST".into(),
-				uri: "http://127.0.0.1:5001/api/v0/id".into(),
+				uri: "http://host.docker.internal:5001/api/v0/id".into(),
 				response: Some(ipfs_id_response_body()),
 				sent: true,
 				..Default::default()
@@ -411,7 +411,7 @@ pub fn ipfs_offchain_can_update_config() {
 			let mut state = state.write();
 			state.expect_request(testing::PendingRequest {
 				method: "POST".into(),
-				uri: "http://127.0.0.1:5001/api/v0/config?arg=Datastore.StorageMax&arg=100".into(),
+				uri: "http://host.docker.internal:5001/api/v0/config?arg=Datastore.StorageMax&arg=50GB".into(),
 				response: Some(ipfs_config_update_body()),
 				sent: true,
 				..Default::default()
@@ -419,7 +419,7 @@ pub fn ipfs_offchain_can_update_config() {
 
 			state.expect_request(testing::PendingRequest {
 				method: "POST".into(),
-				uri: "http://127.0.0.1:5001/api/v0/repo/stat".into(),
+				uri: "http://host.docker.internal:5001/api/v0/repo/stat".into(),
 				response: Some(ipfs_config_show_body()),
 				sent: true,
 				..Default::default()
@@ -477,23 +477,7 @@ pub fn ipfs_offchain_can_handle_ingestion_commands() {
 			let mut state = state.write();
 			state.expect_request(testing::PendingRequest {
 				method: "POST".into(),
-				uri: "http://127.0.0.1:5001/api/v0/swarm/connect?arg=/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWMvyvKxYcy9mjbFbXcogFSCvENzQ62ogRxHKZaksFCkAp".into(),
-				response: Some(ipfs_config_update_body()),
-				sent: true,
-				..Default::default()
-			});
-
-			state.expect_request(testing::PendingRequest {
-				method: "POST".into(),
-				uri: "http://127.0.0.1:5001/api/v0/get?arg=QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9".into(),
-				response: Some(ipfs_config_show_body()),
-				sent: true,
-				..Default::default()
-			});
-
-			state.expect_request(testing::PendingRequest {
-				method: "POST".into(),
-				uri: "http://127.0.0.1:5001/api/v0/swarm/disconnect?arg=/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWMvyvKxYcy9mjbFbXcogFSCvENzQ62ogRxHKZaksFCkAp".into(),
+				uri: "http://host.docker.internal:5001/api/v0/get?arg=QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9".into(),
 				response: Some(ipfs_config_show_body()),
 				sent: true,
 				..Default::default()
@@ -503,8 +487,7 @@ pub fn ipfs_offchain_can_handle_ingestion_commands() {
 		let cmd = IngestionCommand {
 			owner: test_data.p.public().clone(),
 			cid: test_data.cid_vec.clone(),
-			multiaddress: test_data.name.clone(),
-			estimated_size_gb: 1u128,
+			multiaddress: vec![47, 105, 112, 52, 47, 49, 50, 55, 46, 48, 46, 48, 46, 49, 47, 116, 99, 112, 47, 52, 48, 48, 49, 47, 112, 50, 112, 47, 49, 50, 68, 51, 75, 111, 111, 87, 77, 118, 121, 118, 75, 120, 89, 99, 121, 57, 109, 106, 98, 70, 98, 88, 99, 111, 103, 70, 83, 67, 118, 69, 78, 122, 81, 54, 50, 111, 103, 82, 120, 72, 75, 90, 97, 107, 115, 70, 67, 107, 65, 112],
 			balance: test_data.balance,
 		};
 
@@ -516,7 +499,6 @@ pub fn ipfs_offchain_can_handle_ingestion_commands() {
 				test_data.balance.clone(),
 				test_data.cid_vec.clone(),
 				multiaddr_vec.clone(),
-				1, // needed?
 				test_data.balance.clone().try_into().unwrap(),
 			));
 

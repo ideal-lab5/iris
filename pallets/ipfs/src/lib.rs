@@ -94,7 +94,6 @@ use iris_primitives::{IngestionCommand, EncryptedBox};
 use pallet_gateway::ProxyProvider;
 use pallet_data_assets::{MetadataProvider, ResultsHandler, QueueManager};
 use pallet_iris_proxy::OffchainKeyManager;
-use pallet_ipfs_primitives::{IpfsResult, IpfsError};
 use sp_runtime::offchain::storage::StorageValueRef;
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";

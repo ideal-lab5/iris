@@ -31,7 +31,6 @@ use sp_runtime::{
     RuntimeDebug,
 };
 use scale_info::prelude::string::String;
-use sp_core::Bytes;
 use serde_json::Value;
 use log;
 
@@ -57,7 +56,7 @@ pub struct IpfsAddRequest {
 
 /// IPFS capabilities
 #[derive(Clone, PartialEq, Eq, RuntimeDebug)]
-pub enum Endpoint {
+pub enum Capabilities {
     Add,
     Cat,
     ConfigShow,
@@ -72,36 +71,36 @@ pub enum Endpoint {
 
 // TODO: either new param on startup or based on chain spec
 /// IPFS capabilities mapped to appropriate RPC endpoints
-// impl AsRef<str> for Endpoint {
+// impl AsRef<str> for Capabilities {
 // 	fn as_ref(&self) -> &str {
 // 		match *self {
-//             Endpoint::Add => "http://127.0.0.1:5001/api/v0/add",
-//             Endpoint::Cat => "http://127.0.0.1:5001/api/v0/cat",
-//             Endpoint::ConfigShow => "http://127.0.0.1:5001/api/v0/config/show",
-//             Endpoint::ConfigUpdate => "http://127.0.0.1:5001/api/v0/config?",
-//             Endpoint::Connect => "http://127.0.0.1:5001/api/v0/swarm/connect?",
-//             Endpoint::Disconnect => "http://127.0.0.1:5001/api/v0/swarm/disconnect?",
-//             Endpoint::Get => "http://127.0.0.1:5001/api/v0/get?",
-//             Endpoint::Identity => "http://127.0.0.1:5001/api/v0/id",
-//             Endpoint::Stat => "http://127.0.0.1:5001/api/v0/repo/stat",
-// 			Endpoint::Other(m) => m,
+//             Capabilities::Add => "http://127.0.0.1:5001/api/v0/add",
+//             Capabilities::Cat => "http://127.0.0.1:5001/api/v0/cat",
+//             Capabilities::ConfigShow => "http://127.0.0.1:5001/api/v0/config/show",
+//             Capabilities::ConfigUpdate => "http://127.0.0.1:5001/api/v0/config?",
+//             Capabilities::Connect => "http://127.0.0.1:5001/api/v0/swarm/connect?",
+//             Capabilities::Disconnect => "http://127.0.0.1:5001/api/v0/swarm/disconnect?",
+//             Capabilities::Get => "http://127.0.0.1:5001/api/v0/get?",
+//             Capabilities::Identity => "http://127.0.0.1:5001/api/v0/id",
+//             Capabilities::Stat => "http://127.0.0.1:5001/api/v0/repo/stat",
+// 			Capabilities::Other(m) => m,
 // 		}
 // 	}
 // }
 
-impl AsRef<str> for Endpoint {
+impl AsRef<str> for Capabilities {
 	fn as_ref(&self) -> &str {
 		match *self {
-            Endpoint::Add => "http://host.docker.internal:5001/api/v0/add",
-            Endpoint::Cat => "http://host.docker.internal:5001/api/v0/cat",
-            Endpoint::ConfigShow => "http://host.docker.internal:5001/api/v0/config/show",
-            Endpoint::ConfigUpdate => "http://host.docker.internal:5001/api/v0/config?",
-            Endpoint::Connect => "http://host.docker.internal:5001/api/v0/swarm/connect?",
-            Endpoint::Disconnect => "http://host.docker.internal:5001/api/v0/swarm/disconnect?",
-            Endpoint::Get => "http://host.docker.internal:5001/api/v0/get?",
-            Endpoint::Identity => "http://host.docker.internal:5001/api/v0/id",
-            Endpoint::Stat => "http://host.docker.internal:5001/api/v0/repo/stat",
-			Endpoint::Other(m) => m,
+            Capabilities::Add => "http://host.docker.internal:5001/api/v0/add",
+            Capabilities::Cat => "http://host.docker.internal:5001/api/v0/cat",
+            Capabilities::ConfigShow => "http://host.docker.internal:5001/api/v0/config/show",
+            Capabilities::ConfigUpdate => "http://host.docker.internal:5001/api/v0/config?",
+            Capabilities::Connect => "http://host.docker.internal:5001/api/v0/swarm/connect?",
+            Capabilities::Disconnect => "http://host.docker.internal:5001/api/v0/swarm/disconnect?",
+            Capabilities::Get => "http://host.docker.internal:5001/api/v0/get?",
+            Capabilities::Identity => "http://host.docker.internal:5001/api/v0/id",
+            Capabilities::Stat => "http://host.docker.internal:5001/api/v0/repo/stat",
+			Capabilities::Other(m) => m,
 		}
 	}
 }
@@ -113,7 +112,7 @@ impl AsRef<str> for Endpoint {
 /// Get the ipfs node identity
 /// 
 pub fn identity() -> Result<http::Response, http::Error> {
-    let endpoint = Endpoint::Identity.as_ref().to_owned();
+    let endpoint = Capabilities::Identity.as_ref().to_owned();
     let res = ipfs_post_request(&endpoint, None)?;
     Ok(res)
 }
@@ -124,7 +123,7 @@ pub fn identity() -> Result<http::Response, http::Error> {
 /// * config_item: The ipfs configuration to update. In general, this is a key-value pair.
 /// 
 pub fn config_update(config_item: IpfsConfigRequest) -> Result<(), http::Error> {
-    let mut endpoint = Endpoint::ConfigUpdate.as_ref().to_owned();
+    let mut endpoint = Capabilities::ConfigUpdate.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), &config_item.key, true)
         .map_err(|_| http::Error::Unknown).unwrap();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), &config_item.value, false)
@@ -136,7 +135,7 @@ pub fn config_update(config_item: IpfsConfigRequest) -> Result<(), http::Error> 
 /// Show the node's current configuration
 /// 
 pub fn config_show() -> Result<http::Response, http::Error> {
-    let endpoint = Endpoint::ConfigShow.as_ref().to_owned();
+    let endpoint = Capabilities::ConfigShow.as_ref().to_owned();
     let res = ipfs_post_request(&endpoint, None).unwrap();
     Ok(res)
 }
@@ -144,7 +143,7 @@ pub fn config_show() -> Result<http::Response, http::Error> {
 /// Get the ipfs repo stats
 ///
 pub fn repo_stat() -> Result<serde_json::Value, http::Error> {
-    let endpoint = Endpoint::Stat.as_ref().to_owned();
+    let endpoint = Capabilities::Stat.as_ref().to_owned();
     let res = ipfs_post_request(&endpoint, None)?;
     let res_u8 = res.body().collect::<Vec<u8>>();
     let body = sp_std::str::from_utf8(&res_u8).map_err(|_| http::Error::Unknown).unwrap();
@@ -157,7 +156,7 @@ pub fn repo_stat() -> Result<serde_json::Value, http::Error> {
 /// * multiaddress: The multiaddress to connect to
 /// 
 pub fn connect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
-    let mut endpoint = Endpoint::Connect.as_ref().to_owned();
+    let mut endpoint = Capabilities::Connect.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), multiaddress, false)
         .map_err(|_| http::Error::Unknown).unwrap();
     ipfs_post_request(&endpoint, None)?;
@@ -169,7 +168,7 @@ pub fn connect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
 /// * multiaddress: The multiaddress to disconnect from
 /// 
 pub fn disconnect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
-    let mut endpoint = Endpoint::Disconnect.as_ref().to_owned();
+    let mut endpoint = Capabilities::Disconnect.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), multiaddress, false)
         .map_err(|_| http::Error::Unknown).unwrap();
     ipfs_post_request(&endpoint, None)?;
@@ -182,7 +181,7 @@ pub fn disconnect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
 /// * ipfs_add_request: The request object containing data to add
 /// 
 pub fn add(ipfs_add_request: IpfsAddRequest) -> Result<http::Response, http::Error> {
-    let mut endpoint = Endpoint::Add.as_ref();
+    let mut endpoint = Capabilities::Add.as_ref();
     // construct body
     // {"path": <file bytes>"}
     let mut req_body = "{ \"path\" : ".to_owned();
@@ -191,6 +190,7 @@ pub fn add(ipfs_add_request: IpfsAddRequest) -> Result<http::Response, http::Err
             req_body.push_str(b);
         }, 
         Err(e) => {
+            log::error!("An error occured while parsing input: {:?}", e);
             return Err(http::Error::Unknown);
         }
     }
@@ -216,7 +216,7 @@ pub fn add(ipfs_add_request: IpfsAddRequest) -> Result<http::Response, http::Err
 /// * cid: The CID to fetch.
 /// 
 pub fn get(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
-    let mut endpoint = Endpoint::Get.as_ref().to_owned();
+    let mut endpoint = Capabilities::Get.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
         .map_err(|_| http::Error::Unknown).unwrap();
     let res = ipfs_post_request(&endpoint, None).unwrap();
@@ -228,7 +228,7 @@ pub fn get(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
 /// cid: The CID to cat
 /// 
 pub fn cat(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
-    let mut endpoint = Endpoint::Cat.as_ref().to_owned();
+    let mut endpoint = Capabilities::Cat.as_ref().to_owned();
     endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
         .map_err(|_| http::Error::Unknown).unwrap();
     let res = ipfs_post_request(&endpoint, None);
@@ -245,6 +245,7 @@ pub fn parse(input: &str) -> Result<Value, serde_json::Error> {
             return Ok(v);
         },
         Err(e) => {
+            log::error!("An error occured while parsing input: {:?}", e);
             return Err(e)
         }
     }

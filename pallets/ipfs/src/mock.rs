@@ -42,6 +42,7 @@ use sp_core::{
 };
 use core::convert::{TryInto, TryFrom};
 use std::cell::RefCell;
+use frame_support_test::TestRandomness;
 
 pub type Balance = u64;
 
@@ -266,11 +267,11 @@ impl pallet_iris_proxy::Config for Test {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type QueueManager = DataAssets;
 	type MetadataProvider = DataAssets;
+	type Randomness = TestRandomness<Self>;
 }
 
 parameter_types! {
 	pub const MinAuthorities: u32 = 2;
-	pub const MaxDeadSession: u32 = 3;
 }
 
 impl pallet_authorities::Config for Test {
@@ -279,7 +280,6 @@ impl pallet_authorities::Config for Test {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type Event = Event;
 	type MinAuthorities = MinAuthorities;
-	type MaxDeadSession = MaxDeadSession;
 }
 
 parameter_types! {
