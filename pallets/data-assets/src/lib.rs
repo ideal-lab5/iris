@@ -343,16 +343,6 @@ impl<T: Config> Pallet<T> {
         NextAssetId::<T>::mutate(|id| *id = new_next_asset_id);
         next
     }
-
-    /// validates if an unsigned tx is valid
-    /// for now, all are valid
-    fn validate_transaction_parameters() -> TransactionValidity {
-		ValidTransaction::with_tag_prefix("iris")
-			.longevity(5)
-			.propagate(true)
-			.build()
-	}
-
 }
 
 pub trait MetadataProvider<AssetId> {

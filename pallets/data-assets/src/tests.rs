@@ -16,26 +16,14 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use super::*;
-use frame_support::{assert_ok, assert_err};
+use frame_support::assert_ok;
 use mock::*;
 use sp_core::Pair;
 use sp_runtime::testing::UintAuthorityId;
-use sp_core::{
-	offchain::{testing, OffchainWorkerExt, TransactionPoolExt, OffchainDbExt}
-};
-use umbral_pre::*;
-use rand_chacha::{
-    ChaCha20Rng,
-    rand_core::SeedableRng,
-};
-use crypto_box::{
-    aead::{ AeadCore, Aead },
-	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
-};
 
 struct TestData {
 	pub p: sp_core::sr25519::Pair,
-	pub q: sp_core::sr25519::Pair,
+	pub _q: sp_core::sr25519::Pair,
 	pub cid_vec: Vec<u8>,
 	pub multiaddr_vec: Vec<u8>,
 	pub name: Vec<u8>,
@@ -46,7 +34,7 @@ struct TestData {
 
 thread_local!(static TEST_CONSTANTS: TestData = TestData {
 	p: sp_core::sr25519::Pair::generate().0,
-	q: sp_core::sr25519::Pair::generate().0,
+	_q: sp_core::sr25519::Pair::generate().0,
 	cid_vec: "QmPZv7P8nQUSh2CpqTvUeYemFyjvMjgWEs8H1Tm8b3zAm9".as_bytes().to_vec(),
 	name: "test space".as_bytes().to_vec(),
 	multiaddr_vec: "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWMvyvKxYcy9mjbFbXcogFSCvENzQ62ogRxHKZaksFCkAp".as_bytes().to_vec(),
@@ -76,14 +64,12 @@ fn data_assets_can_request_ingestion() {
 	// Given: I am a valid node with a positive balance
 	TEST_CONSTANTS.with(|test_data| {
 		let pairs = vec![(test_data.p.clone().public(), 10)];
-		let min_asset_balance: u64 = 1;
-		let expected_ingestion_cmd = crate::IngestionCommand {
-			owner: test_data.p.clone().public(),
-			cid: test_data.cid_vec.clone(),
-			multiaddress: test_data.multiaddr_vec.clone(),
-			estimated_size_gb: test_data.size.clone(),
-			balance: test_data.balance.clone(),
-		};
+		// let expected_ingestion_cmd = crate::IngestionCommand {
+		// 	owner: test_data.p.clone().public(),
+		// 	cid: test_data.cid_vec.clone(),
+		// 	multiaddress: test_data.multiaddr_vec.clone(),
+		// 	balance: test_data.balance.clone(),
+		// };
 		new_test_ext_funded(pairs, validators()).execute_with(|| {
 			// When: I call to create a new ingestion request
 			assert_ok!(DataAssets::create_request(
@@ -92,7 +78,6 @@ fn data_assets_can_request_ingestion() {
 				test_data.balance.clone(),
 				test_data.cid_vec.clone(),
 				test_data.multiaddr_vec.clone(),
-				test_data.size, // needed?
 				test_data.balance.clone().try_into().unwrap(),
 			));
 			

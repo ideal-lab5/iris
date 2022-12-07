@@ -41,17 +41,12 @@ use core::convert::{TryInto, TryFrom};
 use crate::mock::sp_api_hidden_includes_construct_runtime::hidden_include::traits::GenesisBuild;
 
 use pallet_session::ShouldEndSession;
-use pallet_authorities::crypto::TestAuthId;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
 
 /// Balance of an account.
 pub type Balance = u64;
-
-pub const MILLICENTS: Balance = 1_000_000_000;
-pub const CENTS: Balance = 1_000 * MILLICENTS; // assume this is worth about a cent.
-pub const DOLLARS: Balance = 100 * CENTS;
 
 impl_opaque_keys! {
 	pub struct MockSessionKeys {
@@ -184,7 +179,6 @@ impl pallet_assets::Config for Test {
 
 parameter_types! {
 	pub const MinAuthorities: u32 = 2;
-	pub const MaxDeadSession: u32 = 3;
 }
 
 impl pallet_authorities::Config for Test {
@@ -193,7 +187,6 @@ impl pallet_authorities::Config for Test {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type Event = Event;
 	type MinAuthorities = MinAuthorities;
-	type MaxDeadSession = MaxDeadSession;
 }
 
 parameter_types! {
@@ -280,11 +273,6 @@ impl ShouldEndSession<u64> for TestShouldEndSession {
 	}
 }
 
-pub fn authorities() -> Vec<UintAuthorityId> {
-	AUTHORITIES.with(|l| l.borrow().to_vec())
-}
-
-
 type Extrinsic = TestXt<Call, ()>;
 type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
@@ -323,7 +311,7 @@ impl Config for Test {
 }
 
 pub fn new_test_ext(
-	validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>
+	_validators: Vec<(sp_core::sr25519::Public, UintAuthorityId)>
 ) -> sp_io::TestExternalities {
 	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
 

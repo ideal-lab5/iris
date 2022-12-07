@@ -278,10 +278,6 @@ pub mod pallet {
 									if let Err(e) = Self::handle_ingestion_queue(addr.clone()) {
 										log::error!("Encountered an error while attempting to process the ingestion queue: {:?}", e);
 									}
-									// TODO: using 'initial validators' for test/demo purposes due to issue with
-									// validators getting kicked out of the validator pool though still being online.. idk why this is happening
-									// it only happens when processing OCW commands that take a long time
-									// let authorities = <pallet_authorities::Pallet<T>>::initial_validators();
 									let authorities = <pallet_authorities::Pallet<T>>::validators();
 									T::OffchainKeyManager::process_reencryption_requests(addr.clone());
 									log::info!("Processing decryption delegation requests with {:?} authorities", authorities.len());
