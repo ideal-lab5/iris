@@ -14,6 +14,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 #![cfg_attr(not(feature = "std"), no_std)]
 
 //! # Data Assets Pallet
@@ -21,17 +22,21 @@
 //! ## Overview
 //!
 //! ### Goals
-//! This module provides functionality for data encryption and data asset class creation capabilities.
 //! 
-//! ### Dispatchable Functions 
-//!
-//! #### Permissionless functions
-//! * create_storage_asset
-//!
-//! #### Permissioned Functions
-//! * mint_tickets
-//!
+//! This module enables data ingestion into Iris by providing the 
+//! ability to construct a request to a gateway node to ingest data 
+//! that has been staged through this pallet. Here, by staging we mean
+//! the ingestion staging map, which only stages the public key used to encrypt the data.
 //! 
+//! This pallet also tracks and updates asset ids for newly create data asset classes 
+//! and provides functionality to create new data asset classes and to track their metadata.
+//! 
+//! It is important to note that with the current implementation, a node
+//! can only stage at most one ingestion request at a time.
+//! 
+//! ### Dispatchable Functions
+//! 
+//! * create_request
 //! 
 
 use scale_info::TypeInfo;
@@ -56,17 +61,10 @@ use sp_runtime::{
         Convert,
         StaticLookup,
     },
-    transaction_validity::{
-        TransactionValidity, 
-        ValidTransaction
-    },
 };
 use sp_std::{
     prelude::*,
 };
-
-// use scale_info::prelude::string::ToString;
-
 use core::convert::TryInto;
 use pallet_vesting::VestingInfo;
 use iris_primitives::IngestionCommand;
@@ -78,21 +76,6 @@ pub struct AssetMetadata {
     pub cid: Vec<u8>,
     /// the public key associated with the encryption artifacts (capsule and fragments)
     pub public_key: Vec<u8>,
-}
-
-// TODO: These structs are really getting out of hand
-
-#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-pub struct SecretStuff {
-    pub data_capsule: Vec<u8>,
-    pub sk_capsule: Vec<u8>,
-    pub sk_ciphertext: Vec<u8>,
-}
-
-#[derive(Encode, Decode, RuntimeDebug, PartialEq, TypeInfo)]
-pub struct EncryptedData {
-    pub capsule: Vec<u8>,
-    pub ciphertext: Vec<u8>,
 }
 
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"iris");
@@ -232,6 +215,7 @@ pub mod pallet {
 
 	#[pallet::error]
 	pub enum Error<T> {
+        InsufficientBalance,
         /// could not create a new asset
         CantCreateAssetClass,
 	}
@@ -288,6 +272,16 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let g = T::Lookup::lookup(gateway.clone())?; 
+            // first ensure that the caller has sufficent funds
+            let current_block_number = <frame_system::Pallet<T>>::block_number();
+            let target_block = current_block_number + Delay::<T>::get().into();
+            let new_origin = system::RawOrigin::Signed(who.clone()).into();
+            // vest currency
+            <pallet_vesting::Pallet<T>>::vested_transfer(
+                new_origin, gateway, 
+                VestingInfo::new(gateway_reserve, gateway_reserve, target_block),
+            ).map_err(|_| Error::<T>::InsufficientBalance)?;
+            // issue the command
             let mut commands = IngestionCommands::<T>::get(g.clone());
             let cmd = IngestionCommand {
                 owner: who.clone(),
@@ -297,15 +291,6 @@ pub mod pallet {
             };
             commands.push(cmd.clone());
             IngestionCommands::<T>::insert(g.clone(), commands);
-
-            let current_block_number = <frame_system::Pallet<T>>::block_number();
-            let target_block = current_block_number + Delay::<T>::get().into();
-            let new_origin = system::RawOrigin::Signed(who.clone()).into();
-            // vest currency
-            <pallet_vesting::Pallet<T>>::vested_transfer(
-                new_origin, gateway, 
-                VestingInfo::new(gateway_reserve, gateway_reserve, target_block),
-            )?;
             Self::deposit_event(Event::CreatedIngestionRequest);
 			Ok(())
         }
@@ -397,7 +382,11 @@ pub trait ResultsHandler<T: frame_system::Config, AccountId, Balance> {
 
 impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
 
-    // this is just an extrinsic...
+    /// Create a new data asset class
+    /// 
+    /// * TODO: right now it takes an IngestionCommand parameter but we don't need the whole thing
+    /// should pass specific items
+    /// 
     fn create_asset_class(
         origin: OriginFor<T>,
         cmd: IngestionCommand<T::AccountId, T::Balance>,
@@ -414,11 +403,11 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::Balance> for Pallet<T> {
                         log::info!("Failed to create asset class due to error: {:?}", e);
                         return Error::<T>::CantCreateAssetClass;
                     })?;
-                <Metadata<T>>::insert(asset_id.clone(), AssetMetadata {
+                Metadata::<T>::insert(asset_id.clone(), AssetMetadata {
                     cid: cmd.cid.clone(),
                     public_key: pubkey,
                 });
-                <AssetClassOwnership<T>>::mutate(cmd.owner.clone(), |ids| { ids.push(asset_id.clone()); });
+                AssetClassOwnership::<T>::mutate(cmd.owner.clone(), |ids| { ids.push(asset_id.clone()); });
                 IngestionStaging::<T>::remove(who.clone());
                 IngestionCommands::<T>::mutate(who.clone(), |cmds| {
                     cmds.retain(|c| *c != cmd);

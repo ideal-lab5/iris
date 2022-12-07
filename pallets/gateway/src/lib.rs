@@ -38,7 +38,7 @@ use frame_support::{
 	ensure, parameter_types,
 	pallet_prelude::*,
 	traits::{
-		EstimateNextSessionRotation, Get, Currency, LockableCurrency,
+		Get, Currency, LockableCurrency,
 		DefensiveSaturating, LockIdentifier, WithdrawReasons,
 	},
 	BoundedVec,
@@ -46,36 +46,16 @@ use frame_support::{
 use scale_info::TypeInfo;
 pub use pallet::*;
 use sp_runtime::{
-	SaturatedConversion,
-	traits::{CheckedSub, Convert, Zero, Verify},
+	traits::{CheckedSub, Zero},
 };
-use sp_staking::offence::{Offence, OffenceError, ReportOffence};
 use sp_std::{
-	collections::btree_map::BTreeMap,
 	str,
 	prelude::*
 };
-use sp_core::{
-    offchain::{
-        OpaqueMultiaddr, StorageKind,
-    },
-	crypto::KeyTypeId,
-	sr25519::{Signature, Public},
-};
-use frame_system::{
-	self as system, 
-	ensure_signed,
-	offchain::{
-		SendSignedTransaction,
-		Signer,
-	}
-};
-use sp_runtime::{
-	offchain::http,
-	traits::StaticLookup,
-};
+use sp_core::crypto::KeyTypeId;
+use frame_system::ensure_signed;
+use sp_runtime::traits::StaticLookup;
 use codec::HasCompact;
-use iris_primitives::IngestionCommand;
 use pallet_authorities::EraProvider;
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";
@@ -159,32 +139,32 @@ impl<T: Config> StakingLedger<T> {
 	}
 
 
-	/// Re-bond funds that were scheduled for unlocking.
-	///
-	/// Returns the updated ledger, and the amount actually rebonded.
-	fn rebond(mut self, value: BalanceOf<T>) -> (Self, BalanceOf<T>) {
-		let mut unlocking_balance = BalanceOf::<T>::zero();
+	// /// Re-bond funds that were scheduled for unlocking.
+	// ///
+	// /// Returns the updated ledger, and the amount actually rebonded.
+	// fn rebond(mut self, value: BalanceOf<T>) -> (Self, BalanceOf<T>) {
+	// 	let mut unlocking_balance = BalanceOf::<T>::zero();
 
-		while let Some(last) = self.unlocking.last_mut() {
-			if unlocking_balance + last.value <= value {
-				unlocking_balance += last.value;
-				self.active += last.value;
-				self.unlocking.pop();
-			} else {
-				let diff = value - unlocking_balance;
+	// 	while let Some(last) = self.unlocking.last_mut() {
+	// 		if unlocking_balance + last.value <= value {
+	// 			unlocking_balance += last.value;
+	// 			self.active += last.value;
+	// 			self.unlocking.pop();
+	// 		} else {
+	// 			let diff = value - unlocking_balance;
 
-				unlocking_balance += diff;
-				self.active += diff;
-				last.value -= diff;
-			}
+	// 			unlocking_balance += diff;
+	// 			self.active += diff;
+	// 			last.value -= diff;
+	// 		}
 
-			if unlocking_balance >= value {
-				break
-			}
-		}
+	// 		if unlocking_balance >= value {
+	// 			break
+	// 		}
+	// 	}
 
-		(self, unlocking_balance)
-	}
+	// 	(self, unlocking_balance)
+	// }
 }
 
 /// Indicates the initial status of the staker.
@@ -209,13 +189,7 @@ pub struct GatewayPrefs {
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
-	use frame_system::{
-		pallet_prelude::*,
-		offchain::{
-			AppCrypto,
-			CreateSignedTransaction,
-		}
-	};
+	use frame_system::pallet_prelude::*;
 
 	/// Configure the pallet by specifying the parameters and types on which it
 	/// depends.
@@ -424,7 +398,7 @@ pub mod pallet {
 			<Bonded<T>>::insert(&stash, &controller);
 			// <Payee<T>>::insert(&stash, payee);
 
-			let current_era = T::EraProvider::get_current_era();
+			// let current_era = T::EraProvider::get_current_era();
 			// let history_depth = Self::history_depth();
 			// let last_reward_era = current_era.saturating_sub(history_depth);
 

@@ -91,24 +91,25 @@ fn data_assets_can_request_ingestion() {
 			assert_eq!(cmd.balance, test_data.balance.clone() as u32);
 		});
 	})
-	
 }
 
-fn validators() -> Vec<(sp_core::sr25519::Public, UintAuthorityId)> {
-	let v0: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("0")).0.public(), 
-		UintAuthorityId(0)
-	);
-	let v1: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("1")).0.public(), 
-		UintAuthorityId(1)
-	);
-	let v2: (sp_core::sr25519::Public, UintAuthorityId) = (
-		sp_core::sr25519::Pair::generate_with_phrase(Some("2")).0.public(), 
-		UintAuthorityId(2)
-	);
-
-	vec![v0.clone(), v1.clone(), v2.clone()]
+#[test]
+fn data_assets_can_not_create_request_if_funds_too_low() {
+	// Given: I am a valid node with a zero balance
+	TEST_CONSTANTS.with(|test_data| {
+		let pairs = vec![(test_data.p.clone().public(), 0)];
+		new_test_ext_funded(pairs, validators()).execute_with(|| {
+			// When: I call to create a new ingestion request
+			assert_err!(DataAssets::create_request(
+				Origin::signed(test_data.p.clone().public()),
+				test_data.p.clone().public(),
+				test_data.balance.clone(),
+				test_data.cid_vec.clone(),
+				test_data.multiaddr_vec.clone(),
+				test_data.balance.clone().try_into().unwrap(),
+			), crate::Error::<Test>::InsufficientBalance);
+		});
+	})
 }
 
 // TODO: Test QueueProvider functions

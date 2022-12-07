@@ -35,64 +35,31 @@ pub mod ipfs;
 use frame_support::{
 	ensure,
 	pallet_prelude::*,
-	traits::{
-		EstimateNextSessionRotation, Get,
-		ValidatorSet, ValidatorSetWithIdentification,
-		Currency, LockableCurrency,
-	},
+	traits::{ Get, LockableCurrency },
 };
 use log;
 use serde_json::Value;
-
+use sp_runtime::offchain::OpaqueMultiaddr;
 use scale_info::TypeInfo;
 pub use pallet::*;
-use sp_runtime::traits::{Convert, Verify, Zero};
-use sp_staking::offence::{Offence, OffenceError, ReportOffence};
 use sp_std::{
-	collections::{btree_set::BTreeSet, btree_map::BTreeMap},
 	str,
 	vec::Vec,
 	prelude::*
 };
-use sp_core::{
-    offchain::{
-        OpaqueMultiaddr, StorageKind,
-    },
-	Bytes,
-	crypto::KeyTypeId,
-	sr25519::{Signature, Public},
-};
+use sp_core::crypto::KeyTypeId;
 use frame_system::{
 	self as system, 
 	ensure_signed,
 	offchain::{
-		AppCrypto, CreateSignedTransaction, SendUnsignedTransaction, SignedPayload, SubmitTransaction, Signer, SendSignedTransaction,
+		Signer, SendSignedTransaction,
 	}
 };
-use sp_runtime::{
-	offchain::{
-		http,
-	},
-	traits::StaticLookup,
-};
-
-use umbral_pre::*;
-
-use rand_chacha::{
-	ChaCha20Rng,
-	rand_core::SeedableRng,
-};
-
-use crypto_box::{
-    aead::{Aead, AeadCore, Payload},
-	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
-};
-
-use scale_info::prelude::string::ToString;
+// use scale_info::prelude::string::ToString;
 use scale_info::prelude::format;
-use iris_primitives::{IngestionCommand, EncryptedBox};
+use iris_primitives::IngestionCommand;
 use pallet_gateway::ProxyProvider;
-use pallet_data_assets::{MetadataProvider, ResultsHandler, QueueManager};
+use pallet_data_assets::{ResultsHandler, QueueManager};
 use pallet_iris_proxy::OffchainKeyManager;
 use sp_runtime::offchain::storage::StorageValueRef;
 
@@ -102,7 +69,6 @@ pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
 
 pub mod crypto {
 	use super::KEY_TYPE;
-	use sp_core::crypto::KeyTypeId;
 	use sp_core::sr25519::Signature as Sr25519Signature;
 	use sp_runtime::app_crypto::{app_crypto, sr25519};
 	use sp_runtime::{traits::Verify, MultiSignature, MultiSigner};
@@ -129,8 +95,6 @@ pub mod crypto {
 		type GenericPublic = sp_core::sr25519::Public;
 	}
 }
-
-type BalanceOf<T> = <T as pallet_assets::Config>::Balance;
 
 /// config items that a node is allowed to configure
 #[derive(Clone, PartialEq, Eq, RuntimeDebug)]
@@ -186,13 +150,11 @@ pub mod pallet {
 		type QueueManager: pallet_data_assets::QueueManager<Self::AccountId, Self::Balance>;
 		/// provides asset metadata
 		type MetadataProvider: pallet_data_assets::MetadataProvider<Self::AssetId>;
-		/// provides ejection commands 
-		// type EjectionCommandDelegator: pallet_authorization::EjectionCommandDelegator<Self::AccountId, Self::AssetId>;
 		/// handle results after executing a command
 		type ResultsHandler: pallet_data_assets::ResultsHandler<Self, Self::AccountId, Self::Balance>;
-		// TODO: this should be read from runtime storage instead
 		#[pallet::constant]
 		type NodeConfigBlockDuration: Get<u32>;
+		/// TODO: this really is a bad design.
 		type OffchainKeyManager: pallet_iris_proxy::OffchainKeyManager<Self::AccountId>;
 	}
 
@@ -369,14 +331,6 @@ pub mod pallet {
 
 impl<T: Config> Pallet<T> {
 
-	fn validate_transaction_parameters() -> TransactionValidity {
-		ValidTransaction::with_tag_prefix("iris")
-			.priority(2 << 20)
-			.longevity(5)
-			.propagate(true)
-			.build()
-	}
-
 	/// Fetch the identity of a locally running ipfs node and convert it to json
 	/// TODO: could potentially move this into the ipfs.rs file?
 	/// it really doesn't seem like a great idea to have to make this api call every single block
@@ -398,6 +352,7 @@ impl<T: Config> Pallet<T> {
 					return Ok(res.body().collect::<Vec<u8>>());
 				} 
 				Err(e) => {
+					log::error!("Something went wrong while attempting to get the IPFS node identity: {:?}", e);
 					return Err(Error::<T>::IpfsNotAvailable);
 				}
 			};
@@ -444,7 +399,8 @@ impl<T: Config> Pallet<T> {
 	/// 
 	fn ipfs_update_configs(account: T::AccountId) -> Result<(), Error<T>> {
 		match T::ProxyProvider::prefs(account.clone()) {
-			Some(prefs) => {
+			// TODO: read from prefs...
+			Some(_prefs) => {
 				// for now, default to 50mb
 				let val = format!("{}GB", 50).as_bytes().to_vec();
 				// 4. Make calls to update ipfs node config
@@ -455,7 +411,7 @@ impl<T: Config> Pallet<T> {
 					boolean: None,
 					json: None,
 				};
-				ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure);
+				ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure)?;
 				let stat_response = ipfs::repo_stat().map_err(|_| Error::<T>::IpfsNotAvailable).unwrap();
 				// 2. get actual available storage space
 				match stat_response["StorageMax"].clone().as_u64() {
@@ -499,8 +455,9 @@ impl<T: Config> Pallet<T> {
     /// containing the public key and multiaddresses of the embedded ipfs node.
     /// 
     /// Returns an error if communication with IPFS fails
-    fn ipfs_swarm_connection_management(addr: T::AccountId) -> Result<(), Error<T>> {
+    fn _ipfs_swarm_connection_management(_addr: T::AccountId) -> Result<(), Error<T>> {
 		// connect to a bootstrap node if one is available
+		// not yet implemented
         Ok(())
     }
 

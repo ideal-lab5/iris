@@ -27,11 +27,10 @@
 //! 
 //!
 
-use sp_runtime::traits::{Convert, StaticLookup};
 use sp_std::{
     prelude::*,
 };
-use frame_support::traits::{ValidatorSet, ValidatorSetWithIdentification};
+use frame_support::traits::ValidatorSetWithIdentification;
 use core::convert::TryInto;
 use frame_system::ensure_signed;
 
@@ -160,22 +159,9 @@ pub mod pallet {
             data_consumer_ephemeral_pk: Vec<u8>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // verify that the data_consumer holds an asset from the asset class
-            // TODO: REVISIT THIS CONCEPTUALLY
-            // let balance = <pallet_assets::Pallet<T>>::balance(asset_id.clone(), data_consumer_address.clone());
-            // let balance_primitive = TryInto::<u64>::try_into(balance).ok();
-            // this check is potentially going to go away in the near future
-            // as we may no longer enforce that you need to own an asset id to access the data
-            // (instead asset ownership implies partial ownership, rewards, providing availability, etc)
+            // check that the asset class exists
             match <pallet_assets::Pallet<T>>::asset(asset_id.clone()) {
-                Some(asset) => {
-                    // TODO: REVISIT THIS
-                    // match balance_primitive {
-                    //     Some(b) => ensure!(balance >= asset.min_balance, Error::<T>::InsufficientBalance),
-                    //     None => {
-                    //         return Ok(());
-                    //     }
-                    // }
+                Some(_) => {
                     // verify the caller is the registered rule executor contract
                     match <Registry::<T>>::get(asset_id.clone()) {
                         Some(addr) => {
@@ -193,8 +179,10 @@ pub mod pallet {
                                             metadata.public_key,
                                             data_consumer_ephemeral_pk
                                         );
+                                        Self::deposit_event(Event::ExecutionSuccess);
                                     },
                                     None => {
+                                        Self::deposit_event(Event::ExecutionFailed);
                                         log::info!("No metadata found for asset id {:?}", asset_id);
                                         return Ok(());
                                     }
@@ -202,6 +190,7 @@ pub mod pallet {
                             }
                         },
                         None => {
+                            Self::deposit_event(Event::ExecutionFailed);
                             log::info!("No rule has registered for the asset id {:?}", asset_id);
                             return Ok(());
                         }

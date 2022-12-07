@@ -18,7 +18,7 @@ use iris_runtime::{
 	AccountId, AssetsConfig, AuraConfig, BalancesConfig, 
 	GenesisConfig, GrandpaConfig, Signature, 
 	SudoConfig, SessionConfig, AuthoritiesConfig, ImOnlineConfig,
-	GatewayConfig, SystemConfig, DataAssetsConfig, VestingConfig, WASM_BINARY,
+	GatewayConfig, SystemConfig, DataAssetsConfig, WASM_BINARY,
 	opaque::SessionKeys,
 };
 use sc_service::ChainType;

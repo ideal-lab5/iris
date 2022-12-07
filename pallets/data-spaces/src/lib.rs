@@ -40,12 +40,9 @@ use frame_support::{
     traits::ReservableCurrency,
 };
 
-use log;
-
 use sp_runtime::{
     RuntimeDebug,
     traits::StaticLookup,
-    transaction_validity::{ ValidTransaction, TransactionValidity },
 };
 use sp_std::{
     prelude::*,
@@ -53,10 +50,6 @@ use sp_std::{
 use frame_system::{
 	self as system, 
 	ensure_signed,
-	offchain::{
-		SendSignedTransaction,
-		Signer,
-	}
 };
 
 pub use pallet::*;
@@ -232,7 +225,7 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             // check that the caller has dataspace access
             match <pallet_assets::Pallet<T>>::account(dataspace_id.clone(), who.clone()) {
-                Some(asset_acct) => {
+                Some(_) => {
                     let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
                     let balance_primitive = TryInto::<u128>::try_into(balance).ok();
                     ensure!(balance_primitive != Some(0), Error::<T>::DataSpaceNotAccessible);

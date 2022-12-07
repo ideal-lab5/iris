@@ -181,7 +181,7 @@ pub fn disconnect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
 /// * ipfs_add_request: The request object containing data to add
 /// 
 pub fn add(ipfs_add_request: IpfsAddRequest) -> Result<http::Response, http::Error> {
-    let mut endpoint = Capabilities::Add.as_ref();
+    let endpoint = Capabilities::Add.as_ref();
     // construct body
     // {"path": <file bytes>"}
     let mut req_body = "{ \"path\" : ".to_owned();
@@ -304,25 +304,4 @@ fn ipfs_post_request(endpoint: &str, body: Option<Vec<&[u8]>>) -> Result<http::R
         return Err(http::Error::Unknown);
     }
     Ok(response)
-}
-
-mod tests {
-
-    use super::*;
-    use frame_support::{assert_noop, assert_ok, pallet_prelude::*};
-
-    #[test]
-    pub fn ipfs_can_add_arg() {
-        let input = "https://localhost.com?".to_string();
-        let k_1 = "amphibian".as_bytes().to_vec();
-        let v_1 = "salamander".as_bytes().to_vec();
-    
-        let k_2 = "reptile".as_bytes().to_vec();
-        let v_2 = "alligator".as_bytes().to_vec();
-    
-        let expected_output = "https://localhost.com?amphibian=salamander&reptile=alligator";
-        let next_input = add_arg(input, &k_1, &v_1, true).unwrap();
-        let actual_output = add_arg(next_input, &k_2, &v_2, false).unwrap();
-        assert_eq!(expected_output, actual_output);
-    }
 }

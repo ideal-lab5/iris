@@ -43,7 +43,7 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use pallet_contracts::{weights::WeightInfo, DefaultContractAccessWeight};
-use codec::{Encode, Decode};
+use codec::Encode;
 use sp_runtime::traits::StaticLookup;
 
 // A few exports that help ease life for downstream crates.
@@ -76,11 +76,6 @@ pub use sp_runtime::{Perbill, Permill};
 
 use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
 use pallet_authorities::EraIndex;
-
-use rand_chacha::{
-	ChaCha20Rng,
-	rand_core::{CryptoRng, RngCore, SeedableRng}
-};
 
 pub use pallet_data_assets;
 pub use pallet_authorization;
@@ -1008,7 +1003,6 @@ use pallet_contracts::chain_extension::{
 use sp_runtime::{
 	DispatchError,
 	traits::{ConvertInto},
-	offchain::storage::StorageValueRef,
 };
 use frame_system::{
 	self as system,
