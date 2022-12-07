@@ -466,14 +466,6 @@ impl<T: Config> Pallet<T> {
 			}
 		});
 	}
-
-	fn validate_transaction_parameters() -> TransactionValidity {
-		ValidTransaction::with_tag_prefix("iris")
-			.priority(2 << 20)
-			.longevity(5)
-			.propagate(true)
-			.build()
-	}
 }
 
 /// the Era Provider allows us to share current era information with other pallets
