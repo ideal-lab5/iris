@@ -2624,7 +2624,6 @@ dependencies = [
  "pallet-grandpa",
  "pallet-im-online",
  "pallet-ipfs",
- "pallet-ipfs-primitives",
  "pallet-iris-proxy",
  "pallet-ledger",
  "pallet-randomness-collective-flip",
@@ -4452,6 +4451,7 @@ dependencies = [
  "crypto_box",
  "frame-benchmarking",
  "frame-support",
+ "frame-support-test",
  "frame-system",
  "futures",
  "generic-array 0.14.6",
@@ -4466,7 +4466,6 @@ dependencies = [
  "pallet-data-assets",
  "pallet-gateway",
  "pallet-im-online",
- "pallet-ipfs-primitives",
  "pallet-iris-proxy",
  "pallet-session",
  "pallet-vesting",
@@ -4481,20 +4480,6 @@ dependencies = [
  "sp-staking",
  "sp-std",
  "umbral-pre",
-]
-
-[[package]]
-name = "pallet-ipfs-primitives"
-version = "1.0.0"
-dependencies = [
- "bitflags",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-core",
- "sp-rpc",
- "sp-runtime",
- "sp-std",
 ]
 
 [[package]]

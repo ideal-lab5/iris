@@ -216,28 +216,17 @@ fn test_iris_protocol_happy_path() {
 			Authorities::update_x25519();
 			let tx = pool_state.write().transactions.pop().unwrap();
 			assert!(pool_state.read().transactions.is_empty());
-			// TODO: remoiving create_secret as extrinsic, need to call as function instead
-			// Given: validator and proxies have generated secrets
-			// Authorities::insert_key(
-			// 	Origin::signed(test_data.owner.public().clone())
-			// 	test_data.owner.public().clone());
-			// let tx = pool_state.write().transactions.pop().unwrap();
-			// assert!(pool_state.read().transactions.is_empty());
+			
 			assert_ok!(Authorities::insert_key(
 				Origin::signed(test_data.owner.public().clone()), pk.clone(),
 			));
 
-			// Authorities::update_x25519(Origin::signed(proxy.0.public().clone()) proxy.0.clone());
-			// let tx = pool_state.write().transactions.pop().unwrap();
-			// assert!(pool_state.read().transactions.is_empty());
+		
 			assert_ok!(Authorities::insert_key(
 				Origin::signed(proxy.0.clone()), pk.clone(),
 			));
 
 			for v in validators.clone() {
-			// 	// Authorities::update_x25519(Origin::signed(v.0.public().clone()) v.0.clone());
-			// 	// let tx = pool_state.write().transactions.pop().unwrap();
-			// 	// assert!(pool_state.read().transactions.is_empty());
 				assert_ok!(Authorities::insert_key(
 					Origin::signed(v.0.clone()), pk.clone(),
 				));

@@ -143,21 +143,6 @@ pub fn slice_to_array_32(slice: &[u8]) -> Option<&[u8; 32]> {
 	encryption tests
 */
 #[test]
-fn encryption_can_encrypt() {
-	// Given: I am a valid node with a positive balance
-    let mut rng = ChaCha20Rng::seed_from_u64(31u64);
-	let sk = BoxSecretKey::generate(&mut rng);
-	let pk = sk.public_key();
-
-	let plaintext = "plaintext".as_bytes();
-	let shares: usize = 3;
-	let threshold: usize = 3;
-
-	let result = encrypt(plaintext, pk).unwrap();
-	assert_eq!(49, result.1.len());
-}
-
-#[test]
 fn can_encrypt_x25519() {
 	let test_vec = "test".as_bytes().to_vec();
 	let mut rng = ChaCha20Rng::seed_from_u64(31u64);
@@ -195,6 +180,17 @@ fn test_can_decrypt_x25519_using_output_of_encrypt_x25519() {
         }
     }
 }
+
+use umbral_pre::*;
+// use rand_chacha::{
+// 	ChaCha20Rng,
+// 	rand_core::SeedableRng,
+// };
+
+// use crypto_box::{
+//     aead::{Aead, AeadCore, Payload},
+// 	SalsaBox, PublicKey as BoxPublicKey, SecretKey as BoxSecretKey, Nonce,
+// };
 
 #[test]
 fn iris_protocol() {

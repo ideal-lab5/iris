@@ -203,7 +203,7 @@ impl pallet_balances::Config for Test {
 }
 
 parameter_types! {
-	pub const MinAuthorities: u32 = 2;
+	pub const MinAuthorities: u32 = 1;
 }
 
 impl Config for Test {

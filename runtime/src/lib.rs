@@ -76,7 +76,6 @@ pub use sp_runtime::{Perbill, Permill};
 
 use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
 use pallet_authorities::EraIndex;
-use pallet_ipfs_primitives::IpfsResult;
 
 use rand_chacha::{
 	ChaCha20Rng,

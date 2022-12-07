@@ -277,7 +277,6 @@ impl pallet_data_assets::Config for Test {
 
 parameter_types! {
 	pub const MinAuthorities: u32 = 2;
-	pub const MaxDeadSession: u32 = 3;
 }
 
 impl pallet_authorities::Config for Test {
@@ -286,7 +285,6 @@ impl pallet_authorities::Config for Test {
 	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 	type Event = Event;
 	type MinAuthorities = MinAuthorities;
-	type MaxDeadSession = MaxDeadSession;
 }
 
 parameter_types! {
