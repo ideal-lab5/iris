@@ -65,6 +65,7 @@ std = [
 	'pallet-authorities/std',
 	'pallet-data-assets/std',
 	'iris-primitives/std',
+	# 'num-primes/std',
 ]
 
 runtime-benchmarks = ["frame-benchmarking"]

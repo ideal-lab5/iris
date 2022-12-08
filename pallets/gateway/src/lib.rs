@@ -273,7 +273,7 @@ pub mod pallet {
 	>;
 
 	#[pallet::storage]
-	pub type NextAvailableSlot<T: Config> = StorageValue<_, u32, OptionQuery>;
+	pub type ReservedSlots<T: Config> = StorageValue<_, Vec<u32>>;
 
 	#[pallet::storage]
 	pub type CallCount<T: Config> = StorageMap<
@@ -357,7 +357,7 @@ pub mod pallet {
 		fn build(&self) {
 			Pallet::<T>::initialize_proxies(&self.initial_proxies);
 			// HistoryDepth::<T>::put(self.history_depth);
-			NextAvailableSlot::<T>::put(1);
+			ReservedSlots::<T>::put(vec![2]);
 			MinGatewayBond::<T>::put(self.min_proxy_bond);
 			if let Some(x) = self.max_proxy_count {
 				MaxProxyCount::<T>::put(x);
@@ -615,6 +615,8 @@ impl<T: Config> Pallet<T> {
 		}
 	}
 
+	// use num_primes::Generator;
+
 	/// Add a proxy to the proxies list, along with given preferences
 	/// 
 	/// * who: The proxy node address to insert
@@ -622,10 +624,12 @@ impl<T: Config> Pallet<T> {
 	/// 
 	fn do_add_proxy(who: &T::AccountId, prefs: GatewayPrefs) {
 		Proxies::<T>::insert(who.clone(), prefs.clone());
-		
-		let slot = NextAvailableSlot::<T>::get().unwrap();
-		NextAvailableSlot::<T>::put(slot.clone() + 1);
-		Slot::<T>::insert(who.clone(), slot.clone());
+		let primes = vec![2, 3, 5, 7, 9, 11, 13, 17, 19, 27, 29, 31, 37, 41, 43, 47, 51, 59, 67, ];
+		let num_proxies = Proxies::<T>::count() as usize;
+		// ensure!(num_proxies < primes.len()
+		// needed?
+		// ReservedSlots::<T>::put(r);
+		Slot::<T>::insert(who.clone(), primes[num_proxies].clone());
 	}
 
 	/// Update the ledger for a controller.
@@ -635,11 +639,6 @@ impl<T: Config> Pallet<T> {
 		<T as pallet::Config>::Currency::set_lock(STAKING_ID, &ledger.stash, ledger.total, WithdrawReasons::all());
 		<Ledger<T>>::insert(controller, ledger);
 	}
-
-	// fn price() -> T::Balance {
-
-	// }
-
 }
 
 /// A trait to expose information about bonded accounts and staked amounts
