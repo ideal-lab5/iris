@@ -15,10 +15,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 use iris_runtime::{
-	AccountId, AuraConfig, BalancesConfig, 
+	AccountId, AssetsConfig, AuraConfig, BalancesConfig, 
 	GenesisConfig, GrandpaConfig, Signature, 
-	SudoConfig, SessionConfig, IrisSessionConfig, ImOnlineConfig,
-	SystemConfig, WASM_BINARY,
+	SudoConfig, SessionConfig, AuthoritiesConfig, ImOnlineConfig,
+	GatewayConfig, SystemConfig, DataAssetsConfig, WASM_BINARY,
 	opaque::SessionKeys,
 };
 use sc_service::ChainType;
@@ -27,6 +27,7 @@ use sp_core::{sr25519, Pair, Public};
 use sp_finality_grandpa::AuthorityId as GrandpaId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 
+use pallet_gateway::ProxyStatus;
 use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
 
 // The URL for the telemetry server.
@@ -80,13 +81,21 @@ pub fn development_config() -> Result<ChainSpec, String> {
 			testnet_genesis(
 				wasm_binary,
 				// Initial PoA authorities
-				vec![authority_keys_from_seed("Alice"), authority_keys_from_seed("Bob")],
+				vec![
+					authority_keys_from_seed("Alice"), 
+					authority_keys_from_seed("Bob"),
+					authority_keys_from_seed("Charlie"),
+				],
 				// Sudo account
 				get_account_id_from_seed::<sr25519::Public>("Alice"),
 				// Pre-funded accounts
 				vec![
 					get_account_id_from_seed::<sr25519::Public>("Alice"),
 					get_account_id_from_seed::<sr25519::Public>("Bob"),
+					get_account_id_from_seed::<sr25519::Public>("Charlie"),
+					get_account_id_from_seed::<sr25519::Public>("Dave"),
+					get_account_id_from_seed::<sr25519::Public>("Eve"),
+					get_account_id_from_seed::<sr25519::Public>("Ferdie"),
 					get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
 					get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
 				],
@@ -120,7 +129,11 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
 			testnet_genesis(
 				wasm_binary,
 				// Initial PoA authorities
-				vec![authority_keys_from_seed("Alice"), authority_keys_from_seed("Bob")],
+				vec![
+					authority_keys_from_seed("Alice"), 
+					authority_keys_from_seed("Bob"),
+					authority_keys_from_seed("Charlie"),
+				],
 				// Sudo account
 				get_account_id_from_seed::<sr25519::Public>("Alice"),
 				// Pre-funded accounts
@@ -168,12 +181,21 @@ fn testnet_genesis(
 			// Add Wasm runtime to storage.
 			code: wasm_binary.to_vec(),
 		},
+		assets: AssetsConfig {
+			accounts: vec![],
+			assets: vec![],
+			metadata: vec![],
+		},
 		balances: BalancesConfig {
 			// Configure endowed accounts with initial balance of 1 << 60.
 			balances: endowed_accounts.iter().cloned().map(|k| (k, 1 << 60)).collect(),
 		},
-		iris_session: IrisSessionConfig {
+		authorities: AuthoritiesConfig {
 			initial_validators: initial_authorities.iter().map(|x| x.0.clone()).collect::<Vec<_>>(),
+		},
+		data_assets: DataAssetsConfig {
+			initial_asset_id: 2,
+			delay: 10,
 		},
 		session: SessionConfig {
 			keys: initial_authorities.iter().map(|x| {
@@ -192,5 +214,14 @@ fn testnet_genesis(
 			key: Some(root_key),
 		},
 		transaction_payment: Default::default(),
+		gateway: GatewayConfig {
+			initial_proxies: initial_authorities.iter().map(|x| 
+				(x.0.clone(), x.0.clone(), 5000, ProxyStatus::Proxy)
+			).collect::<Vec<_>>(),
+			// initial_proxies: vec![],
+			min_proxy_bond: 50,
+			max_proxy_count: Some(256),
+		},
+		vesting: Default::default(),
 	}
 }

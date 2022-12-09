@@ -1,3 +1,0 @@
-# Iris-Session
-
-License: Unlicense

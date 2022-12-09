@@ -21,7 +21,7 @@ use mock::*;
 use sp_core::Pair;
 
 #[test]
-fn iris_data_spaces_creation_works() {
+fn data_spaces_creation_works() {
 	// Given: I am a valid node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];
@@ -46,11 +46,10 @@ fn iris_data_spaces_creation_works() {
 }
 
 #[test]
-fn iris_data_spaces_mint_works_for_valid_values() {
+fn data_spaces_mint_works_for_valid_values() {
 	// GIVEN: I am a valid Iris node with a positive valance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];
-	let dataspace_name = "MySpace".as_bytes().to_vec();
 	let balance = 1;
 	let id = 1;
 	let name: Vec<u8> = "test space".as_bytes().to_vec();
@@ -82,11 +81,10 @@ fn iris_data_spaces_mint_works_for_valid_values() {
 	INTEGRATION TESTS: should this be moved to a new file? YEAH runtime tests
 */
 #[test]
-fn iris_data_spaces_can_associate_asset_id_with_data_space() {
+fn data_spaces_can_associate_asset_id_with_data_space() {
 	// GIVEN: I am  valid Iris node with a positive balance
 	let (p, _) = sp_core::sr25519::Pair::generate();
 	let pairs = vec![(p.clone().public(), 10)];
-	let dataspace_name = "MySpace".as_bytes().to_vec();
 	let balance = 1;
 	let dataspace_id = 1;
 	let asset_id = 1;
@@ -109,7 +107,7 @@ fn iris_data_spaces_can_associate_asset_id_with_data_space() {
 			balance.clone(),
 		));
 		// THEN: I can transfer my owned asset to another address
-		assert_ok!(DataSpaces::associate_asset_class_with_data_space(
+		assert_ok!(DataSpaces::bond(
 			Origin::signed(p.clone().public()),
 			dataspace_id.clone(),
 			asset_id.clone(),

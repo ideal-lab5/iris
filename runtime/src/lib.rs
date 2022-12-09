@@ -27,7 +27,7 @@ use pallet_grandpa::{
 };
 use sp_api::impl_runtime_apis;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
-use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
+use sp_core::{crypto::KeyTypeId, OpaqueMetadata, Bytes};
 use sp_runtime::{
 	create_runtime_str, generic, impl_opaque_keys,
 	traits::{
@@ -43,6 +43,8 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use pallet_contracts::{weights::WeightInfo, DefaultContractAccessWeight};
+use codec::Encode;
+use sp_runtime::traits::StaticLookup;
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
@@ -73,11 +75,15 @@ pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
 
 use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
+use pallet_authorities::EraIndex;
 
-pub use pallet_iris_assets;
-pub use pallet_iris_ejection;
+pub use pallet_data_assets;
+pub use pallet_authorization;
 pub use pallet_data_spaces;
-pub use pallet_iris_session;
+pub use pallet_authorities;
+pub use pallet_gateway;
+pub use pallet_ipfs;
+pub use pallet_iris_proxy;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -97,6 +103,9 @@ pub type Index = u32;
 
 /// A hash of some data used by the chain.
 pub type Hash = sp_core::H256;
+
+/// The unique asset id
+pub type AssetId = u32;
 
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
@@ -127,8 +136,8 @@ pub mod opaque {
 //   https://docs.substrate.io/v3/runtime/upgrades#runtime-versioning
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-	spec_name: create_runtime_str!("node-template"),
-	impl_name: create_runtime_str!("node-template"),
+	spec_name: create_runtime_str!("iris-node"),
+	impl_name: create_runtime_str!("iris-node"),
 	authoring_version: 1,
 	// The version of the runtime specification. A full node will not attempt to use its native
 	//   runtime in substitute for the on-chain Wasm runtime unless all of `spec_name`,
@@ -361,17 +370,15 @@ impl pallet_timestamp::Config for Runtime {
 
 parameter_types! {
 	// TODO: Increase this when done testing
-	pub const MinAuthorities: u32 = 1;
-	pub const MaxDeadSession: u32 = 3;
+	pub const MinAuthorities: u32 = 3;
 }
 
-impl pallet_iris_session::Config for Runtime {
+impl pallet_authorities::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 	type AddRemoveOrigin = EnsureRoot<AccountId>;
 	type MinAuthorities = MinAuthorities;
-	type MaxDeadSession = MaxDeadSession;
-	type AuthorityId = pallet_iris_session::crypto::TestAuthId;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
 parameter_types! {
@@ -381,10 +388,10 @@ parameter_types! {
 
 impl pallet_session::Config for Runtime {
 	type ValidatorId = <Self as frame_system::Config>::AccountId;
-	type ValidatorIdOf = pallet_iris_session::ValidatorOf<Self>;
+	type ValidatorIdOf = pallet_authorities::ValidatorOf<Self>;
 	type ShouldEndSession = pallet_session::PeriodicSessions<Period, Offset>;
 	type NextSessionRotation = pallet_session::PeriodicSessions<Period, Offset>;
-	type SessionManager = IrisSession;
+	type SessionManager = Authorities;
 	type SessionHandler = <opaque::SessionKeys as OpaqueKeys>::KeyTypeIdProviders;
 	type Keys = opaque::SessionKeys;
 	type WeightInfo = pallet_session::weights::SubstrateWeight<Runtime>;
@@ -395,9 +402,7 @@ impl pallet_balances::Config for Runtime {
 	type MaxLocks = ConstU32<50>;
 	type MaxReserves = ();
 	type ReserveIdentifier = [u8; 8];
-	/// The type for recording an account's balance.
 	type Balance = Balance;
-	/// The ubiquitous event type.
 	type Event = Event;
 	type DustRemoval = ();
 	type ExistentialDeposit = ConstU128<500>;
@@ -434,8 +439,8 @@ parameter_types! {
 
 impl pallet_assets::Config for Runtime {
 	type Event = Event;
-	type Balance = u64;
-	type AssetId = u32;
+	type Balance = Balance;
+	type AssetId = AssetId;
 	type Currency = Balances;
 	type ForceOrigin = EnsureRoot<AccountId>;
 	type AssetDeposit = AssetDeposit;
@@ -450,24 +455,42 @@ impl pallet_assets::Config for Runtime {
 }
 
 /// configure the iris assets pallet
-impl pallet_iris_assets::Config for Runtime {
+impl pallet_data_assets::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
+	type Currency = Balances;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
-impl pallet_iris_ejection::Config for Runtime {
+// parameter_types! {
+// 	// random number generator
+// 	pub const Rng: ChaCha20Rng = ChaCha20Rng::seed_from_u64(17u64);
+// }
+
+impl pallet_iris_proxy::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type QueueManager = DataAssets;
+	type MetadataProvider = DataAssets;
+	type Randomness = RandomnessCollectiveFlip;
+}
+
+impl pallet_authorization::Config for Runtime {
+	type Event = Event;
+	type Call = Call;
+	type MetadataProvider = DataAssets;
+	type ValidatorSet = Authorities;
 }
 
 impl pallet_data_spaces::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 	type Currency = Balances;
-	type AuthorityId = pallet_iris_session::crypto::TestAuthId;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
-impl pallet_iris_ledger::Config for Runtime {
+impl pallet_ledger::Config for Runtime {
 	type Event = Event;
 	type Call = Call;
 	type IrisCurrency = Balances;
@@ -484,8 +507,8 @@ impl pallet_im_online::Config for Runtime {
 	type AuthorityId = ImOnlineId;
 	type Event = Event;
 	type NextSessionRotation = pallet_session::PeriodicSessions<Period, Offset>;
-	type ValidatorSet = IrisSession;
-	type ReportUnresponsiveness = IrisSession;
+	type ValidatorSet = Authorities;
+	type ReportUnresponsiveness = Authorities;
 	type UnsignedPriority = ImOnlineUnsignedPriority;
 	type WeightInfo = pallet_im_online::weights::SubstrateWeight<Runtime>;
 	type MaxKeys = MaxKeys;
@@ -493,8 +516,51 @@ impl pallet_im_online::Config for Runtime {
 	type MaxPeerDataEncodingSize = MaxPeerDataEncodingSize;
 }
 
-use codec::Encode;
-use sp_runtime::traits::StaticLookup;
+parameter_types! {
+	pub const BondingDuration: EraIndex = 3;
+}
+
+impl pallet_gateway::Config for Runtime {
+	type Event = Event;
+	type Call = Call;
+	type Currency = Balances;
+	type Balance = <Self as pallet_balances::Config>::Balance ;
+	type BondingDuration = BondingDuration;
+	type EraProvider = Authorities;
+}
+
+parameter_types! {
+	// roughly 35 seconds
+	pub const NodeConfigBlockDuration: u32 = 2;
+}
+
+impl pallet_ipfs::Config for Runtime {
+	type Event = Event;
+	type Call = Call;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
+	type Currency = Balances;
+	type NodeConfigBlockDuration = NodeConfigBlockDuration;
+	type ProxyProvider = Gateway;
+	type QueueManager = DataAssets;
+	type MetadataProvider = DataAssets;
+	type ResultsHandler = DataAssets;
+	type OffchainKeyManager = IrisProxy;
+}
+
+parameter_types! {
+	pub const MinVestedTransfer: Balance = 1 * MILLICENTS;
+}
+
+impl pallet_vesting::Config for Runtime {
+	type Event = Event;
+	type Currency = Balances;
+	type BlockNumberToBalance = ConvertInto;
+	type MinVestedTransfer = MinVestedTransfer;
+	type WeightInfo = pallet_vesting::weights::SubstrateWeight<Runtime>;
+	// `VestingInfo` encode length is 36bytes. 28 schedules gets encoded as 1009 bytes, which is the
+	// highest number of schedules that encodes less than 2^10.
+	const MAX_VESTING_SCHEDULES: u32 = 28;
+}
 
 impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Runtime
 where
@@ -570,15 +636,19 @@ construct_runtime!(
 		Balances: pallet_balances,
 		TransactionPayment: pallet_transaction_payment,
 		Sudo: pallet_sudo,
-		Assets: pallet_assets::{Pallet, Storage, Event<T>},
-		IrisAssets: pallet_iris_assets,
-		IrisEjection: pallet_iris_ejection,
-		IrisLedger: pallet_iris_ledger,
-		IrisSession: pallet_iris_session,
+		Assets: pallet_assets,
+		DataAssets: pallet_data_assets,
+		IrisProxy: pallet_iris_proxy,
+		Authorization: pallet_authorization,
+		Ledger: pallet_ledger,
+		Authorities: pallet_authorities,
 		Session: pallet_session,
 		DataSpaces: pallet_data_spaces,
-		ImOnline: pallet_im_online::{Pallet, Call, Storage, Event<T>, ValidateUnsigned, Config<T>},
+		ImOnline: pallet_im_online,
 		Contracts: pallet_contracts,
+		Gateway: pallet_gateway,
+		Ipfs: pallet_ipfs,
+		Vesting: pallet_vesting,
 	}
 );
 
@@ -623,7 +693,6 @@ mod benches {
 		[frame_system, SystemBench::<Runtime>]
 		[pallet_balances, Balances]
 		[pallet_timestamp, Timestamp]
-		[pallet_template, TemplateModule]
 	);
 }
 
@@ -802,6 +871,42 @@ impl_runtime_apis! {
 		}
 	}
 
+	impl encryption_rpc_runtime_api::EncryptionApi<Block, Balance> for Runtime {
+		fn encrypt(
+			plaintext: Bytes,
+			signature: Bytes,
+			signer: Bytes,
+			message: Bytes,
+			proxy: Bytes,
+		) -> Bytes {
+			IrisProxy::encrypt(
+				plaintext, 
+				signature, 
+				signer, 
+				message,
+				proxy,
+			)
+		}
+
+		fn decrypt(
+			ciphertext: Bytes,
+			signature: Bytes,
+			signer: Bytes,
+			message: Bytes,
+			asset_id: u32,
+			secret_key: Bytes,
+		) -> Option<Bytes> {
+			IrisProxy::decrypt(
+				signature,
+				signer,
+				message,
+				ciphertext,
+				asset_id,
+				secret_key,
+			)
+		}
+	}
+
 	#[cfg(feature = "runtime-benchmarks")]
 	impl frame_benchmarking::Benchmark<Block> for Runtime {
 		fn benchmark_metadata(extra: bool) -> (
@@ -895,10 +1000,17 @@ use pallet_contracts::chain_extension::{
     SysConfig,
     UncheckedFrom,
 };
-use sp_runtime::DispatchError;
+use sp_runtime::{
+	DispatchError,
+	traits::{ConvertInto},
+};
 use frame_system::{
 	self as system,
 };
+
+// use crypto_box::{
+// 	SalsaBox, PublicKey, SecretKey as BoxSecretKey,
+// };
 
 pub struct IrisExtension;
 
@@ -914,69 +1026,59 @@ impl ChainExtension<Runtime> for IrisExtension {
 			func_id
 		);
         match func_id {	
-			// IrisAssets::transfer_asset
+			// DataAssets::transfer_asset
             0 => {
                 let mut env = env.buf_in_buf_out();
-				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u64) = env.read_as()?;
+				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u128) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-                crate::IrisAssets::transfer_asset(
-					origin, sp_runtime::MultiAddress::Id(target), asset_id, amount,
+                crate::Assets::transfer(
+					origin, asset_id, sp_runtime::MultiAddress::Id(target), amount,
 				)?;
 				Ok(RetVal::Converging(func_id))
             },
-			// IrisAssets::mint
+			// DataAssets::mint
 			1 => {
 				let mut env = env.buf_in_buf_out();
-				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u64) = env.read_as()?;
+				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u128) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-                crate::IrisAssets::mint(
-					origin, sp_runtime::MultiAddress::Id(target), asset_id, amount,
+                crate::Assets::mint(
+					origin, asset_id, sp_runtime::MultiAddress::Id(target), amount,
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},
-			// IrisAssets::burn
+			// Ledger::lock_currrency
 			2 => {
 				let mut env = env.buf_in_buf_out();
-				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u64) = env.read_as()?;
+				let (caller_account, amount): (AccountId, u128) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-                crate::IrisAssets::burn(
-					origin, sp_runtime::MultiAddress::Id(target), asset_id, amount,
-				)?;
-				Ok(RetVal::Converging(func_id))
-			},
-			// IrisLedger::lock_currrency
-			3 => {
-				let mut env = env.buf_in_buf_out();
-				let (caller_account, amount): (AccountId, u64) = env.read_as()?;
-				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
-
-				crate::IrisLedger::lock_currency(
+				crate::Ledger::lock_currency(
 					origin, amount.into(),
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},
-			// IrisLedger::unlock_currency_and_transfer
-			4 => {
+			// Ledger::unlock_currency_and_transfer
+			3 => {
 				let mut env = env.buf_in_buf_out();
 				let (caller_account, target): (AccountId, AccountId) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-				crate::IrisLedger::unlock_currency_and_transfer(
+				crate::Ledger::unlock_currency_and_transfer(
 					origin, target,
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},
-			// IrisEjection: submit execution results from composable access rules
-			5 => {
+			// IrisEjection: submit execution results from a rule executor
+			4 => {
 				let mut env = env.buf_in_buf_out();
-				let (caller_account, asset_id, target, result): (AccountId, u32, AccountId, bool) = env.read_as()?;
+				let (caller_account, target_account, asset_id, result, public_key): 
+					(AccountId, AccountId, u32, bool, [u8;32]) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
-				crate::IrisEjection::submit_execution_results(
-					origin, asset_id, target, result,
+				crate::Authorization::submit_execution_results(
+					origin, asset_id, target_account, result, public_key.to_vec()
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},

@@ -31,7 +31,7 @@
 //!
 //! #### Permissioned Functions
 //! * mint
-//! * associate_asset_class_with_data_space
+//! * bond
 //!
 
 use scale_info::TypeInfo;
@@ -40,28 +40,16 @@ use frame_support::{
     traits::ReservableCurrency,
 };
 
-use log;
-
 use sp_runtime::{
     RuntimeDebug,
     traits::StaticLookup,
-    transaction_validity::{ ValidTransaction, TransactionValidity },
 };
 use sp_std::{
     prelude::*,
 };
-
-use pallet_iris_assets::{
-	DataCommand,
-};
-
 use frame_system::{
 	self as system, 
 	ensure_signed,
-	offchain::{
-		SendSignedTransaction,
-		Signer,
-	}
 };
 
 pub use pallet::*;
@@ -84,36 +72,6 @@ pub struct DataSpaceMetadata<AssetId> {
     asset_ids: Vec<AssetId>,
 }
 
-pub mod crypto {
-	// use crate::KEY_TYPE;
-	use sp_core::crypto::KeyTypeId;
-	use sp_core::sr25519::Signature as Sr25519Signature;
-	use sp_runtime::app_crypto::{app_crypto, sr25519};
-	use sp_runtime::{traits::Verify, MultiSignature, MultiSigner};
-	use sp_std::convert::TryFrom;
-
-	pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
-
-	app_crypto!(sr25519, KEY_TYPE);
-
-	pub struct TestAuthId;
-	// implemented for runtime
-	impl frame_system::offchain::AppCrypto<MultiSigner, MultiSignature> for TestAuthId {
-		type RuntimeAppPublic = Public;
-		type GenericSignature = sp_core::sr25519::Signature;
-		type GenericPublic = sp_core::sr25519::Public;
-	}
-
-	// implemented for mock runtime in test
-	impl frame_system::offchain::AppCrypto<<Sr25519Signature as Verify>::Signer, Sr25519Signature>
-		for TestAuthId
-	{
-		type RuntimeAppPublic = Public;
-		type GenericSignature = sp_core::sr25519::Signature;
-		type GenericPublic = sp_core::sr25519::Public;
-	}
-}
-
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -134,7 +92,7 @@ pub mod pallet {
 	pub trait Config: CreateSignedTransaction<Call<Self>> + 
                     frame_system::Config + 
                     pallet_assets::Config + 
-                    pallet_iris_assets::Config {
+                    pallet_data_assets::Config {
         /// The overarching event type
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
         /// the overarching call type
@@ -172,36 +130,7 @@ pub mod pallet {
 	pub enum Error<T> {
         CantCreateAssetClass,
         CantMintAssets,
-	}
-
-    #[pallet::validate_unsigned]
-	impl<T: Config> ValidateUnsigned for Pallet<T> {
-		type Call = Call<T>;
-		/// Validate unsigned call to this module.
-		fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-            if let Call::associate_asset_class_with_data_space{
-                dataspace_id,
-                asset_class_id,
-            } = call {
-                log::info!("Signature is valid");
-                return ValidTransaction::with_tag_prefix("iris")
-                    .priority(100)
-                    .longevity(5)
-                    .propagate(true)
-                    .build();
-			} else {
-				InvalidTransaction::Call.into()
-			}
-		}
-	}
-
-    #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-		fn offchain_worker(block_number: T::BlockNumber) {
-            if let Err(e) = Self::submit_unsigned_tx_associate_data_space_asset_class(block_number) {
-                log::error!("DataSpaces: Encountered an error when processing dataspace inclusion request: {:?}", e);
-            }
-		}
+        DataSpaceNotAccessible,
 	}
 
 	#[pallet::call]
@@ -239,7 +168,6 @@ pub mod pallet {
             #[pallet::compact] amount: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-
             let new_origin = system::RawOrigin::Signed(who.clone()).into();
             let beneficiary_accountid = T::Lookup::lookup(beneficiary.clone())?;
             <pallet_assets::Pallet<T>>::mint(
@@ -257,18 +185,18 @@ pub mod pallet {
 
         /// associate an asset class with a set of data spaces
         /// We still need to secure this to make it callable only by offchain workers
-        #[pallet::weight(0)]
-        pub fn associate_asset_class_with_data_space(
+        #[pallet::weight(100)]
+        pub fn bond(
             origin: OriginFor<T>,
             dataspace_id: T::AssetId,
             asset_class_id: T::AssetId,
             // dataspace_assoc_req: DataSpaceAssociationRequest<T::AssetId>,
         ) -> DispatchResult {
-            ensure_signed(origin)?;
-            // this is obviously insecure right now
-            // will address this when we build the proxy routing service in milestone 2
-            // TODO: verify asset class exists
-            // TODO: should verify that the asset class has the dataspace id set as a pending association
+            let who = ensure_signed(origin)?;
+            // check that the caller has dataspace access
+            let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
+            let balance_primitive = TryInto::<u128>::try_into(balance).ok();
+            ensure!(balance_primitive != Some(0), Error::<T>::DataSpaceNotAccessible);
             let mut metadata = <Metadata::<T>>::get(dataspace_id.clone()).unwrap();
             //  duplicate avoidance 
             if !metadata.asset_ids.contains(&asset_class_id.clone()) {
@@ -278,6 +206,7 @@ pub mod pallet {
                     dataspace_id.clone(), asset_class_id.clone()
                 ));
             }
+            
             Ok(())
         }
 	}
@@ -285,56 +214,4 @@ pub mod pallet {
 
 impl<T: Config> Pallet<T> {
 
-    /// A helper function to (futuristically) perform moderation tasks,
-    ///  sign payload and send an unsigned transaction
-	fn submit_unsigned_tx_associate_data_space_asset_class(
-		_block_number: T::BlockNumber,
-	) -> Result<(), &'static str> {
-        // in the future, this is where moderation capabilities will hook in
-        let data_queue = <pallet_iris_assets::Pallet<T>>::data_space_request_queue();
-        let len = data_queue.len();
-        if len != 0 {
-            log::info!("DataSpaces: {} entr{} in the data queue", len, if len == 1 { "y" } else { "ies" });
-        }
-        for cmd in data_queue.into_iter() {
-            match cmd {
-                // doing this in an offchain context to prepare for next stage
-                // where a moderator node will verify if the data 
-                // is eligible for inclusion into the data spaces
-                DataCommand::AddToDataSpace(id, dataspace_id) => {
-                    log::info!("Processing add to data space command");
-                    if sp_io::offchain::is_validator() {
-                        log::info!("Attempting to send unsigned transaction from validator node");
-                        // if you are a validator, attempt to add to dataspace
-                        // in the future this will be replaced with a moderator node
-                        // and we select the moderator using a routing service
-                        let signer = Signer::<T, T::AuthorityId>::all_accounts();
-                        if !signer.can_sign() {
-                            log::error!(
-                                "No local accounts available. Consider adding one via `author_insertKey` RPC.",
-                            );
-                        }
-                        let results = signer.send_signed_transaction(|_account| { 
-                            Call::associate_asset_class_with_data_space{
-                                asset_class_id: id.clone(),
-                                dataspace_id: dataspace_id.clone(),
-                            }
-                        });
-                
-                        for (_, res) in &results {
-                            match res {
-                                Ok(()) => log::info!("Submitted ipfs results"),
-                                Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-                            }
-                        }
-                    }
-                },
-                _ => {
-                    // ignore others
-                }
-            }
-        }
-
-		Ok(())
-	}
 }
