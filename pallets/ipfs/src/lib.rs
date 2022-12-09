@@ -55,13 +55,12 @@ use frame_system::{
 		Signer, SendSignedTransaction,
 	}
 };
-// use scale_info::prelude::string::ToString;
 use scale_info::prelude::format;
 use iris_primitives::IngestionCommand;
 use pallet_gateway::ProxyProvider;
 use pallet_data_assets::{ResultsHandler, QueueManager};
 use pallet_iris_proxy::OffchainKeyManager;
-use sp_runtime::offchain::storage::StorageValueRef;
+// use sp_runtime::offchain::storage::StorageValueRef;
 
 pub const LOG_TARGET: &'static str = "runtime::proxy";
 
@@ -229,7 +228,6 @@ pub mod pallet {
 							Some(addr) => {
 								if <pallet_authorities::Pallet<T>>::x25519_public_keys(addr.clone()).is_empty() {
 									// should only happen once
-									log::info!("Proxy keys not configured");
 									<pallet_authorities::Pallet<T>>::update_x25519();
 										if let Err(e) = Self::ipfs_update_configs(addr.clone()) {
 											log::error!("Encountered an error while attempting to update ipfs node config: {:?}", e);
@@ -241,7 +239,6 @@ pub mod pallet {
 									}
 									let authorities = <pallet_authorities::Pallet<T>>::validators();
 									T::OffchainKeyManager::process_reencryption_requests(addr.clone());
-									log::info!("Processing decryption delegation requests with {:?} authorities", authorities.len());
 									T::OffchainKeyManager::process_decryption_delegation(addr.clone(), authorities);
 								} 
 							},
@@ -280,15 +277,10 @@ pub mod pallet {
             origin: OriginFor<T>,
 			cmd: IngestionCommand<T::AccountId, T::Balance>,
         ) -> DispatchResult {
-			log::info!("Submitting ingestion complete");
 			let who = ensure_signed(origin)?;
 			let queued_commands = T::QueueManager::ingestion_requests(who.clone());
 			ensure!(queued_commands.contains(&cmd), Error::<T>::NotAuthorized);
-			// we need to find the puiblic key as well..
 			let new_origin = system::RawOrigin::Signed(who.clone()).into();
-			// next asset id is: 
-			// (gateway node's slot number) x (current era index)
-			// assumes a slot exists
 			let new_asset_id = T::ProxyProvider::next_asset_id(who.clone());
 			T::ResultsHandler::create_asset_class(new_origin, cmd, new_asset_id.into())?;
 			Self::deposit_event(Event::IngestionComplete());
@@ -347,20 +339,22 @@ impl<T: Config> Pallet<T> {
 	}
 
 	fn do_get_ipfs_id() -> Result<Vec<u8>, Error<T>> {
-		let local_storage = StorageValueRef::persistent(b"iris::ipfs");
-		if let Ok(Some(id_res)) = local_storage.get::<Vec<u8>>() {
-			Ok(id_res)
-		} else {
-			match ipfs::identity() {
-				Ok(res) => {
-					return Ok(res.body().collect::<Vec<u8>>());
-				} 
-				Err(e) => {
-					log::error!("Something went wrong while attempting to get the IPFS node identity: {:?}", e);
-					return Err(Error::<T>::IpfsNotAvailable);
-				}
-			};
+		// let local_storage = StorageValueRef::persistent(b"iris::ipfs");
+		// if let Ok(Some(id_res)) = local_storage.get::<Vec<u8>>() {
+		// 	Ok(id_res)
+		// } else {
+		match ipfs::identity() {
+			Ok(res) => {
+				let out = res.body().collect::<Vec<u8>>();
+				// local_storage.set(&out);
+				return Ok(out.clone());
+			} 
+			Err(e) => {
+				log::error!("Something went wrong while attempting to get the IPFS node identity: {:?}", e);
+				return Err(Error::<T>::IpfsNotAvailable);
+			}
 		}
+		// }
 	}
 
 	/// verify if an ipfs daemon is running and if so, report its identity on chain

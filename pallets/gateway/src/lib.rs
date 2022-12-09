@@ -614,9 +614,6 @@ impl<T: Config> Pallet<T> {
 			});
 		}
 	}
-
-	// use num_primes::Generator;
-
 	/// Add a proxy to the proxies list, along with given preferences
 	/// 
 	/// * who: The proxy node address to insert
@@ -626,9 +623,6 @@ impl<T: Config> Pallet<T> {
 		Proxies::<T>::insert(who.clone(), prefs.clone());
 		let primes = vec![2, 3, 5, 7, 9, 11, 13, 17, 19, 27, 29, 31, 37, 41, 43, 47, 51, 59, 67, ];
 		let num_proxies = Proxies::<T>::count() as usize;
-		// ensure!(num_proxies < primes.len()
-		// needed?
-		// ReservedSlots::<T>::put(r);
 		Slot::<T>::insert(who.clone(), primes[num_proxies].clone());
 	}
 
@@ -700,9 +694,9 @@ impl<T: Config> ProxyProvider<T::AccountId, T::Balance> for Pallet<T> {
 
 	fn next_asset_id(acct: T::AccountId) -> u32 {
 		if let Some(slot) = Slot::<T>::get(acct.clone()) {
-			let index = CallCount::<T>::get(acct.clone());
+			let index = CallCount::<T>::get(acct.clone()) + 1;
 			// increment callcount
-			CallCount::<T>::insert(acct.clone(), index + 1);
+			CallCount::<T>::insert(acct.clone(), index);
 			return slot * index;
 		}
 		0

@@ -458,11 +458,6 @@ fn test_iris_protocol_happy_path() {
 // }
 
 // #[test]
-// pub fn rpc_decrypt_can_decrypt() {
-
-// }
-
-// #[test]
 // pub fn rpc_decrypt_fail_if_no_cfrags() {
 
 // }

@@ -236,6 +236,9 @@ fn gateway_declare_gateway_works() {
 		));
 		// AND: the address is added to the proxies list
 		assert_eq!(Some(proxy_prefs.clone()), crate::Proxies::<Test>::get(v0.0.clone()));
+		// AND: The proxy reserves a slot
+		let reserved_slot = crate::Slot::<Test>::get(v0.0.clone()).unwrap();
+		assert_eq!(3, reserved_slot);
 	});
 }
 

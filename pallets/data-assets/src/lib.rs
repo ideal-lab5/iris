@@ -66,7 +66,7 @@ use sp_std::{
     prelude::*,
 };
 use core::convert::TryInto;
-use pallet_vesting::VestingInfo;
+// use pallet_vesting::VestingInfo;
 use iris_primitives::IngestionCommand;
 
 /// struct to store metadata of an asset class
@@ -265,7 +265,7 @@ pub mod pallet {
         pub fn create_request(
             origin: OriginFor<T>,
             gateway: <T::Lookup as StaticLookup>::Source,
-            gateway_reserve: BalanceOf<T>,
+            _gateway_reserve: BalanceOf<T>,
             cid: Vec<u8>,
             multiaddress: Vec<u8>,
             #[pallet::compact] min_asset_balance: T::Balance,
@@ -273,14 +273,13 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             let g = T::Lookup::lookup(gateway.clone())?; 
             // first ensure that the caller has sufficent funds
-            let current_block_number = <frame_system::Pallet<T>>::block_number();
-            let target_block = current_block_number + Delay::<T>::get().into();
-            let new_origin = system::RawOrigin::Signed(who.clone()).into();
-            // vest currency
-            <pallet_vesting::Pallet<T>>::vested_transfer(
-                new_origin, gateway, 
-                VestingInfo::new(gateway_reserve, gateway_reserve, target_block),
-            ).map_err(|_| Error::<T>::InsufficientBalance)?;
+            // let current_block_number = <frame_system::Pallet<T>>::block_number();
+            // let target_block = current_block_number + Delay::<T>::get().into();
+            // let new_origin = system::RawOrigin::Signed(who.clone()).into();
+            // <pallet_vesting::Pallet<T>>::vested_transfer(
+            //     new_origin, gateway, 
+            //     VestingInfo::new(gateway_reserve, gateway_reserve, target_block),
+            // ).map_err(|_| Error::<T>::InsufficientBalance)?;
             // issue the command
             let mut commands = IngestionCommands::<T>::get(g.clone());
             let cmd = IngestionCommand {
@@ -317,18 +316,7 @@ pub mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    // a super simple asset id generator and mutator
-    // needs to be modified so we don't have duplicate asset id
-    // TODO: this approach will fail, undoubtedly
-    // fn get_and_increment_asset_id() -> T::AssetId {
-    //     let next = NextAssetId::<T>::get();
-    //     let t: u32 = next as u32 + 1;
-    //     // let primitive = TryInto::<u32>::try_into(next).ok().unwrap();
-    //     // let new_id = primitive + 1u32;
-    //     // let new_next_asset_id = TryInto::<T::AssetId>::try_into(new_id).ok().unwrap();
-    //     // NextAssetId::<T>::mutate(|id| *id);
-    //     next
-    // }
+
 }
 
 /// 
@@ -397,32 +385,25 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::AssetId, T::Balance> for Pall
         asset_id: T::AssetId,
     ) -> DispatchResult {
         let who = ensure_signed(origin)?;
-        // verify that capsule exists (i.e. data is 'decryptable')
-        match IngestionStaging::<T>::get(who.clone()) {
-            Some(pubkey) => {
-                // let asset_id = Self::get_and_increment_asset_id();
-                let admin = T::Lookup::unlookup(cmd.clone().owner);
-                let new_origin = system::RawOrigin::Signed(who.clone()).into();
-                <pallet_assets::Pallet<T>>::create(new_origin, asset_id.clone(), admin.clone(), cmd.balance.clone())
-                    .map_err(|e| {
-                        log::info!("Failed to create asset class due to error: {:?}", e);
-                        return Error::<T>::CantCreateAssetClass;
-                    })?;
-                Metadata::<T>::insert(asset_id.clone(), AssetMetadata {
-                    cid: cmd.cid.clone(),
-                    public_key: pubkey,
-                });
-                AssetClassOwnership::<T>::mutate(cmd.owner.clone(), |ids| { ids.push(asset_id.clone()); });
-                IngestionStaging::<T>::remove(who.clone());
-                IngestionCommands::<T>::mutate(who.clone(), |cmds| {
-                    cmds.retain(|c| *c != cmd);
-                });
-                Ok(())
-            },
-            None => {
-                // Error instead?
-                Ok(())
-            }
+        if let Some(pubkey) = IngestionStaging::<T>::get(who.clone()) {
+            let admin = T::Lookup::unlookup(cmd.clone().owner);
+            let new_origin = system::RawOrigin::Signed(who.clone()).into();
+            <pallet_assets::Pallet<T>>::create(new_origin, asset_id.clone(), admin.clone(), cmd.balance.clone())
+                .map_err(|e| {
+                    log::info!("Failed to create asset class due to error: {:?}", e);
+                    return Error::<T>::CantCreateAssetClass;
+                })?;
+            Metadata::<T>::insert(asset_id.clone(), AssetMetadata {
+                cid: cmd.cid.clone(),
+                public_key: pubkey,
+            });
+            AssetClassOwnership::<T>::mutate(cmd.owner.clone(), |ids| { ids.push(asset_id.clone()); });
+            IngestionStaging::<T>::remove(cmd.owner.clone());
+            IngestionCommands::<T>::mutate(who.clone(), |cmds| {
+                cmds.retain(|c| *c != cmd);
+            });
         }
+
+        Ok(())
     }
 }

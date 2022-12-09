@@ -643,10 +643,8 @@ impl<T: Config> Pallet<T> {
 					let recipient_pk_vec = pallet_authorities::Pallet::<T>::x25519_public_keys(candidate.clone());
 					let recipient_pk = iris_primitives::vec_to_box_public_key(&recipient_pk_vec);
 					let key_fragment = kfrags[i].clone()
-						.unverify()
-						.to_array()
-						.as_slice()
-						.to_vec();
+						.unverify().to_array()
+						.as_slice().to_vec();
 					// Do I really need to do this?
 					let encrypted_kfrag_data = iris_primitives::encrypt_x25519(
 						recipient_pk.clone(), key_fragment,
@@ -788,9 +786,9 @@ impl<T: Config> Pallet<T> {
 
 	fn validate_transaction_parameters() -> TransactionValidity {
 		ValidTransaction::with_tag_prefix("iris")
-			.priority(2 << 20) // very high priority... probably overkill but should always be on top
-			.longevity(5) // TTL 5 blocks
-			.propagate(true) // we want to be the only one submitting this tx
+			.priority(2 << 20)
+			.longevity(5)
+			.propagate(true)
 			.build()
 	}
 
@@ -814,7 +812,6 @@ impl<T: Config> Pallet<T> {
 }
 
 pub trait OffchainKeyManager<AccountId> {
-	// should return Result<> instead
 	fn process_decryption_delegation(
 		account: AccountId,
 		candidates: Vec<AccountId>,
@@ -827,6 +824,7 @@ impl<T: Config> OffchainKeyManager<T::AccountId> for Pallet<T> {
 		account: T::AccountId,
 		candidates: Vec<T::AccountId>
 	) {
+		// TODO: proper error handling
 		Self::proxy_process_kfrag_generation_requests(account, candidates)
 			.expect("reencryption should work");
 	}

@@ -1048,19 +1048,8 @@ impl ChainExtension<Runtime> for IrisExtension {
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},
-			// DataAssets::burn
-			2 => {
-				let mut env = env.buf_in_buf_out();
-				let (caller_account, target, asset_id, amount): (AccountId, AccountId, u32, u128) = env.read_as()?;
-				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
-
-                crate::Assets::burn(
-					origin, asset_id, sp_runtime::MultiAddress::Id(target), amount,
-				)?;
-				Ok(RetVal::Converging(func_id))
-			},
 			// Ledger::lock_currrency
-			3 => {
+			2 => {
 				let mut env = env.buf_in_buf_out();
 				let (caller_account, amount): (AccountId, u128) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
@@ -1071,7 +1060,7 @@ impl ChainExtension<Runtime> for IrisExtension {
 				Ok(RetVal::Converging(func_id))
 			},
 			// Ledger::unlock_currency_and_transfer
-			4 => {
+			3 => {
 				let mut env = env.buf_in_buf_out();
 				let (caller_account, target): (AccountId, AccountId) = env.read_as()?;
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
@@ -1082,7 +1071,7 @@ impl ChainExtension<Runtime> for IrisExtension {
 				Ok(RetVal::Converging(func_id))
 			},
 			// IrisEjection: submit execution results from a rule executor
-			5 => {
+			4 => {
 				let mut env = env.buf_in_buf_out();
 				let (caller_account, target_account, asset_id, result, public_key): 
 					(AccountId, AccountId, u32, bool, [u8;32]) = env.read_as()?;

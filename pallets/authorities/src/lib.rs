@@ -193,7 +193,7 @@ pub mod pallet {
 	/// The active era information, it holds index and start.
 	///
 	/// The active era is the era being currently rewarded. Validator set of this era must be
-	/// equal to [`SessionInterface::validators`].
+	/// equal to `SessionInterface::validators`.
 	#[pallet::storage]
 	#[pallet::getter(fn active_era)]
 	// TODO: Do I need the ActiveEraInfo?

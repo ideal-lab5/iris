@@ -38,6 +38,15 @@ pub use encryption_rpc_runtime_api::EncryptionApi as EncryptionRuntimeApi;
 #[rpc(client, server)]
 pub trait EncryptionApi<BlockHash, Balance> {
 
+	/// Encrypts the ciphertext using the signer's public keys
+	/// and delegates reencryption rights to the proxy
+	/// 
+	/// * `plaintext`: The plaintext to be encrypted
+	/// * `signature`: The signature created to sign the message
+	/// * `message`: A signed message
+	/// * `signer`: The address of the node who signed the message
+	/// * `proxy`: The proxy to delegate reencryption rights to
+	///  
 	#[method(name = "iris_encrypt")]
 	fn encrypt(
 		&self,
@@ -49,6 +58,15 @@ pub trait EncryptionApi<BlockHash, Balance> {
 		at: Option<BlockHash>,
 	) -> RpcResult<Bytes>;
 
+	/// Decrypts ciphertext encrypted with Iris that the signer has access to.
+	/// 
+	/// * `ciphertext`: The ciphertext to be decrypted
+	/// * `signature`: The signature created to sign the message
+	/// * `message`: A signed message
+	/// * `signer`: The address of the node who signed the mess
+	/// * `asset_id`: The asset id associated with the data asset
+	/// * `secret_key`: A secret key whose corresponding public key was passed to the rule executor
+	/// 
 	#[method(name = "iris_decrypt")]
 	fn decrypt(
 		&self,

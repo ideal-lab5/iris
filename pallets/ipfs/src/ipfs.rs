@@ -105,10 +105,6 @@ impl AsRef<str> for Capabilities {
 	}
 }
 
-
-/// could be useful:
-///  ipfs routing findpeer <peerID>...   - Find the multiaddresses associated with a Peer ID.
-
 /// Get the ipfs node identity
 /// 
 pub fn identity() -> Result<http::Response, http::Error> {
