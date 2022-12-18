@@ -21,12 +21,6 @@
 //! 
 //! ## Description 
 //! 
-//! validators and storage providers
-//! are treated as seprate roles, where you must first be a validator after which you can 
-//! request to join a storage pool for some asset id (become a storage provider). If the ipfs
-//! node has sufficient storage capacity to successfully pin the underlying CID of the asset class,
-//! then that node is considered a storage provider as long as it is online.
-//! 
 //! The Authorities Pallet allows addition and removal of
 //! storage providers via extrinsics (transaction calls), in
 //! Substrate-based PoA networks. It also integrates with the im-online pallet
@@ -257,25 +251,6 @@ pub mod pallet {
 		ValidatorNotApproved,
 		/// Only the validator can add itself back after coming online.
 		BadOrigin,
-		/// could not build the ipfs request
-		CantCreateRequest,
-		/// the request to IPFS timed out
-		RequestTimeout,
-		/// the request to IPFS failed
-		RequestFailed,
-		/// the specified asset id does not correspond to any owned content
-		NoSuchOwnedContent,
-		/// the nodes balance is insufficient to complete this operation
-		InsufficientBalance,
-		/// the node is already a candidate for some storage pool
-		AlreadyACandidate,
-		/// the node has already pinned the CID
-		AlreadyPinned,
-		/// the node is not a candidate storage provider for some asset id
-		NotACandidate,
-		InvalidMultiaddress,
-		InvalidCID,
-		IpfsError,
 	}
 
 	#[pallet::genesis_config]

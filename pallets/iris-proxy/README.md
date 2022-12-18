@@ -1,46 +1,54 @@
-# Proxy Pallet
+# IrisProxy Pallet
 
-The proxy pallet is used to manage funds staked by proxy nodes.
-
-While Iris remains a proof of authority network and has not yet implemented a threshold encrypted system, we stipulate that only authorities have the right to become proxies.
-
-The design of this pallet is inspired by a proof of stake system which may be used by validators of a network, however, there are many differences between the way validators would operate and how proxies operate.
+The IrisProxy pallet enables the threshold proxy reencryption system in use by Iris.
 
 ## Goals
 
-The goal of this module is to manage the funds staked by nodes that are providing proxy services to the network. A proxy node reads from two distinct queues which are populated with commands initiated by data owners and data consumers.
+The goal of this module is to provide the mechanisms for encryption, reencryption, reencapsulation, and decryption of data. 
 
-The `IngestionQueue` contains commands initiated by data owners to ingest data into the underlying IPFS network and to create a new asset class on their behalf.
+## Overview 
 
-The `EjectionQueue` contains commands initiated  by data consumers to eject data from the underlying IPFS network when authorized consumers make such a request. The proxy is not responsible for authorizing the consumer, only for verifying the authorization.
 
-## Configuration
 
-* min_proxy_bond: The minimum amount of tokens that a proxy must bond
-* max_proxy_count: The maximum number of proxies before we block new proxies from joining
+### Terminology
 
-## Staking
+* `data_owner`: A data owner is any node who owns an on-chain data asset class
+* `data_consumer`: A data consumer is any node has gained authorization to decrypt the data
+* `delegator`: A delegator is any node who delegates decryption rights to another node. Usually this will take the form of a rule executor smart contract.
+* `delegatee`: A delegatee is any node who has had decryption rights delegated to it. In general, we can use this synonymously with 'authorized data consumer'.
+* `proxy`: A proxy node is a validator node who has been selected to reencrypt some data
 
-* staking: An authority must stake an additional 50 (TBD) IRIS in order to be eligible to proxy requests.
-* unstaking: A proxy can reduce or reclaim its stake at any point in time, as long as there are no commands which it is currently responsible to execute.
-* chilling: A proxy node can choose to 'chill' at any time, wherein its stake is still maintained but it will not be elected to proxy requests.
-* freezing: Any proxy node whose stake has been reduced below the threshold or who has been offline for greater than 1000 (TBD) sessions is frozen. In order to reclaim its stake, the node must first reactivate itself by going online.
+### Goals
 
-## Rewards
+This module enables:
 
-### Vesting Schedule
+* data encryption via RPC
+* data decryption via RPC
+* reencryption of encrypted data by proxy nodes
+* reencapsulation of key fragments by validator nodes
 
-Rewards are distributed based on a vesting schedule. When a request is added to the ingestion queue by a data owner, the price for the gateway node is locked and the data owner locks that amount of currency within a vesting schedule. 
+## Interface
 
-wishful thinking: The 50% of the total is distributed after an asset class is created
-over the next 50 blocks, the other 50% is leaked to the gateway, 1% per block.
+### RPC
 
-## Slashing
+The RPC endpoints whose logic exists in this pallet facilitate encryption of data and decryption of data through the TPRE system. These two endpoints are the pentultimate ingress and egress points for plaintext in the Iris blockchain.
 
-We use a slashing mechanism to discourage poor behavior. Further, this mechanism punishes nodes who do not properly proxy requests to the underlying ipfs node. To be explicity, we slash funds based on:
+#### Encrypt
 
-* time to process requests: if a live proxy doesn't respond from a request to execute an ipfs function, we slash based on the amount of time that they have exceeded. If they never respond but remain online, we continue slashing until their staked amount falls under the minimum stake amount, after which they are marked ineligible.
+The `iris_encrypt` RPC allows a potential data owner to encrypt data and stage encryption artifacts into runtime storage, and ciphertext is returned from the endpoint.
 
-## Election Algorithm
+#### Decrypt
 
-The election algorithm currently in use is described [here](./node_election.md).
+The `iris_decrypt` RPC allows an authorized data consumer to decrypt some ciphertext for which they've received reencryption keys.
+
+### Dispatachable Functions
+
+### Public Functions
+
+## Usage
+
+### Prerequisites
+
+### Simple Code Snippet
+
+## Assumptions

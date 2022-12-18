@@ -17,23 +17,6 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-//! # Data Space Pallet
-//!
-//! ## Overview
-//!
-//! ### Goals
-//! The Data Space module provides functionality for creation and management of data spaces and data space accessibility
-//! 
-//! ### Dispatchable Functions 
-//!
-//! #### Permissionless functions
-//! * create
-//!
-//! #### Permissioned Functions
-//! * mint
-//! * bond
-//!
-
 use scale_info::TypeInfo;
 use codec::{Encode, Decode};
 use frame_support::{

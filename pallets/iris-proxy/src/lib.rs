@@ -130,13 +130,6 @@ pub mod crypto {
 	}
 }
 
-/// the struct to hold reencryption key info
-// pub struct ReencryptionMetadata<AccountId> {
-// 	pub original_public_key: Vec<u8>,
-// 	pub ephemeral_publib_key: Vec<u8>,
-// 	pub encrypted_ephemeral_secret_key: EncryptedBox<AccountId>,
-// }
-
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
@@ -148,7 +141,6 @@ pub mod pallet {
 		}
 	};
 
-	/// TODO: Only using pallet_assets::config because I'm lazy
 	#[pallet::config]
 	pub trait Config: CreateSignedTransaction<Call<Self>> + frame_system::Config +
 															pallet_assets::Config +
@@ -178,7 +170,7 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         Vec<u8>,  // public key -> should use a type alias instead...
-        TPREEncryptionArtifact<T::AccountId>, // proxy accountid
+        TPREEncryptionArtifact<T::AccountId>,
         OptionQuery,
     >;
 
@@ -243,7 +235,6 @@ pub mod pallet {
 		ReencapsulationComplete,
 	}
 
-	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
 		InsufficientAuthorities,
@@ -256,7 +247,6 @@ pub mod pallet {
 		type Call = Call<T>;
 
 		/// Validate unsigned call to this module.
-		///
 		fn validate_unsigned(_source: TransactionSource, _call: &Self::Call) -> TransactionValidity {
 			// TODO: accept all for now
 			// if let Call::name{ .. } = call {
@@ -270,7 +260,15 @@ pub mod pallet {
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 
-		#[pallet::weight(100_000)]
+		/// This function allows validators to submit encrypted capsule fragments to be encoded in the runtime. 
+		/// In general, this functional should be called *only* by offchain workers, which is why the weight is left
+		/// as 0.
+		/// 
+		/// `data_consumer`: The account id for which the capsule fragment has been created
+		/// `public_key`: The unique public key that identifies the encrypted data
+		/// `encrypted_cfrag_data`: The encrypted capsule fragment
+		/// 
+		#[pallet::weight(0)]
 		pub fn submit_capsule_fragment(
 			origin: OriginFor<T>,
 			data_consumer: T::AccountId,
@@ -290,8 +288,18 @@ pub mod pallet {
 			Ok(())
 		}
 		
-		/// called by a proxy who generated new kfrags for another node
-		#[pallet::weight(100_000)]
+		/// Thus function is intended to be called by a proxy node who generated key fragments.
+		/// 
+		/// `consumer`: The account for which key fragments were generated
+		/// `receiving_public_key`: A new key created by the proxy and whose secret is provided to the consumer.
+		/// `delegating_public_key`: The public key of the delegating account (this will be the same unique pubkey 
+		/// 							generated when we encrypted the data).
+		///  `consumer_public_key`: The public key provided by the consumer
+		/// `verifying_public_key`: The public key for the verifying keypair (generated during reencryptiog)
+		/// `kfrag_assignments`: A map which assigns encrypted key fragments to specific validator nodes
+		/// `encrypted_receiving_sk`: A secret key that should be encrytped with the consumer_public_key
+		/// 
+		#[pallet::weight(0)]
 		pub fn submit_reencryption_keys(
 			origin: OriginFor<T>,
 			consumer: T::AccountId,
@@ -334,7 +342,14 @@ pub mod pallet {
 			Ok(())
 		}
 
-		// TODO: This is pretty insecure
+		/// This function allows encryption artifacts to be encoded on chain.
+		/// 
+		/// * `owner`: The owner of the encrypted data
+		/// * `proxy`: The proxy assigned to process reencryption requests
+		/// * `capsule`: The newly created capsule object to be encoded
+		/// * `public_key`: The newly created public key to be encoded
+		/// * `encrypted_sk_box`: The newly created and ecnrypted secret for the owner
+		/// 
 		#[pallet::weight(0)]
         pub fn submit_encryption_artifacts(
             _origin: OriginFor<T>,

@@ -1,9 +1,28 @@
 # Authorization
 
-This pallet allows a rule executor to be associated with an asset class and allows for that rule executor to submit results on chain in order to grant or deny data authorization to specific addresses.
+This pallet allows data owners to make their data accessible to consumers by providing mechanisms to grant them decryption rights.
 
-## Locking Mechanism
+## Overview
 
-All data locked or unlocked by a rule executor is found in the `Lock` storage double map. This runtime storage map associates a rule executor address and consumer address combination with a vector of asset ids which are associated with a boolean status, where true implies that the data is currently unlocked for the consumer and false implies that it is locked.
+The Authorization pallet allows a data owner to register an account id with their asset id in order to authorize that account to provide or deny decryption rights to consumers who request it.
 
-When data is unlocked, it is implicitly loaded into hot storage and delivered to the consumer. Unlocked data is locked again after one session passes.
+### Terminology
+
+* `data_owner`: The owner of some data
+* `asset_id`: An asset id is an unsigned 32 bit integer that unqiue identifies an on-chain data asset class
+
+### Goals
+
+## Interface
+
+### Dispatachable Functions
+
+### Public Functions
+
+## Usage
+
+### Prerequisites
+
+### Simple Code Snippet
+
+## Assumptions
