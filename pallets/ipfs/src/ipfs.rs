@@ -120,9 +120,9 @@ pub fn identity() -> Result<http::Response, http::Error> {
 /// 
 pub fn config_update(config_item: IpfsConfigRequest) -> Result<(), http::Error> {
     let mut endpoint = Capabilities::ConfigUpdate.as_ref().to_owned();
-    endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), &config_item.key, true)
+    endpoint = add_arg(endpoint, "arg".as_bytes(), &config_item.key, true)
         .map_err(|_| http::Error::Unknown).unwrap();
-    endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), &config_item.value, false)
+    endpoint = add_arg(endpoint, "arg".as_bytes(), &config_item.value, false)
         .map_err(|_| http::Error::Unknown).unwrap();
     ipfs_post_request(&endpoint, None)?;
     Ok(())
@@ -151,9 +151,9 @@ pub fn repo_stat() -> Result<serde_json::Value, http::Error> {
 /// 
 /// * multiaddress: The multiaddress to connect to
 /// 
-pub fn connect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
+pub fn connect(multiaddress: &[u8]) -> Result<(), http::Error> {
     let mut endpoint = Capabilities::Connect.as_ref().to_owned();
-    endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), multiaddress, false)
+    endpoint = add_arg(endpoint, "arg".as_bytes(), multiaddress, false)
         .map_err(|_| http::Error::Unknown).unwrap();
     ipfs_post_request(&endpoint, None)?;
     Ok(())
@@ -163,9 +163,9 @@ pub fn connect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
 /// 
 /// * multiaddress: The multiaddress to disconnect from
 /// 
-pub fn disconnect(multiaddress: &Vec<u8>) -> Result<(), http::Error> {
+pub fn disconnect(multiaddress: &[u8]) -> Result<(), http::Error> {
     let mut endpoint = Capabilities::Disconnect.as_ref().to_owned();
-    endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), multiaddress, false)
+    endpoint = add_arg(endpoint, "arg".as_bytes(), multiaddress, false)
         .map_err(|_| http::Error::Unknown).unwrap();
     ipfs_post_request(&endpoint, None)?;
     Ok(())
@@ -190,12 +190,12 @@ pub fn add(ipfs_add_request: IpfsAddRequest) -> Result<http::Response, http::Err
             return Err(http::Error::Unknown);
         }
     }
-    req_body.push_str(&"}".to_owned());
+    req_body.push_str("}");
     let body: &[u8] = req_body.as_bytes();
     let pending = http::Request::default()
                 .add_header("Content-Type", "multipart/form-data")
                 .method(http::Method::Post)
-                .url(&endpoint)
+                .url(endpoint)
                 .body(vec![body])
                 .send()
                 .unwrap();
@@ -211,9 +211,9 @@ pub fn add(ipfs_add_request: IpfsAddRequest) -> Result<http::Response, http::Err
 /// 
 /// * cid: The CID to fetch.
 /// 
-pub fn get(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
+pub fn get(cid: &[u8]) -> Result<http::Response, http::Error> {
     let mut endpoint = Capabilities::Get.as_ref().to_owned();
-    endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
+    endpoint = add_arg(endpoint, "arg".as_bytes(), cid, false)
         .map_err(|_| http::Error::Unknown).unwrap();
     let res = ipfs_post_request(&endpoint, None).unwrap();
     Ok(res)
@@ -223,9 +223,9 @@ pub fn get(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
 /// 
 /// cid: The CID to cat
 /// 
-pub fn cat(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
+pub fn cat(cid: &[u8]) -> Result<http::Response, http::Error> {
     let mut endpoint = Capabilities::Cat.as_ref().to_owned();
-    endpoint = add_arg(endpoint, &"arg".as_bytes().to_vec(), cid, false)
+    endpoint = add_arg(endpoint, "arg".as_bytes(), cid, false)
         .map_err(|_| http::Error::Unknown).unwrap();
     let res = ipfs_post_request(&endpoint, None);
     Ok(res.unwrap())
@@ -238,11 +238,11 @@ pub fn cat(cid: &Vec<u8>) -> Result<http::Response, http::Error> {
 pub fn parse(input: &str) -> Result<Value, serde_json::Error> {
     match serde_json::from_str(input) {
         Ok(v) => {
-            return Ok(v);
+            Ok(v)
         },
         Err(e) => {
             log::error!("An error occured while parsing input: {:?}", e);
-            return Err(e)
+            Err(e)
         }
     }
 }
@@ -255,8 +255,8 @@ pub fn parse(input: &str) -> Result<Value, serde_json::Error> {
 /// 
 fn add_arg(
     mut endpoint: String,
-    key: &Vec<u8>,
-    value: &Vec<u8>,
+    key: &[u8],
+    value: &[u8],
     append_and: bool,
 ) -> Result<String, Utf8Error> {
     match str::from_utf8(key) {

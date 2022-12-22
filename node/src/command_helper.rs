@@ -107,10 +107,10 @@ pub fn create_benchmark_extrinsic(
 	let signature = raw_payload.using_encoded(|e| sender.sign(e));
 
 	runtime::UncheckedExtrinsic::new_signed(
-		call.clone(),
+		call,
 		sp_runtime::AccountId32::from(sender.public()).into(),
-		runtime::Signature::Sr25519(signature.clone()),
-		extra.clone(),
+		runtime::Signature::Sr25519(signature),
+		extra,
 	)
 }
 
@@ -124,6 +124,6 @@ pub fn inherent_benchmark_data() -> Result<InherentData> {
 
 	timestamp
 		.provide_inherent_data(&mut inherent_data)
-		.map_err(|e| format!("creating inherent data: {:?}", e))?;
+		.map_err(|e| format!("creating inherent data: {e:?}"))?;
 	Ok(inherent_data)
 }

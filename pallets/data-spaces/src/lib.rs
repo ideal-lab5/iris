@@ -131,14 +131,14 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             let new_origin = system::RawOrigin::Signed(who.clone()).into();
             <pallet_assets::Pallet<T>>::create(
-                new_origin, id.clone(), admin.clone(), balance
+                new_origin, id, admin, balance
             ).map_err(|_| Error::<T>::CantCreateAssetClass)?;
             // associate asset id with name
-            <Metadata<T>>::insert(id.clone(), DataSpaceMetadata { 
-                name: name.clone(),
+            <Metadata<T>>::insert(id, DataSpaceMetadata { 
+                name,
                 asset_ids: Vec::new(),
             });
-            Self::deposit_event(Event::DataSpaceCreationSuccess(who.clone(), id.clone()));
+            Self::deposit_event(Event::DataSpaceCreationSuccess(who, id));
 			Ok(())
         }
 
@@ -151,17 +151,17 @@ pub mod pallet {
             #[pallet::compact] amount: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let new_origin = system::RawOrigin::Signed(who.clone()).into();
+            let new_origin = system::RawOrigin::Signed(who).into();
             let beneficiary_accountid = T::Lookup::lookup(beneficiary.clone())?;
             <pallet_assets::Pallet<T>>::mint(
                 new_origin, 
-                asset_id.clone(), 
-                beneficiary.clone(), 
+                asset_id, 
+                beneficiary, 
                 amount
             ).map_err(|_| Error::<T>::CantMintAssets)?;
         
             Self::deposit_event(Event::DataSpaceAssetCreationSuccess(
-                beneficiary_accountid.clone(), asset_id.clone()
+                beneficiary_accountid, asset_id
             ));
             Ok(())
         }
@@ -177,16 +177,16 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // check that the caller has dataspace access
-            let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id.clone(), who.clone());
+            let balance = <pallet_assets::Pallet<T>>::balance(dataspace_id, who);
             let balance_primitive = TryInto::<u128>::try_into(balance).ok();
             ensure!(balance_primitive != Some(0), Error::<T>::DataSpaceNotAccessible);
-            let mut metadata = <Metadata::<T>>::get(dataspace_id.clone()).unwrap();
+            let mut metadata = <Metadata::<T>>::get(dataspace_id).unwrap();
             //  duplicate avoidance 
             if !metadata.asset_ids.contains(&asset_class_id.clone()) {
-                metadata.asset_ids.push(asset_class_id.clone());
-                <Metadata<T>>::insert(dataspace_id.clone(), metadata);
+                metadata.asset_ids.push(asset_class_id);
+                <Metadata<T>>::insert(dataspace_id, metadata);
                 Self::deposit_event(Event::DataSpaceAssociationSuccess(
-                    dataspace_id.clone(), asset_class_id.clone()
+                    dataspace_id, asset_class_id,
                 ));
             }
             

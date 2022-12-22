@@ -271,7 +271,7 @@ pub mod pallet {
             #[pallet::compact] min_asset_balance: T::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let g = T::Lookup::lookup(gateway.clone())?; 
+            let g = T::Lookup::lookup(gateway)?; 
             // first ensure that the caller has sufficent funds
             // let current_block_number = <frame_system::Pallet<T>>::block_number();
             // let target_block = current_block_number + Delay::<T>::get().into();
@@ -283,13 +283,13 @@ pub mod pallet {
             // issue the command
             let mut commands = IngestionCommands::<T>::get(g.clone());
             let cmd = IngestionCommand {
-                owner: who.clone(),
-                cid: cid,
-                multiaddress: multiaddress,
+                owner: who,
+                cid,
+                multiaddress,
                 balance: min_asset_balance,
             };
-            commands.push(cmd.clone());
-            IngestionCommands::<T>::insert(g.clone(), commands);
+            commands.push(cmd);
+            IngestionCommands::<T>::insert(g, commands);
             Self::deposit_event(Event::CreatedIngestionRequest);
 			Ok(())
         }
@@ -349,7 +349,7 @@ pub trait QueueManager<AccountId, Balance> {
 impl<T: Config> QueueManager<T::AccountId, T::Balance> for Pallet<T> {
 
     fn add_ingestion_staging(owner: T::AccountId, public_key: Vec<u8>) {
-        IngestionStaging::<T>::insert(owner.clone(), public_key.clone());
+        IngestionStaging::<T>::insert(owner, public_key);
     }
 
     fn ingestion_requests(gateway: T::AccountId) -> Vec<IngestionCommand<T::AccountId, T::Balance>> {
@@ -388,18 +388,18 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::AssetId, T::Balance> for Pall
         if let Some(pubkey) = IngestionStaging::<T>::get(who.clone()) {
             let admin = T::Lookup::unlookup(cmd.clone().owner);
             let new_origin = system::RawOrigin::Signed(who.clone()).into();
-            <pallet_assets::Pallet<T>>::create(new_origin, asset_id.clone(), admin.clone(), cmd.balance.clone())
+            <pallet_assets::Pallet<T>>::create(new_origin, asset_id, admin, cmd.balance)
                 .map_err(|e| {
                     log::info!("Failed to create asset class due to error: {:?}", e);
-                    return Error::<T>::CantCreateAssetClass;
+                    Error::<T>::CantCreateAssetClass
                 })?;
-            Metadata::<T>::insert(asset_id.clone(), AssetMetadata {
+            Metadata::<T>::insert(asset_id, AssetMetadata {
                 cid: cmd.cid.clone(),
                 public_key: pubkey,
             });
-            AssetClassOwnership::<T>::mutate(cmd.owner.clone(), |ids| { ids.push(asset_id.clone()); });
+            AssetClassOwnership::<T>::mutate(cmd.owner.clone(), |ids| { ids.push(asset_id); });
             IngestionStaging::<T>::remove(cmd.owner.clone());
-            IngestionCommands::<T>::mutate(who.clone(), |cmds| {
+            IngestionCommands::<T>::mutate(who, |cmds| {
                 cmds.retain(|c| *c != cmd);
             });
         }
