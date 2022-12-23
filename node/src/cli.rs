@@ -16,6 +16,14 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 use sc_cli::RunCmd;
 
+/// The `run` command used to run a node.
+#[derive(Debug, Clone, clap::Parser)]
+struct RunIrisCmd {
+	pub run: RunCmd,
+	#[clap(long, value_name = "ipfs-port", parse(from_str = parse_cors))]
+	pub ipfs_port: u8,
+}
+
 #[derive(Debug, clap::Parser)]
 pub struct Cli {
 	#[clap(subcommand)]

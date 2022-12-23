@@ -1,17 +1,42 @@
-version: "3.2"
-
+version: "3"
 services:
-  dev:
-    container_name: iris-node
-    image: paritytech/ci-linux:latest
-    working_dir: /var/www/iris-node
+  validator_alice:
+    container_name: iris-alice
+    image: driemworks/iris:latest
     ports:
       - "9944:9944"
-    environment:
-      - CARGO_HOME=/var/www/iris-node/.cargo
+      - "9615:9615"
     volumes:
-      - .:/var/www/iris-node
-      - type: bind
-        source: ./.local
-        target: /root/.local
-    command: bash -c "cargo build --release && ./target/release/iris-node --dev --ws-external"
+      - ./target/release/iris-node:/usr/local/bin/iris-node
+    command:
+      - "--node-key"
+      - "0000000000000000000000000000000000000000000000000000000000000001"
+      - "--base-path"
+      - "/tmp/alice"
+      - "--chain=local"
+      - "--port"
+      - "30333"
+      - "--validator"
+      - "--alice"
+      # Not only bind to localhost.
+      - "--unsafe-ws-external"
+      - "--unsafe-rpc-external"
+      - "--log"
+      - "--no-telemetry"
+      - "--rpc-cors"
+      - "all"
+
+#   ipfs_alice:
+#     image: ipfs/go-ipfs:latest
+#     ports:
+#       - 4001:4001
+#       - 8080:8080
+#       - 5001:5001
+#     environment:
+#       LIBP2P_FORCE_PNET: '1'
+#       SWARM_KEY: "/key/swarm/psk/1.0.0/\n/base16/\nc8f137a37663e8d80017f96fd6fa03f437ad5256ddcfd7433ce44100a5a09f7d"
+#       SWARM_PEER: /ip4/18.118.65.202/tcp/4001/p2p/12D3KooWJ5wuqGnr6u8XV6FeBbP1MBBamUpavwfotRag2JnTrF9p
+#     volumes:
+#       - ipfs:/data/ipfs
+# volumes:
+#   ipfs:
