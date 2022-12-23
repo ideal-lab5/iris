@@ -93,7 +93,7 @@ pub fn ipfs_can_submit_ingestion_complete() {
 				cmd,
 			));
 			// // Then: A new asset class is created with asset id 1
-			let asset = Assets::asset(3);
+			let asset = Assets::asset(5);
 			assert_ne!(asset, None);
 			assert_eq!(test_data.p.public().clone(), asset.unwrap().owner);
 		});

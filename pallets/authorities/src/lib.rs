@@ -47,7 +47,6 @@ use frame_support::{
 		ValidatorSet, ValidatorSetWithIdentification,
 	},
 };
-use log;
 use scale_info::TypeInfo;
 pub use pallet::*;
 use sp_runtime::{
@@ -78,7 +77,7 @@ use rand_chacha::{
 	rand_core::SeedableRng,
 };
 
-pub const LOG_TARGET: &'static str = "runtime::authorities";
+pub const LOG_TARGET: &str = "runtime::authorities";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
 
@@ -331,7 +330,7 @@ pub mod pallet {
 			public_key: Vec<u8>,
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
-			X25519PublicKeys::<T>::insert(who.clone(), public_key);
+			X25519PublicKeys::<T>::insert(who, public_key);
 			Ok(())
 		}
 	}
@@ -352,7 +351,7 @@ impl<T: Config> Pallet<T> {
 		let validator_set: BTreeSet<_> = <Validators<T>>::get().into_iter().collect();
 		ensure!(!validator_set.contains(&validator_id), Error::<T>::Duplicate);
 		<Validators<T>>::mutate(|v| v.push(validator_id.clone()));
-		Self::deposit_event(Event::ValidatorAdditionInitiated(validator_id.clone()));
+		Self::deposit_event(Event::ValidatorAdditionInitiated(validator_id));
 		log::debug!(target: LOG_TARGET, "Validator addition initiated.");
 
 		Ok(())

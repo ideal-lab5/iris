@@ -382,7 +382,7 @@ impl pallet_authorities::Config for Runtime {
 }
 
 parameter_types! {
-	pub const Period: u32 = 1 * MINUTES;
+	pub const Period: u32 = MINUTES;
 	pub const Offset: u32 = 0;
 }
 
@@ -430,11 +430,11 @@ pub const DOLLARS: Balance = 100 * CENTS;
 parameter_types! {
 	pub const AssetDeposit: Balance = 100 * DOLLARS;
 	// TODO: What is the proper amount for this?
-	pub const AssetAccountDeposit: Balance = 1 * DOLLARS;
-	pub const ApprovalDeposit: Balance = 1 * DOLLARS;
+	pub const AssetAccountDeposit: Balance =  DOLLARS;
+	pub const ApprovalDeposit: Balance = DOLLARS;
 	pub const StringLimit: u32 = 50;
 	pub const MetadataDepositBase: Balance = 10 * DOLLARS;
-	pub const MetadataDepositPerByte: Balance = 1 * DOLLARS;
+	pub const MetadataDepositPerByte: Balance = DOLLARS;
 }
 
 impl pallet_assets::Config for Runtime {
@@ -548,7 +548,7 @@ impl pallet_ipfs::Config for Runtime {
 }
 
 parameter_types! {
-	pub const MinVestedTransfer: Balance = 1 * MILLICENTS;
+	pub const MinVestedTransfer: Balance = MILLICENTS;
 }
 
 impl pallet_vesting::Config for Runtime {
@@ -1055,7 +1055,7 @@ impl ChainExtension<Runtime> for IrisExtension {
 				let origin: Origin = system::RawOrigin::Signed(caller_account).into();
 
 				crate::Ledger::lock_currency(
-					origin, amount.into(),
+					origin, amount,
 				)?;
 				Ok(RetVal::Converging(func_id))
 			},
@@ -1084,7 +1084,7 @@ impl ChainExtension<Runtime> for IrisExtension {
 			},
             _ => {
                 error!("Called an unregistered `func_id`: {:}", func_id);
-                return Err(DispatchError::Other("Unimplemented func_id"))
+                Err(DispatchError::Other("Unimplemented func_id"))
             }
         }
     }

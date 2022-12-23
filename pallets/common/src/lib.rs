@@ -67,7 +67,7 @@ pub fn encrypt_x25519(
 
     EncryptedBox { 
         nonce: nonce.as_slice().to_vec(),
-        ciphertext: ciphertext,
+        ciphertext,
         public_key: ephemeral_secret_key.public_key().as_bytes().to_vec()
     }
 }
@@ -107,7 +107,7 @@ pub fn decrypt_x25519(
 pub fn vec_to_box_public_key(pk_vec: &[u8]) -> BoxPublicKey {
     // TODO: error handling
     let pk_array = slice_to_array_32(pk_vec).unwrap();
-    BoxPublicKey::from(pk_array.clone())
+    BoxPublicKey::from(*pk_array)
 }
 
 /// Convert a slice of u8 to an array of u8 of size 32

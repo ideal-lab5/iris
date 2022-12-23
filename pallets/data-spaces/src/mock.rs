@@ -314,7 +314,7 @@ impl Config for Test {
 	type Currency = Balances;
 	type Call = Call;
 	type Event = Event;
-	type AuthorityId = pallet_data_spaces::crypto::TestAuthId;
+	type AuthorityId = pallet_authorities::crypto::TestAuthId;
 }
 
 // Build genesis storage according to the mock runtime.

@@ -37,7 +37,6 @@ use frame_support::{
 	pallet_prelude::*,
 	traits::{ Get, LockableCurrency },
 };
-use log;
 use serde_json::Value;
 use sp_runtime::offchain::OpaqueMultiaddr;
 use scale_info::TypeInfo;
@@ -60,9 +59,8 @@ use iris_primitives::IngestionCommand;
 use pallet_gateway::ProxyProvider;
 use pallet_data_assets::{ResultsHandler, QueueManager};
 use pallet_iris_proxy::OffchainKeyManager;
-// use sp_runtime::offchain::storage::StorageValueRef;
 
-pub const LOG_TARGET: &'static str = "runtime::proxy";
+pub const LOG_TARGET: & str = "runtime::ipfs";
 
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
 
@@ -72,8 +70,6 @@ pub mod crypto {
 	use sp_runtime::app_crypto::{app_crypto, sr25519};
 	use sp_runtime::{traits::Verify, MultiSignature, MultiSigner};
 	use sp_std::convert::TryFrom;
-
-	// pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
 
 	app_crypto!(sr25519, KEY_TYPE);
 
@@ -224,7 +220,7 @@ pub mod pallet {
 					Ok(id_json) => {
 						let id = &id_json["ID"];
 						let pubkey = id.clone().as_str().unwrap().as_bytes().to_vec();
-						match <SubstrateIpfsBridge::<T>>::get(&pubkey) {
+						match <SubstrateIpfsBridge::<T>>::get(pubkey) {
 							Some(addr) => {
 								if <pallet_authorities::Pallet<T>>::x25519_public_keys(addr.clone()).is_empty() {
 									// should only happen once
@@ -239,7 +235,7 @@ pub mod pallet {
 									}
 									let authorities = <pallet_authorities::Pallet<T>>::validators();
 									T::OffchainKeyManager::process_reencryption_requests(addr.clone());
-									T::OffchainKeyManager::process_decryption_delegation(addr.clone(), authorities);
+									T::OffchainKeyManager::process_decryption_delegation(addr, authorities);
 								} 
 							},
 							None => {
@@ -281,7 +277,7 @@ pub mod pallet {
 			let queued_commands = T::QueueManager::ingestion_requests(who.clone());
 			ensure!(queued_commands.contains(&cmd), Error::<T>::NotAuthorized);
 			let new_origin = system::RawOrigin::Signed(who.clone()).into();
-			let new_asset_id = T::ProxyProvider::next_asset_id(who.clone());
+			let new_asset_id = T::ProxyProvider::next_asset_id(who);
 			T::ResultsHandler::create_asset_class(new_origin, cmd, new_asset_id.into())?;
 			Self::deposit_event(Event::IngestionComplete());
             Ok(())
@@ -306,9 +302,9 @@ pub mod pallet {
 				let existing_association = <SubstrateIpfsBridge::<T>>::get(public_key.clone()).unwrap();
 				ensure!(who == existing_association, Error::<T>::InvalidPublicKey);
 			}
-			<BootstrapNodes::<T>>::insert(public_key.clone(), multiaddresses.clone());
-			<SubstrateIpfsBridge::<T>>::insert(public_key.clone(), who.clone());
-			Self::deposit_event(Event::IdentitySubmitted(who.clone()));
+			<BootstrapNodes::<T>>::insert(public_key.clone(), multiaddresses);
+			<SubstrateIpfsBridge::<T>>::insert(public_key, who.clone());
+			Self::deposit_event(Event::IdentitySubmitted(who));
             Ok(())
         }
 
@@ -319,7 +315,7 @@ pub mod pallet {
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			<Stats<T>>::insert(who.clone(), reported_storage_size);
-			Self::deposit_event(Event::ConfigurationSyncSubmitted(who.clone()));
+			Self::deposit_event(Event::ConfigurationSyncSubmitted(who));
 			Ok(())
 		}
 	}
@@ -346,12 +342,11 @@ impl<T: Config> Pallet<T> {
 		match ipfs::identity() {
 			Ok(res) => {
 				let out = res.body().collect::<Vec<u8>>();
-				// local_storage.set(&out);
-				return Ok(out.clone());
+				Ok(out)
 			} 
 			Err(e) => {
 				log::error!("Something went wrong while attempting to get the IPFS node identity: {:?}", e);
-				return Err(Error::<T>::IpfsNotAvailable);
+				Err(Error::<T>::IpfsNotAvailable)
 			}
 		}
 		// }
@@ -392,11 +387,11 @@ impl<T: Config> Pallet<T> {
 		Ok(())
 	}
 
-	/// update the running ipfs daemon's configuration to be in sync
+/// update the running ipfs daemon's configuration to be in sync
 	/// with the latest on-chain valid configuration values
 	/// 
 	fn ipfs_update_configs(account: T::AccountId) -> Result<(), Error<T>> {
-		match T::ProxyProvider::prefs(account.clone()) {
+		match T::ProxyProvider::prefs(account) {
 			// TODO: read from prefs...
 			Some(_prefs) => {
 				// for now, default to 50mb
@@ -404,38 +399,33 @@ impl<T: Config> Pallet<T> {
 				// 4. Make calls to update ipfs node config
 				let key = IpfsConfigKey::StorageMax.as_ref().as_bytes().to_vec();
 				let storage_size_config_item = ipfs::IpfsConfigRequest{
-					key: key.clone(),
-					value: val.clone(),
+					key,
+					value: val,
 					boolean: None,
 					json: None,
 				};
 				ipfs::config_update(storage_size_config_item).map_err(|_| Error::<T>::ConfigUpdateFailure)?;
 				let stat_response = ipfs::repo_stat().map_err(|_| Error::<T>::IpfsNotAvailable).unwrap();
 				// 2. get actual available storage space
-				match stat_response["StorageMax"].clone().as_u64() {
-					Some(actual_storage) => {
-						// 3. report result on chain
-						let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
-						if !signer.can_sign() {
-							log::error!(
-								"No local accounts available. Consider adding one via `author_insertKey` RPC.",
-							);
+				if let Some(actual_storage) = stat_response["StorageMax"].clone().as_u64() {
+					// 3. report result on chain
+					let signer = Signer::<T, <T as pallet::Config>::AuthorityId>::all_accounts();
+					if !signer.can_sign() {
+						log::error!(
+							"No local accounts available. Consider adding one via `author_insertKey` RPC.",
+						);
+					}
+					let results = signer.send_signed_transaction(|_account| { 
+						Call::submit_config_complete{
+							reported_storage_size: actual_storage.into(),
 						}
-						let results = signer.send_signed_transaction(|_account| { 
-							Call::submit_config_complete{
-								reported_storage_size: actual_storage.into(),
-							}
-						});
+					});
 
-						for (_, res) in &results {
-							match res {
-								Ok(()) => log::info!("Submitted results successfully"),
-								Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
-							}
+					for (_, res) in &results {
+						match res {
+							Ok(()) => log::info!("Submitted results successfully"),
+							Err(e) => log::error!("Failed to submit transaction: {:?}",  e),
 						}
-					},
-					None => {
-						// do nothing for now
 					}
 				}
 			},
@@ -446,7 +436,7 @@ impl<T: Config> Pallet<T> {
 		}
 		Ok(())
 	}
-	
+
 	/// manage connection to the iris ipfs swarm
     ///
     /// If the node is already a bootstrap node, do nothing. Otherwise submits a signed tx 
@@ -492,7 +482,6 @@ impl<T: Config> Pallet<T> {
 		Ok(())
 	}
 }
-
 
 
 

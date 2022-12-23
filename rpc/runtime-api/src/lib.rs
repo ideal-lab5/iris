@@ -20,7 +20,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use sp_core::Bytes;
-use sp_std::vec::Vec;
 
 use codec::Codec;
 use sp_runtime::{

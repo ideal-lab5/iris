@@ -87,7 +87,7 @@ pub struct Encryption<C, P> {
 }
 
 impl<C, P> Encryption<C, P> {
-	/// create new 'Encrypt' instance with the given reference	to the client
+	/// create new 'Encrypt' instance with the given reference to the client
 	pub fn new(client: Arc<C>) -> Self {
 		Self { client, _marker: Default::default() }
 	}

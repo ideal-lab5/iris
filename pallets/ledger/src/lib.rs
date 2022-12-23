@@ -126,10 +126,10 @@ pub mod pallet {
             T::IrisCurrency::set_lock(
                 IRIS_LOCK_ID,
                 &who,
-                amount.clone(),
+                amount,
                 WithdrawReasons::all(),
             );
-            <Ledger<T>>::insert(who.clone(), amount.clone());
+            <Ledger<T>>::insert(who.clone(), amount);
             Self::deposit_event(Event::Locked(who, amount));
             Ok(())
         }

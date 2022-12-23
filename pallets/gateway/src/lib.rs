@@ -58,20 +58,9 @@ use sp_runtime::traits::StaticLookup;
 use codec::HasCompact;
 use pallet_authorities::EraProvider;
 
-pub const LOG_TARGET: &'static str = "runtime::proxy";
+pub const LOG_TARGET: &str = "runtime::proxy";
 // TODO: should a new KeyTypeId be defined? e.g. b"iris"
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"aura");
-
-// syntactic sugar for logging.
-#[macro_export]
-macro_rules! log {
-	($level:tt, $patter:expr $(, $values:expr)* $(,)?) => {
-		log::$level!(
-			target: crate::LOG_TARGET,
-			concat!("[{:?}] 💸 ", $patter), <frame_system::Pallet<T>>::block_number() $(, $values)*
-		)
-	};
-}
 
 const STAKING_ID: LockIdentifier = *b"staking ";
 
@@ -83,6 +72,8 @@ pub type EraIndex = u32;
 /// counter for the number of "reward" points earned by a given storage provider
 pub type RewardPoint = u32;
 
+
+pub type GatewayGenesisConfig<AccountId, BalanceOf> = (AccountId, AccountId, BalanceOf, ProxyStatus);
 
 parameter_types! {
 	pub MaxUnlockingChunks: u32 = 32;
@@ -333,8 +324,7 @@ pub mod pallet {
 
 	#[pallet::genesis_config]
 	pub struct GenesisConfig<T: Config> {
-		pub initial_proxies:
-			Vec<(T::AccountId, T::AccountId, BalanceOf<T>, ProxyStatus)>,
+		pub initial_proxies:Vec<GatewayGenesisConfig<T::AccountId, BalanceOf<T>>>,
 		pub min_proxy_bond: BalanceOf<T>,
 		pub max_proxy_count: Option<u32>,
 		// pub history_depth: u32,
@@ -582,16 +572,14 @@ impl<T: Config> Pallet<T> {
 	///
 	/// Initialize proxies on gensis
 	/// 
-	/// * initial_proxies: A vector of proxies to initalize, containing:
-	/// 					(controller, slash, balance, status)
+	/// * initial_proxies: A vector of proxies to initalize, containing (controller, slash, balance, status)
 	/// 
 	fn initialize_proxies(
-		initial_proxies: &Vec<(T::AccountId, T::AccountId, BalanceOf<T>, ProxyStatus)>
+		initial_proxies: &Vec<GatewayGenesisConfig<T::AccountId, BalanceOf<T>>>
 	) {
 		for &(ref stash, ref controller, balance, ref status) in initial_proxies {
-			crate::log!(
-				trace,
-				"inserting genesis proxy: {:?} => {:?} => {:?}",
+			log::info!(
+				"inserting genesis gateway: {:?} => {:?} => {:?}",
 				stash,
 				balance,
 				status
@@ -620,10 +608,10 @@ impl<T: Config> Pallet<T> {
 	/// * prefs: The GatewayPrefs to insert
 	/// 
 	fn do_add_proxy(who: &T::AccountId, prefs: GatewayPrefs) {
-		Proxies::<T>::insert(who.clone(), prefs.clone());
-		let primes = vec![2, 3, 5, 7, 9, 11, 13, 17, 19, 27, 29, 31, 37, 41, 43, 47, 51, 59, 67, ];
+		Proxies::<T>::insert(who.clone(), prefs);
+		let primes = vec![3, 5, 7, 9, 11, 13, 17, 19, 27, 29, 31, 37, 41, 43, 47, 51, 59, 67];
 		let num_proxies = Proxies::<T>::count() as usize;
-		Slot::<T>::insert(who.clone(), primes[num_proxies].clone());
+		Slot::<T>::insert(who.clone(), primes[num_proxies]);
 	}
 
 	/// Update the ledger for a controller.
@@ -671,20 +659,15 @@ impl<T: Config> ProxyProvider<T::AccountId, T::Balance> for Pallet<T> {
 	}
 
 	fn reserve(acct: T::AccountId, balance: T::Balance) {
-		match <Ledger<T>>::get(acct.clone()) {
-			Some(mut ledger) => {
-				let new_active_amount = ledger.active - balance;
-				// Q: should it be >= instead?
-				if new_active_amount > Zero::zero() {
-					ledger.active = new_active_amount;
-					ledger.reserved = balance;
-					<Ledger<T>>::insert(acct.clone(), ledger);
-				} else {
-					// should we do anything?
-				}
-			},
-			None => {
-				// invalid accountid
+		if let Some(mut ledger) = <Ledger<T>>::get(acct.clone()) {
+			let new_active_amount = ledger.active - balance;
+			// Q: should it be >= instead?
+			if new_active_amount > Zero::zero() {
+				ledger.active = new_active_amount;
+				ledger.reserved = balance;
+				<Ledger<T>>::insert(acct, ledger);
+			} else {
+				// should we do anything?
 			}
 		}
 	}
@@ -696,7 +679,7 @@ impl<T: Config> ProxyProvider<T::AccountId, T::Balance> for Pallet<T> {
 		if let Some(slot) = Slot::<T>::get(acct.clone()) {
 			let index = CallCount::<T>::get(acct.clone()) + 1;
 			// increment callcount
-			CallCount::<T>::insert(acct.clone(), index);
+			CallCount::<T>::insert(acct, index);
 			return slot * index;
 		}
 		0
