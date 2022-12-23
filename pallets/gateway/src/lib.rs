@@ -73,6 +73,8 @@ pub type EraIndex = u32;
 pub type RewardPoint = u32;
 
 
+pub type GatewayGenesisConfig<AccountId, BalanceOf> = (AccountId, AccountId, BalanceOf, ProxyStatus);
+
 parameter_types! {
 	pub MaxUnlockingChunks: u32 = 32;
 }
@@ -322,8 +324,7 @@ pub mod pallet {
 
 	#[pallet::genesis_config]
 	pub struct GenesisConfig<T: Config> {
-		pub initial_proxies:
-			Vec<(T::AccountId, T::AccountId, BalanceOf<T>, ProxyStatus)>,
+		pub initial_proxies:Vec<GatewayGenesisConfig<T::AccountId, BalanceOf<T>>>,
 		pub min_proxy_bond: BalanceOf<T>,
 		pub max_proxy_count: Option<u32>,
 		// pub history_depth: u32,
@@ -574,7 +575,7 @@ impl<T: Config> Pallet<T> {
 	/// * initial_proxies: A vector of proxies to initalize, containing (controller, slash, balance, status)
 	/// 
 	fn initialize_proxies(
-		initial_proxies: &Vec<(T::AccountId, T::AccountId, BalanceOf<T>, ProxyStatus)>
+		initial_proxies: &Vec<GatewayGenesisConfig<T::AccountId, BalanceOf<T>>>
 	) {
 		for &(ref stash, ref controller, balance, ref status) in initial_proxies {
 			log::info!(
