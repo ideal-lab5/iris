@@ -375,8 +375,7 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::AssetId, T::Balance> for Pall
 
     /// Create a new data asset class
     /// 
-    /// * TODO: right now it takes an IngestionCommand parameter but we don't need the whole thing
-    /// should pass specific items
+    /// * `cmd`: The ingestion command
     /// * `asset_id`: The id to assign to the new asset class
     /// 
     fn create_asset_class(
@@ -385,8 +384,8 @@ impl<T: Config> ResultsHandler<T, T::AccountId, T::AssetId, T::Balance> for Pall
         asset_id: T::AssetId,
     ) -> DispatchResult {
         let who = ensure_signed(origin)?;
-        if let Some(pubkey) = IngestionStaging::<T>::get(who.clone()) {
-            let admin = T::Lookup::unlookup(cmd.clone().owner);
+        if let Some(pubkey) = IngestionStaging::<T>::get(cmd.owner.clone()) {
+            let admin = T::Lookup::unlookup(cmd.owner.clone());
             let new_origin = system::RawOrigin::Signed(who.clone()).into();
             <pallet_assets::Pallet<T>>::create(new_origin, asset_id, admin, cmd.balance)
                 .map_err(|e| {
