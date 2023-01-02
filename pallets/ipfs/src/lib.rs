@@ -268,7 +268,7 @@ pub mod pallet {
         /// * `id`: The AssetId (passed through from the create_storage_asset call)
         /// * `balance`: The balance (passed through from the create_storage_asset call)
         ///
-        #[pallet::weight(100)]
+        #[pallet::weight(100_00)]
         pub fn submit_ingestion_completed(
             origin: OriginFor<T>,
 			cmd: IngestionCommand<T::AccountId, T::Balance>,
