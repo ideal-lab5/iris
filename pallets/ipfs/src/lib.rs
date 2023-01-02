@@ -250,8 +250,8 @@ pub mod pallet {
 							}
 						}
 					},
-					Err(e) => {
-						log::error!("There is no reachable IPFS node {:?}", e);
+					Err(_e) => {
+						// log::error!("There is no reachable IPFS node {:?}", e);
 					}
 				}
 			}
@@ -344,12 +344,10 @@ impl<T: Config> Pallet<T> {
 				let out = res.body().collect::<Vec<u8>>();
 				Ok(out)
 			} 
-			Err(e) => {
-				log::error!("Something went wrong while attempting to get the IPFS node identity: {:?}", e);
+			Err(_e) => {
 				Err(Error::<T>::IpfsNotAvailable)
 			}
 		}
-		// }
 	}
 
 	/// verify if an ipfs daemon is running and if so, report its identity on chain
@@ -465,7 +463,6 @@ impl<T: Config> Pallet<T> {
 					"No local accounts available. Consider adding one via `author_insertKey` RPC.",
 				);
 			}
-			log::info!("Signer can sign: submitting command completion.");
 			let results = signer.send_signed_transaction(|_acct| { 
 				Call::submit_ingestion_completed {
 					cmd: cmd.clone(),
